@@ -1,0 +1,31 @@
+name: Convert Model to TFLite
+on:
+  push:
+      branches:
+            - main
+              workflow_dispatch:
+              permissions:
+                contents: write
+                jobs:
+                  convert:
+                      runs-on: ubuntu-latest
+                          steps:
+                                - name: Checkout repo
+                                        uses: actions/checkout@v3
+                                              - name: Set up Python
+                                                      uses: actions/setup-python@v4
+                                                              with:
+                                                                        python-version: '3.11'
+                                                                              - name: Install dependencies
+                                                                                      run: |
+                                                                                                pip install tensorflow==2.15.1 keras==2.15.0 numpy==1.26.4
+                                                                                                      - name: Convert model
+        run: |
+                  python convert_model.py
+                        - name: Commit and push TFLite model
+                                run: |
+                                          git config --global user.name 'github-actions[bot]'
+                                                    git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+                                                              git add modelo.tflite
+                                                                        git commit -m "chore: convert model to tflite [skip ci]" || echo "No changes to commit"
+                                                                                  git push
