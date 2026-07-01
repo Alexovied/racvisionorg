@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Safety Helmet Detector - Dashboard</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Estilos locales -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="glow-bg"></div>
+    
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="logo">
+                <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Logo" class="logo-img">
+                <div class="logo-divider"></div>
+                <div>
+                    <h1>DETECTOR DE CASCOS DE SEGURIDAD AI</h1>
+                    <p>Monitoreo inteligente en tiempo real y seguridad industrial</p>
+                </div>
+            </div>
+            <div class="status-indicator">
+                <span class="pulse-dot idle" id="system-pulse"></span>
+                <span id="system-status-text">Listo</span>
+            </div>
+        </header>
+
+        <!-- DASHBOARD GRID -->
+        <div class="dashboard-grid">
+            <!-- COLUMNA IZQUIERDA: WEBCAM FEED -->
+            <section class="card webcam-card">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-video"></i> Transmisión en vivo</h2>
+                    <span class="badge" id="camera-fps">60 FPS (Cam)</span>
+                </div>
+                <div class="video-container">
+                    <video id="webcam" autoplay playsinline muted></video>
+                    <canvas id="overlay"></canvas>
+                    <div class="loading-overlay" id="loading-overlay">
+                        <i class="fa-solid fa-camera-rotate spinner"></i>
+                        <p>Inicia la cámara para comenzar</p>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button class="btn btn-primary" id="btn-start">
+                        <i class="fa-solid fa-play"></i> Iniciar Cámara
+                    </button>
+                    <button class="btn btn-danger" id="btn-stop" disabled>
+                        <i class="fa-solid fa-stop"></i> Detener
+                    </button>
+                </div>
+            </section>
+
+            <!-- COLUMNA DERECHA: RESULTADOS Y STATUS -->
+            <section class="right-column">
+                <!-- CARD DE ESTADO ACTUAL -->
+                <div class="card status-card info-card" id="status-panel">
+                    <div class="status-content">
+                        <h3 class="status-title">Estado de Seguridad</h3>
+                        <div class="status-value" id="current-state-text">Buscando Rostro...</div>
+                        <p class="status-desc" id="current-desc-text">Inicia la cámara y colócate frente a ella.</p>
+                    </div>
+                    <div class="status-icon-box" id="status-icon-container">
+                        <i class="fa-solid fa-user-gear pulse-icon" id="status-icon"></i>
+                    </div>
+                </div>
+
+                <!-- CARD DE PROBABILIDADES -->
+                <div class="card metrics-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-chart-simple"></i> Análisis de Confianza</h2>
+                    </div>
+                    <div class="metric-group">
+                        <div class="metric-label">
+                            <span>Con Casco</span>
+                            <strong id="prob-con-val">0.0%</strong>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar bar-con" id="bar-con" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-group">
+                        <div class="metric-label">
+                            <span>Sin Casco</span>
+                            <strong id="prob-sin-val">0.0%</strong>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar bar-sin" id="bar-sin" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CARD DE HISTORIAL/LOG -->
+                <div class="card log-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-list-check"></i> Historial de Detección</h2>
+                        <button class="btn-clear" id="btn-clear-log"><i class="fa-solid fa-trash-can"></i> Limpiar</button>
+                    </div>
+                    <div class="log-container" id="log-list">
+                        <div class="log-placeholder" id="log-placeholder">
+                            <i class="fa-solid fa-clock-rotate-left"></i>
+                            <p>No hay eventos registrados</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Canvas auxiliar oculto para capturar frames -->
+    <canvas id="capture-canvas" style="display: none;"></canvas>
+
+    <!-- Script de lógica -->
+    <script>
+        const video = document.getElementById('webcam');
+        const overlay = document.getElementById('overlay');
+        const captureCanvas = document.getElementById('capture-canvas');
+        const overlayCtx = overlay.getContext('2d');
+        const captureCtx = captureCanvas.getContext('2d');
+
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const btnClearLog = document.getElementById('btn-clear-log');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const systemPulse = document.getElementById('system-pulse');
+        const systemStatusText = document.getElementById('system-status-text');
+
+        // Métricas y estado
+        const probConVal = document.getElementById('prob-con-val');
+        const probSinVal = document.getElementById('prob-sin-val');
+        const barCon = document.getElementById('bar-con');
+        const barSin = document.getElementById('bar-sin');
+        
+        const statusPanel = document.getElementById('status-panel');
+        const currentStateText = document.getElementById('current-state-text');
+        const currentDescText = document.getElementById('current-desc-text');
+        const statusIcon = document.getElementById('status-icon');
+        const logList = document.getElementById('log-list');
+        const logPlaceholder = document.getElementById('log-placeholder');
+
+        let localStream = null;
+        let activeInterval = null;
+        let lastState = null;
+        const scanRateMs = 150; // Intervalo de predicción (~7 fotogramas por segundo, óptimo y liviano)
+
+        // Configurar dimensiones del canvas del overlay
+        function setupCanvasSize() {
+            overlay.width = video.videoWidth || 640;
+            overlay.height = video.videoHeight || 480;
+            captureCanvas.width = overlay.width;
+            captureCanvas.height = overlay.height;
+        }
+
+        // Iniciar webcam
+        async function startWebcam() {
+            try {
+                loadingOverlay.innerHTML = '<i class="fa-solid fa-spinner spinner"></i><p>Solicitando acceso a la cámara...</p>';
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 } },
+                    audio: false
+                });
+                
+                video.srcObject = localStream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    setupCanvasSize();
+                    loadingOverlay.style.opacity = '0';
+                    setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300);
+                    btnStart.disabled = true;
+                    btnStop.disabled = false;
+                    
+                    // Configurar pulso de sistema
+                    systemPulse.className = "pulse-dot active";
+                    systemStatusText.innerText = "Monitoreando";
+
+                    // Iniciar ciclo de detección
+                    activeInterval = setInterval(detectFrame, scanRateMs);
+                };
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+                loadingOverlay.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-danger"></i><p>Error de acceso a la cámara. Revisa los permisos.</p>';
+            }
+        }
+
+        // Detener webcam
+        function stopWebcam() {
+            if (activeInterval) {
+                clearInterval(activeInterval);
+                activeInterval = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            video.srcObject = null;
+            
+            // Restablecer overlay y ui
+            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+            loadingOverlay.style.display = 'flex';
+            setTimeout(() => { loadingOverlay.style.opacity = '1'; }, 50);
+            loadingOverlay.innerHTML = '<i class="fa-solid fa-camera-rotate spinner"></i><p>Inicia la cámara para comenzar</p>';
+            
+            btnStart.disabled = false;
+            btnStop.disabled = true;
+            
+            systemPulse.className = "pulse-dot idle";
+            systemStatusText.innerText = "Detenido";
+
+            resetMetrics();
+        }
+
+        function resetMetrics() {
+            probConVal.innerText = "0.0%";
+            probSinVal.innerText = "0.0%";
+            barCon.style.width = "0%";
+            barSin.style.width = "0%";
+            
+            statusPanel.className = "card status-card info-card";
+            currentStateText.innerText = "Buscando Rostro...";
+            currentDescText.innerText = "Inicia la cámara y colócate frente a ella.";
+            statusIcon.className = "fa-solid fa-user-gear pulse-icon";
+            lastState = null;
+        }
+
+        // Capturar fotograma actual y enviarlo a la API
+        async function detectFrame() {
+            if (!localStream || video.paused || video.ended) return;
+
+            // Asegurar dimensiones en caso de cambio dinámico
+            if (overlay.width !== video.videoWidth) {
+                setupCanvasSize();
+            }
+
+            // Dibujar frame en el canvas oculto
+            captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+            
+            // Comprimir frame a Base64 JPEG
+            const base64Image = captureCanvas.toDataURL('image/jpeg', 0.85);
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: base64Image })
+                });
+
+                if (!response.ok) throw new Error("Error en la respuesta de la API");
+                const data = await response.json();
+
+                updateDashboard(data);
+            } catch (err) {
+                console.error("Error al procesar el fotograma:", err);
+            }
+        }
+
+        // Actualizar interfaz con los resultados de la predicción
+        function updateDashboard(data) {
+            // Limpiar canvas
+            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+            const hasFace = data.has_face;
+            const con = data.con_casco;
+            const sin = data.sin_casco;
+            const bbox = data.bbox;
+
+            // Actualizar porcentajes
+            probConVal.innerText = `${con.toFixed(1)}%`;
+            probSinVal.innerText = `${sin.toFixed(1)}%`;
+            barCon.style.width = `${con}%`;
+            barSin.style.width = `${sin}%`;
+
+            let state = "NO_FACE";
+            if (hasFace) {
+                state = con > sin ? "CON_CASCO" : "SIN_CASCO";
+            }
+
+            // Si hay rostro, dibujar la caja sobre el canvas
+            if (hasFace && bbox) {
+                const [x, y, w, h] = bbox;
+                const color = state === "CON_CASCO" ? "#10B981" : "#EF4444"; // Verde vs Rojo
+                overlayCtx.strokeStyle = color;
+                overlayCtx.lineWidth = 4;
+                overlayCtx.shadowBlur = 15;
+                overlayCtx.shadowColor = color;
+                
+                // Dibujar caja rectangular con bordes estéticos
+                overlayCtx.strokeRect(x, y, w, h);
+                overlayCtx.shadowBlur = 0; // Reset
+                
+                // Etiqueta en el canvas
+                overlayCtx.fillStyle = color;
+                overlayCtx.font = "bold 16px Outfit, sans-serif";
+                const labelText = state === "CON_CASCO" ? "CON CASCO" : "SIN CASCO";
+                overlayCtx.fillText(labelText, x + 5, y - 10);
+            }
+
+            // Actualizar panel de estado solo si cambió para no provocar saltos de interfaz
+            if (state !== lastState) {
+                lastState = state;
+                const timestamp = new Date().toLocaleTimeString();
+
+                if (state === "NO_FACE") {
+                    statusPanel.className = "card status-card info-card";
+                    currentStateText.innerText = "Buscando Rostro...";
+                    currentDescText.innerText = "Posiciona tu rostro completo en el encuadre.";
+                    statusIcon.className = "fa-solid fa-user-gear pulse-icon";
+                } else if (state === "CON_CASCO") {
+                    statusPanel.className = "card status-card success-card";
+                    currentStateText.innerText = "ACCESO SEGURO";
+                    currentDescText.innerText = "Rostro identificado con Casco de Seguridad.";
+                    statusIcon.className = "fa-solid fa-user-shield check-icon";
+                    addLog(timestamp, "Con Casco", con, "log-success");
+                } else if (state === "SIN_CASCO") {
+                    statusPanel.className = "card status-card danger-card";
+                    currentStateText.innerText = "ALERTA: SIN CASCO";
+                    currentDescText.innerText = "¡Peligro! El usuario no lleva el casco de seguridad puesto.";
+                    statusIcon.className = "fa-solid fa-triangle-exclamation alarm-icon";
+                    addLog(timestamp, "Sin Casco", sin, "log-danger");
+                }
+            }
+        }
+
+        // Agregar fila al log
+        function addLog(time, label, confidence, cssClass) {
+            if (logPlaceholder) {
+                logPlaceholder.remove();
+            }
+
+            const item = document.createElement('div');
+            item.className = `log-item ${cssClass}`;
+            
+            const icon = label === "Con Casco" ? "fa-circle-check" : "fa-circle-exclamation";
+            
+            item.innerHTML = `
+                <div class="log-info">
+                    <i class="fa-solid ${icon}"></i>
+                    <span class="log-label">${label}</span>
+                </div>
+                <div class="log-meta">
+                    <span class="log-conf">${confidence.toFixed(1)}%</span>
+                    <span class="log-time">${time}</span>
+                </div>
+            `;
+
+            // Insertar al inicio de la lista
+            logList.insertBefore(item, logList.firstChild);
+
+            // Limitar a máximo 20 eventos
+            if (logList.children.length > 20) {
+                logList.removeChild(logList.lastChild);
+            }
+        }
+
+        // Limpiar log
+        btnClearLog.onclick = () => {
+            logList.innerHTML = '';
+            const placeholder = document.createElement('div');
+            placeholder.className = "log-placeholder";
+            placeholder.id = "log-placeholder";
+            placeholder.innerHTML = `
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <p>No hay eventos registrados</p>
+            `;
+            logList.appendChild(placeholder);
+        };
+
+        // Listeners de botones
+        btnStart.addEventListener('click', startWebcam);
+        btnStop.addEventListener('click', stopWebcam);
+        window.addEventListener('beforeunload', stopWebcam);
+    </script>
+</body>
+</html>
