@@ -4,11 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Safety Helmet Detector - Dashboard</title>
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Estilos locales -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -131,7 +128,6 @@
         const systemPulse = document.getElementById('system-pulse');
         const systemStatusText = document.getElementById('system-status-text');
 
-        // Métricas y estado
         const probConVal = document.getElementById('prob-con-val');
         const probSinVal = document.getElementById('prob-sin-val');
         const barCon = document.getElementById('bar-con');
@@ -147,9 +143,12 @@
         let localStream = null;
         let activeInterval = null;
         let lastState = null;
-        const scanRateMs = 150; // Intervalo de predicción (~7 fotogramas por segundo, óptimo y liviano)
+        let pendingState = null;
+        let confirmCount = 0;
+        const CONFIRM_THRESHOLD = 10;
+        const MIN_CONFIDENCE = 65;    // si el modelo duda (<65%) se ignora el frame
+        const scanRateMs = 150;
 
-        // Configurar dimensiones del canvas del overlay
         function setupCanvasSize() {
             overlay.width = video.videoWidth || 640;
             overlay.height = video.videoHeight || 480;
@@ -157,7 +156,6 @@
             captureCanvas.height = overlay.height;
         }
 
-        // Iniciar webcam
         async function startWebcam() {
             try {
                 loadingOverlay.innerHTML = '<i class="fa-solid fa-spinner spinner"></i><p>Solicitando acceso a la cámara...</p>';
@@ -175,11 +173,9 @@
                     btnStart.disabled = true;
                     btnStop.disabled = false;
                     
-                    // Configurar pulso de sistema
                     systemPulse.className = "pulse-dot active";
                     systemStatusText.innerText = "Monitoreando";
 
-                    // Iniciar ciclo de detección
                     activeInterval = setInterval(detectFrame, scanRateMs);
                 };
             } catch (err) {
@@ -188,7 +184,6 @@
             }
         }
 
-        // Detener webcam
         function stopWebcam() {
             if (activeInterval) {
                 clearInterval(activeInterval);
@@ -200,7 +195,6 @@
             }
             video.srcObject = null;
             
-            // Restablecer overlay y ui
             overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
             loadingOverlay.style.display = 'flex';
             setTimeout(() => { loadingOverlay.style.opacity = '1'; }, 50);
@@ -226,22 +220,24 @@
             currentDescText.innerText = "Inicia la cámara y colócate frente a ella.";
             statusIcon.className = "fa-solid fa-user-gear pulse-icon";
             lastState = null;
+            pendingState = null;
+            confirmCount = 0;
         }
 
-        // Capturar fotograma actual y enviarlo a la API
         async function detectFrame() {
             if (!localStream || video.paused || video.ended) return;
 
-            // Asegurar dimensiones en caso de cambio dinámico
             if (overlay.width !== video.videoWidth) {
                 setupCanvasSize();
             }
 
-            // Dibujar frame en el canvas oculto
+            captureCtx.save();
+            captureCtx.translate(captureCanvas.width, 0);
+            captureCtx.scale(-1, 1);
             captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+            captureCtx.restore();
             
-            // Comprimir frame a Base64 JPEG
-            const base64Image = captureCanvas.toDataURL('image/jpeg', 0.85);
+            const base64Image = captureCanvas.toDataURL('image/png');
 
             try {
                 const response = await fetch('/predict', {
@@ -259,74 +255,98 @@
             }
         }
 
-        // Actualizar interfaz con los resultados de la predicción
         function updateDashboard(data) {
-            // Limpiar canvas
             overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
 
             const hasFace = data.has_face;
+            const showResult = data.show_result !== undefined ? data.show_result : hasFace;
             const con = data.con_casco;
             const sin = data.sin_casco;
             const bbox = data.bbox;
 
-            // Actualizar porcentajes
             probConVal.innerText = `${con.toFixed(1)}%`;
             probSinVal.innerText = `${sin.toFixed(1)}%`;
             barCon.style.width = `${con}%`;
             barSin.style.width = `${sin}%`;
 
             let state = "NO_FACE";
-            if (hasFace) {
-                state = con > sin ? "CON_CASCO" : "SIN_CASCO";
+            if (showResult) {
+                const maxConf = Math.max(con, sin);
+                if (maxConf >= MIN_CONFIDENCE) {
+                    state = con > sin ? "CON_CASCO" : "SIN_CASCO";
+                } else {
+                    // Confianza baja (<65%): el modelo duda, no contar este frame
+                    state = "NO_FACE";
+                }
             }
 
-            // Si hay rostro, dibujar la caja sobre el canvas
             if (hasFace && bbox) {
                 const [x, y, w, h] = bbox;
-                const color = state === "CON_CASCO" ? "#10B981" : "#EF4444"; // Verde vs Rojo
+                const color = state === "CON_CASCO" ? "#10B981" : "#EF4444";
                 overlayCtx.strokeStyle = color;
                 overlayCtx.lineWidth = 4;
                 overlayCtx.shadowBlur = 15;
                 overlayCtx.shadowColor = color;
                 
-                // Dibujar caja rectangular con bordes estéticos
                 overlayCtx.strokeRect(x, y, w, h);
-                overlayCtx.shadowBlur = 0; // Reset
+                overlayCtx.shadowBlur = 0;
                 
-                // Etiqueta en el canvas
                 overlayCtx.fillStyle = color;
                 overlayCtx.font = "bold 16px Outfit, sans-serif";
                 const labelText = state === "CON_CASCO" ? "CON CASCO" : "SIN CASCO";
-                overlayCtx.fillText(labelText, x + 5, y - 10);
+                overlayCtx.fillText(labelText, x + 5, Math.max(y - 10, 20));
             }
 
-            // Actualizar panel de estado solo si cambió para no provocar saltos de interfaz
-            if (state !== lastState) {
-                lastState = state;
-                const timestamp = new Date().toLocaleTimeString();
-
-                if (state === "NO_FACE") {
+            // --- SISTEMA DE CONFIRMACIÓN (10 detecciones consecutivas) ---
+            if (state === "NO_FACE") {
+                pendingState = null;
+                confirmCount = 0;
+                if (lastState !== "NO_FACE") {
+                    lastState = "NO_FACE";
                     statusPanel.className = "card status-card info-card";
                     currentStateText.innerText = "Buscando Rostro...";
                     currentDescText.innerText = "Posiciona tu rostro completo en el encuadre.";
                     statusIcon.className = "fa-solid fa-user-gear pulse-icon";
-                } else if (state === "CON_CASCO") {
-                    statusPanel.className = "card status-card success-card";
-                    currentStateText.innerText = "ACCESO SEGURO";
-                    currentDescText.innerText = "Rostro identificado con Casco de Seguridad.";
-                    statusIcon.className = "fa-solid fa-user-shield check-icon";
-                    addLog(timestamp, "Con Casco", con, "log-success");
-                } else if (state === "SIN_CASCO") {
-                    statusPanel.className = "card status-card danger-card";
-                    currentStateText.innerText = "ALERTA: SIN CASCO";
-                    currentDescText.innerText = "¡Peligro! El usuario no lleva el casco de seguridad puesto.";
-                    statusIcon.className = "fa-solid fa-triangle-exclamation alarm-icon";
-                    addLog(timestamp, "Sin Casco", sin, "log-danger");
                 }
+                return;
+            }
+
+            if (state === pendingState) {
+                confirmCount++;
+
+                if (confirmCount < CONFIRM_THRESHOLD) {
+                    if (lastState !== state) {
+                        currentDescText.innerText = `Verificando... (${confirmCount}/${CONFIRM_THRESHOLD})`;
+                    }
+                    return;
+                }
+
+                if (state !== lastState) {
+                    lastState = state;
+                    const timestamp = new Date().toLocaleTimeString();
+
+                    if (state === "CON_CASCO") {
+                        statusPanel.className = "card status-card success-card";
+                        currentStateText.innerText = "ACCESO SEGURO";
+                        currentDescText.innerText = "Rostro identificado con Casco de Seguridad.";
+                        statusIcon.className = "fa-solid fa-user-shield check-icon";
+                        addLog(timestamp, "Con Casco", con, "log-success");
+                    } else if (state === "SIN_CASCO") {
+                        statusPanel.className = "card status-card danger-card";
+                        currentStateText.innerText = "ALERTA: SIN CASCO";
+                        currentDescText.innerText = "¡Peligro! El usuario no lleva el casco de seguridad puesto.";
+                        statusIcon.className = "fa-solid fa-triangle-exclamation alarm-icon";
+                        addLog(timestamp, "Sin Casco", sin, "log-danger");
+                    }
+                }
+
+            } else {
+                pendingState = state;
+                confirmCount = 1;
+                currentDescText.innerText = `Verificando... (1/${CONFIRM_THRESHOLD})`;
             }
         }
 
-        // Agregar fila al log
         function addLog(time, label, confidence, cssClass) {
             if (logPlaceholder) {
                 logPlaceholder.remove();
@@ -348,16 +368,13 @@
                 </div>
             `;
 
-            // Insertar al inicio de la lista
             logList.insertBefore(item, logList.firstChild);
 
-            // Limitar a máximo 20 eventos
             if (logList.children.length > 20) {
                 logList.removeChild(logList.lastChild);
             }
         }
 
-        // Limpiar log
         btnClearLog.onclick = () => {
             logList.innerHTML = '';
             const placeholder = document.createElement('div');
@@ -370,7 +387,6 @@
             logList.appendChild(placeholder);
         };
 
-        // Listeners de botones
         btnStart.addEventListener('click', startWebcam);
         btnStop.addEventListener('click', stopWebcam);
         window.addEventListener('beforeunload', stopWebcam);

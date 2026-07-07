@@ -8,18 +8,10 @@ import os
 app = Flask(__name__)
 
 # Cargar el modelo de Keras
-model_path = "modelo.keras"
+model_path = "modelo_20260707_031839.keras"
 if not os.path.exists(model_path):
-    # Si no existe modelo.keras, buscar el archivo .keras más reciente en el directorio
-    import glob
-    model_files = glob.glob("*.keras")
-    if len(model_files) > 0:
-        model_files.sort(key=os.path.getmtime, reverse=True)
-        model_path = model_files[0]
-        print(f"[+] 'modelo.keras' no encontrado. Cargando el más reciente: {model_path}")
-    else:
-        print("[!] No se encontraron modelos (.keras). Entrena uno primero ejecutando ea.py.")
-        exit(1)
+    print(f"[!] No se encontró {model_path}.")
+    exit(1)
 
 print(f"[+] Cargando modelo: {model_path}")
 model = keras.models.load_model(model_path)
@@ -31,7 +23,7 @@ def crop_head(img):
     if img is None:
         return None, None
     h_orig, w_orig = img.shape[:2]
-    max_dim = 500  # Resolución optimizada para detección súper rápida
+    max_dim = 500
     scale = max_dim / max(h_orig, w_orig)
     if scale < 1.0:
         img_resized = cv2.resize(img, (int(w_orig * scale), int(h_orig * scale)))
@@ -39,41 +31,62 @@ def crop_head(img):
         img_resized = img
         scale = 1.0
 
+    ih, iw = img_resized.shape[:2]
     gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
+
+    # Mismos parámetros que ea.py (entrenamiento) para que el recorte sea idéntico
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
     if len(faces) == 0:
-        faces = profile_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
+        faces = profile_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(40, 40))
     if len(faces) == 0:
         gray_flipped = cv2.flip(gray, 1)
-        faces_flipped = profile_cascade.detectMultiScale(gray_flipped, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
+        faces_flipped = profile_cascade.detectMultiScale(gray_flipped, scaleFactor=1.1, minNeighbors=4, minSize=(40, 40))
         if len(faces_flipped) > 0:
-            h_img, w_img = gray.shape
             faces = []
             for (xf, yf, wf, hf) in faces_flipped:
-                real_x = w_img - (xf + wf)
+                real_x = iw - (xf + wf)
                 faces.append([real_x, yf, wf, hf])
-                
-    valid_faces = [f for f in faces if f[1] + f[3]/2 < img_resized.shape[0] * 0.70]
-    
+
+    def is_valid_face(f):
+        fx, fy, fw, fh = f[0], f[1], f[2], f[3]
+        if fy + fh / 2 >= ih * 0.70:
+            return False
+        # Rechazar si ocupa más del 70% del ancho (UI del navegador en el fondo)
+        if fw > iw * 0.70:
+            return False
+        # Rechazar aspect ratio absurdo
+        ratio = fw / fh if fh > 0 else 0
+        if ratio < 0.3 or ratio > 3.0:
+            return False
+        return True
+
+    valid_faces = [f for f in faces if is_valid_face(f)]
+
     if len(valid_faces) > 0:
         valid_faces = sorted(valid_faces, key=lambda f: f[2]*f[3], reverse=True)
         x, y, w, h = valid_faces[0]
-        
-        # Mapear coordenadas de vuelta al tamaño original
+
         x_orig = int(x / scale)
         y_orig = int(y / scale)
         w_orig_box = int(w / scale)
         h_orig_box = int(h / scale)
-        
-        y_start = max(0, y_orig - int(h_orig_box * 0.45))
-        y_end = min(h_orig, y_orig + h_orig_box + int(h_orig_box * 0.1))
-        x_start = max(0, x_orig - int(w_orig_box * 0.1))
-        x_end = min(w_orig, x_orig + w_orig_box + int(w_orig_box * 0.1))
+
+        # ⚠️ Mismo margen que ea.py para que el recorte sea igual al entrenamiento
+        # Margen SUPERIOR grande (1.2x) para capturar siempre el casco por encima de la cara
+        y_start = max(0, y_orig - int(h_orig_box * 1.2))
+        y_end = min(h_orig, y_orig + h_orig_box + int(h_orig_box * 0.15))
+        x_start = max(0, x_orig - int(w_orig_box * 0.15))
+        x_end = min(w_orig, x_orig + w_orig_box + int(w_orig_box * 0.15))
         return img[y_start:y_end, x_start:x_end], [x_start, y_start, x_end - x_start, y_end - y_start]
     return None, None
 
+
 @app.route("/")
-def index():
+def landing():
+    return render_template("landing.html")
+
+@app.route("/app")
+def detector():
     return render_template("index.html")
 
 @app.route("/predict", methods=["POST"])
@@ -98,9 +111,10 @@ def predict():
             gray_test = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
             has_face = True
         else:
+            # Igual que ea.py línea 66: usa la imagen completa si no hay cara
             gray_test = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             has_face = False
-            
+
         gray_test = cv2.resize(gray_test, (64, 64))
         gray_test = np.asarray(gray_test, dtype='float32') / 255.0
         gray_test = gray_test.reshape(1, 64, 64, 1)
@@ -109,9 +123,14 @@ def predict():
         result = model(gray_test, training=False).numpy()[0]
         con_casco = float(result[0] * 100)
         sin_casco = float(result[1] * 100)
-        
+
+        # Determinar confianza: si no hay cara, solo mostramos resultado si el modelo
+        # es suficientemente seguro (umbral 60%) para evitar falsos positivos
+        show_result = has_face or (max(con_casco, sin_casco) > 60.0)
+
         return jsonify({
             "has_face": has_face,
+            "show_result": show_result,
             "con_casco": con_casco,
             "sin_casco": sin_casco,
             "bbox": bbox
@@ -122,4 +141,5 @@ def predict():
 
 if __name__ == "__main__":
     # Iniciar la aplicación web en el puerto 5000
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # debug=False para evitar que el modelo se cargue dos veces (reloader de Flask)
+    app.run(host="0.0.0.0", port=5000, debug=False)

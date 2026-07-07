@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAC — Visión Inteligente. Seguridad Real.</title>
+    <meta name="description" content="RAC es un sistema de visión computarizada con IA diseñado para detectar comportamientos y condiciones de riesgo en tiempo real, permitiendo tomar decisiones oportunas y salvar vidas.">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --black:   #0d0d0d;
+            --dark:    #141414;
+            --card:    #1a1a1a;
+            --card2:   #222222;
+            --border:  #2a2a2a;
+            --orange:  #E8751A;
+            --orange2: #FF8C35;
+            --white:   #ffffff;
+            --gray:    #888888;
+            --gray2:   #555555;
+            --font:    'Montserrat', sans-serif;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: var(--font);
+            background: var(--black);
+            color: var(--white);
+            overflow-x: hidden;
+        }
+
+        /* ─── Scrollbar ─── */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: var(--black); }
+        ::-webkit-scrollbar-thumb { background: var(--orange); border-radius: 2px; }
+
+        /* ═══════════════════════════════════════
+           NAV
+        ═══════════════════════════════════════ */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 60px;
+            height: 72px;
+            background: rgba(13,13,13,0.92);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            transition: background .3s;
+        }
+        nav.scrolled { background: rgba(13,13,13,0.98); }
+
+        .nav-logo {
+            display: flex; align-items: center; gap: 14px;
+            text-decoration: none;
+        }
+        .nav-logo img { height: 32px; }
+        .nav-logo-divider {
+            width: 1px; height: 28px;
+            background: var(--border);
+        }
+        .nav-logo-tagline {
+            font-size: 10px; font-weight: 600; letter-spacing: 2px;
+            text-transform: uppercase; color: var(--gray);
+        }
+
+        .nav-links {
+            display: flex; align-items: center; gap: 36px;
+            list-style: none;
+        }
+        .nav-links a {
+            text-decoration: none; color: var(--gray);
+            font-size: 12px; font-weight: 600; letter-spacing: 1.5px;
+            text-transform: uppercase;
+            transition: color .2s;
+            position: relative;
+        }
+        .nav-links a::after {
+            content: ''; position: absolute; bottom: -4px; left: 0; right: 0;
+            height: 2px; background: var(--orange);
+            transform: scaleX(0); transition: transform .2s;
+        }
+        .nav-links a:hover { color: var(--white); }
+        .nav-links a:hover::after { transform: scaleX(1); }
+
+        .nav-cta {
+            background: var(--orange);
+            color: var(--white) !important;
+            padding: 10px 24px;
+            border-radius: 2px;
+            font-size: 11px !important;
+            letter-spacing: 2px !important;
+            transition: background .2s, transform .2s !important;
+        }
+        .nav-cta::after { display: none !important; }
+        .nav-cta:hover { background: var(--orange2) !important; transform: translateY(-1px) !important; }
+
+        /* ═══════════════════════════════════════
+           HERO
+        ═══════════════════════════════════════ */
+        .hero {
+            position: relative;
+            min-height: 100vh;
+            display: flex; align-items: center;
+            overflow: hidden;
+        }
+
+        /* Geometric industrial background */
+        .hero-bg {
+            position: absolute; inset: 0;
+            background: var(--black);
+        }
+        .hero-bg::before {
+            content: '';
+            position: absolute; inset: 0;
+            background:
+                linear-gradient(135deg, rgba(232,117,26,0.04) 0%, transparent 50%),
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 79px,
+                    rgba(255,255,255,0.015) 79px,
+                    rgba(255,255,255,0.015) 80px
+                ),
+                repeating-linear-gradient(
+                    90deg,
+                    transparent,
+                    transparent 79px,
+                    rgba(255,255,255,0.015) 79px,
+                    rgba(255,255,255,0.015) 80px
+                );
+        }
+        /* Diagonal slash decoration */
+        .hero-slash {
+            position: absolute;
+            top: 0; right: 0;
+            width: 55%;
+            height: 100%;
+            background: linear-gradient(135deg, transparent 0%, rgba(232,117,26,0.06) 40%, rgba(232,117,26,0.03) 100%);
+            clip-path: polygon(15% 0%, 100% 0%, 100% 100%, 0% 100%);
+        }
+        .hero-slash-2 {
+            position: absolute;
+            top: 0; right: 0;
+            width: 45%;
+            height: 100%;
+            background: rgba(232,117,26,0.025);
+            clip-path: polygon(25% 0%, 100% 0%, 100% 100%, 10% 100%);
+        }
+        /* Bottom orange bar */
+        .hero-bottom-bar {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--orange) 0%, transparent 100%);
+        }
+
+        .hero-content {
+            position: relative; z-index: 2;
+            max-width: 1300px; margin: 0 auto;
+            padding: 140px 60px 80px;
+            width: 100%;
+        }
+
+        /* Corner bracket decoration */
+        .bracket {
+            display: inline-block; width: 20px; height: 20px;
+            border-color: var(--orange);
+            border-style: solid;
+            position: absolute;
+        }
+        .bracket.tl { top: 140px; left: 60px; border-width: 2px 0 0 2px; }
+        .bracket.tr { top: 140px; right: 60px; border-width: 2px 2px 0 0; }
+
+        .hero-eyebrow {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 28px;
+        }
+        .hero-eyebrow .line { width: 40px; height: 2px; background: var(--orange); }
+        .hero-eyebrow span {
+            font-size: 11px; font-weight: 700; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--orange);
+        }
+
+        .hero h1 {
+            font-size: clamp(36px, 5vw, 68px);
+            font-weight: 900;
+            line-height: 1.05;
+            letter-spacing: -1px;
+            text-transform: uppercase;
+            max-width: 700px;
+            margin-bottom: 20px;
+        }
+        .hero h1 .accent { color: var(--orange); }
+
+        .hero-sub {
+            font-size: 15px; font-weight: 400;
+            line-height: 1.7; color: var(--gray);
+            max-width: 520px;
+            margin-bottom: 48px;
+        }
+
+        .hero-actions {
+            display: flex; align-items: center; gap: 20px;
+            flex-wrap: wrap;
+        }
+        .btn-primary-lg {
+            display: inline-flex; align-items: center; gap: 10px;
+            background: var(--orange);
+            color: var(--white);
+            text-decoration: none;
+            font-size: 12px; font-weight: 700; letter-spacing: 2px;
+            text-transform: uppercase;
+            padding: 16px 36px;
+            border-radius: 2px;
+            transition: background .2s, transform .15s, box-shadow .2s;
+        }
+        .btn-primary-lg:hover {
+            background: var(--orange2);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(232,117,26,0.35);
+        }
+        .btn-outline-lg {
+            display: inline-flex; align-items: center; gap: 10px;
+            border: 1px solid var(--border);
+            color: var(--gray);
+            text-decoration: none;
+            font-size: 12px; font-weight: 600; letter-spacing: 2px;
+            text-transform: uppercase;
+            padding: 16px 32px;
+            border-radius: 2px;
+            transition: border-color .2s, color .2s;
+        }
+        .btn-outline-lg:hover { border-color: var(--white); color: var(--white); }
+
+        /* Hero stats strip */
+        .hero-stats {
+            display: flex; align-items: center; gap: 0;
+            margin-top: 72px;
+            border-top: 1px solid var(--border);
+            padding-top: 36px;
+        }
+        .hstat {
+            flex: 1; padding-right: 40px;
+            border-right: 1px solid var(--border);
+        }
+        .hstat:last-child { border-right: none; padding-right: 0; padding-left: 40px; }
+        .hstat:not(:first-child):not(:last-child) { padding-left: 40px; }
+        .hstat .val {
+            font-size: 36px; font-weight: 900; color: var(--orange);
+            letter-spacing: -1px;
+        }
+        .hstat .lbl {
+            font-size: 11px; font-weight: 600; letter-spacing: 2px;
+            text-transform: uppercase; color: var(--gray);
+            margin-top: 4px;
+        }
+
+        /* ═══════════════════════════════════════
+           ORANGE STRIP
+        ═══════════════════════════════════════ */
+        .orange-strip {
+            background: var(--orange);
+            padding: 18px 60px;
+            display: flex; align-items: center; justify-content: center;
+            gap: 24px; flex-wrap: wrap;
+        }
+        .orange-strip span {
+            font-size: 12px; font-weight: 800; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--white);
+        }
+        .orange-strip .dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.5); }
+
+        /* ═══════════════════════════════════════
+           SECTIONS COMMON
+        ═══════════════════════════════════════ */
+        section { padding: 100px 60px; max-width: 1300px; margin: 0 auto; }
+        .section-full { max-width: none; padding: 100px 0; }
+        .section-full > .inner { max-width: 1300px; margin: 0 auto; padding: 0 60px; }
+
+        .section-label {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 20px;
+        }
+        .section-label .line { width: 32px; height: 2px; background: var(--orange); }
+        .section-label span {
+            font-size: 11px; font-weight: 700; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--orange);
+        }
+        .section-title {
+            font-size: clamp(28px, 3.5vw, 48px);
+            font-weight: 900; text-transform: uppercase;
+            letter-spacing: -1px; line-height: 1.05;
+            margin-bottom: 16px;
+        }
+        .section-desc {
+            font-size: 15px; color: var(--gray);
+            line-height: 1.8; max-width: 580px;
+        }
+
+        /* ═══════════════════════════════════════
+           PILLARS (Visión, Industria, Seguridad, Inteligencia)
+        ═══════════════════════════════════════ */
+        .pillars-section { background: var(--dark); }
+        .pillars-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+        }
+        .pillars-left {}
+        .pillars-right {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px;
+        }
+        .pillar {
+            background: var(--card);
+            padding: 32px 28px;
+            border-top: 2px solid var(--border);
+            transition: border-color .25s;
+        }
+        .pillar:hover { border-color: var(--orange); }
+        .pillar .p-icon {
+            font-size: 28px; color: var(--orange);
+            margin-bottom: 16px;
+        }
+        .pillar .p-title {
+            font-size: 14px; font-weight: 800; letter-spacing: 2px;
+            text-transform: uppercase; margin-bottom: 10px;
+        }
+        .pillar .p-desc {
+            font-size: 12px; color: var(--gray); line-height: 1.7;
+        }
+
+        /* ═══════════════════════════════════════
+           FEATURES
+        ═══════════════════════════════════════ */
+        .features-section { background: var(--black); }
+        .features-header {
+            display: flex; align-items: flex-end; justify-content: space-between;
+            margin-bottom: 60px; gap: 40px; flex-wrap: wrap;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2px;
+        }
+        .feat {
+            background: var(--card);
+            padding: 40px 32px;
+            position: relative;
+            overflow: hidden;
+            transition: background .25s;
+        }
+        .feat::before {
+            content: '';
+            position: absolute; bottom: 0; left: 0; right: 0;
+            height: 2px; background: var(--orange);
+            transform: scaleX(0); transition: transform .3s;
+        }
+        .feat:hover { background: var(--card2); }
+        .feat:hover::before { transform: scaleX(1); }
+
+        .feat-num {
+            font-size: 11px; font-weight: 700; color: var(--orange);
+            letter-spacing: 2px; margin-bottom: 24px;
+        }
+        .feat-icon {
+            font-size: 32px; color: var(--white);
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+        .feat-title {
+            font-size: 15px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 1px; margin-bottom: 12px;
+        }
+        .feat-desc {
+            font-size: 13px; color: var(--gray); line-height: 1.7;
+        }
+
+        /* ═══════════════════════════════════════
+           HOW IT WORKS / PIPELINE
+        ═══════════════════════════════════════ */
+        .pipeline-section {
+            background: var(--dark);
+            padding: 100px 0;
+        }
+        .pipeline-inner {
+            max-width: 1300px; margin: 0 auto; padding: 0 60px;
+        }
+        .pipeline-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0;
+            margin-top: 60px;
+            position: relative;
+        }
+        .pipeline-grid::before {
+            content: '';
+            position: absolute;
+            top: 52px; left: calc(12.5%);
+            right: calc(12.5%);
+            height: 1px;
+            background: linear-gradient(90deg, var(--orange) 0%, var(--border) 100%);
+        }
+        .pipe-step {
+            padding: 0 24px 0 0;
+            position: relative;
+        }
+        .pipe-step:last-child { padding-right: 0; }
+        .pipe-num {
+            width: 48px; height: 48px;
+            border: 2px solid var(--orange);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 900; color: var(--orange);
+            background: var(--dark);
+            margin-bottom: 28px;
+            position: relative; z-index: 1;
+        }
+        .pipe-step-title {
+            font-size: 13px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 1.5px; margin-bottom: 10px;
+        }
+        .pipe-step-desc {
+            font-size: 12px; color: var(--gray); line-height: 1.7;
+        }
+
+        /* ═══════════════════════════════════════
+           DEMO CTA SECTION
+        ═══════════════════════════════════════ */
+        .demo-section {
+            background: var(--black);
+            padding: 0;
+        }
+        .demo-inner {
+            max-width: 1300px; margin: 0 auto;
+            padding: 80px 60px;
+            border: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 40px; flex-wrap: wrap;
+        }
+        .demo-left .demo-label {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+        }
+        .demo-label .dot-live {
+            width: 10px; height: 10px; border-radius: 50%; background: var(--orange);
+            animation: pulse-live 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse-live {
+            0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(232,117,26,.5); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 8px rgba(232,117,26,0); }
+        }
+        .demo-label span {
+            font-size: 11px; font-weight: 700; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--orange);
+        }
+        .demo-left h2 {
+            font-size: clamp(24px, 3vw, 40px);
+            font-weight: 900; text-transform: uppercase;
+            letter-spacing: -1px; line-height: 1.05;
+        }
+        .demo-left p {
+            font-size: 14px; color: var(--gray); margin-top: 12px; line-height: 1.6;
+        }
+        .demo-right {
+            display: flex; align-items: center; gap: 16px;
+        }
+
+        /* ═══════════════════════════════════════
+           CONTACT
+        ═══════════════════════════════════════ */
+        .contact-section {
+            background: var(--dark);
+            padding: 0;
+        }
+        .contact-inner {
+            max-width: 1300px; margin: 0 auto;
+            padding: 80px 60px;
+            display: grid; grid-template-columns: 1fr 1fr 1fr;
+            gap: 60px;
+        }
+        .contact-info-title {
+            font-size: 11px; font-weight: 700; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--orange);
+            margin-bottom: 24px;
+        }
+        .contact-item {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 16px;
+        }
+        .contact-item i { color: var(--orange); width: 16px; font-size: 14px; }
+        .contact-item span { font-size: 13px; color: var(--gray); }
+        .contact-item a { color: var(--gray); text-decoration: none; transition: color .2s; }
+        .contact-item a:hover { color: var(--white); }
+
+        .contact-values { }
+        .contact-values .cv-title {
+            font-size: 11px; font-weight: 700; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--orange); margin-bottom: 24px;
+        }
+        .cv-item {
+            display: flex; align-items: flex-start; gap: 10px;
+            margin-bottom: 14px;
+        }
+        .cv-item i { color: var(--orange); margin-top: 2px; font-size: 12px; }
+        .cv-item span { font-size: 13px; color: var(--gray); line-height: 1.5; }
+
+        /* ═══════════════════════════════════════
+           FOOTER
+        ═══════════════════════════════════════ */
+        footer {
+            background: var(--black);
+            border-top: 1px solid var(--border);
+        }
+        .footer-inner {
+            max-width: 1300px; margin: 0 auto;
+            padding: 28px 60px;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 20px; flex-wrap: wrap;
+        }
+        .footer-logo { display: flex; align-items: center; gap: 12px; }
+        .footer-logo img { height: 24px; }
+        .footer-logo span {
+            font-size: 10px; font-weight: 600; letter-spacing: 2.5px;
+            text-transform: uppercase; color: var(--gray2);
+        }
+        .footer-tagline {
+            font-size: 11px; color: var(--gray2); letter-spacing: 1px;
+        }
+        .footer-tagline span { color: var(--orange); font-weight: 700; }
+        .footer-copy {
+            font-size: 11px; color: var(--gray2);
+        }
+
+        /* ═══════════════════════════════════════
+           RESPONSIVE
+        ═══════════════════════════════════════ */
+        @media (max-width: 900px) {
+            nav { padding: 0 24px; }
+            .nav-links { display: none; }
+            section { padding: 60px 24px; }
+            .hero-content { padding: 120px 24px 60px; }
+            .pillars-grid { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: 1fr; }
+            .pipeline-grid { grid-template-columns: 1fr 1fr; }
+            .pipeline-grid::before { display: none; }
+            .contact-inner { grid-template-columns: 1fr; }
+            .footer-inner { flex-direction: column; text-align: center; }
+            .hero-stats { flex-direction: column; gap: 24px; }
+            .hstat { border-right: none; border-bottom: 1px solid var(--border); padding: 0 0 24px; }
+            .hstat:last-child { border-bottom: none; }
+            .demo-inner { flex-direction: column; text-align: center; }
+        }
+
+        /* ─── Scroll animations ─── */
+        .reveal {
+            opacity: 0; transform: translateY(28px);
+            transition: opacity .7s ease, transform .7s ease;
+        }
+        .reveal.visible { opacity: 1; transform: none; }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════ NAV ═══════════════════════════════════════ -->
+<nav id="navbar">
+    <a href="/" class="nav-logo">
+        <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC">
+        <div class="nav-logo-divider"></div>
+        <span class="nav-logo-tagline">Seguridad Industrial</span>
+    </a>
+    <ul class="nav-links">
+        <li><a href="#solucion">Solución</a></li>
+        <li><a href="#funcionalidades">Funcionalidades</a></li>
+        <li><a href="#como-funciona">Tecnología</a></li>
+        <li><a href="#contacto">Contacto</a></li>
+        <li><a href="/app" class="nav-cta"><i class="fa-solid fa-play"></i> &nbsp;Demo en vivo</a></li>
+    </ul>
+</nav>
+
+<!-- ═══════════════════════════════════════ HERO ═══════════════════════════════════════ -->
+<div class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-slash"></div>
+    <div class="hero-slash-2"></div>
+    <div class="hero-bottom-bar"></div>
+
+    <div class="bracket tl"></div>
+    <div class="bracket tr"></div>
+
+    <div class="hero-content">
+        <div class="hero-eyebrow">
+            <div class="line"></div>
+            <span>Inteligencia Artificial · Seguridad Industrial · Minería</span>
+        </div>
+
+        <h1>
+            Inteligencia<br>
+            artificial para la<br>
+            prevención de riesgos<br>
+            <span class="accent">en minería.</span>
+        </h1>
+
+        <p class="hero-sub">
+            RAC es un sistema de visión computarizada con IA diseñado para detectar comportamientos y condiciones de riesgo en tiempo real, permitiendo tomar decisiones oportunas y salvar vidas.
+        </p>
+
+        <div class="hero-actions">
+            <a href="/app" class="btn-primary-lg">
+                <i class="fa-solid fa-circle-play"></i>
+                Probar demo en vivo
+            </a>
+            <a href="#solucion" class="btn-outline-lg">
+                <i class="fa-solid fa-arrow-down"></i>
+                Ver solución
+            </a>
+        </div>
+
+        <div class="hero-stats">
+            <div class="hstat">
+                <div class="val">98%</div>
+                <div class="lbl">Precisión de detección</div>
+            </div>
+            <div class="hstat">
+                <div class="val">&lt;1s</div>
+                <div class="lbl">Tiempo de respuesta</div>
+            </div>
+            <div class="hstat">
+                <div class="val">24/7</div>
+                <div class="lbl">Monitoreo continuo</div>
+            </div>
+            <div class="hstat">
+                <div class="val">0</div>
+                <div class="lbl">Dependencia de internet</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ ORANGE STRIP ═══════════════════════════════════════ -->
+<div class="orange-strip">
+    <span>Tecnología que ve</span>
+    <div class="dot"></div>
+    <span>Inteligencia que protege</span>
+    <div class="dot"></div>
+    <span>Seguridad real</span>
+    <div class="dot"></div>
+    <span>Más seguridad · Más control · Mejores decisiones</span>
+</div>
+
+<!-- ═══════════════════════════════════════ SOLUCIÓN ═══════════════════════════════════════ -->
+<div class="pillars-section" id="solucion">
+    <section>
+        <div class="pillars-grid">
+            <div class="pillars-left reveal">
+                <div class="section-label">
+                    <div class="line"></div>
+                    <span>Nuestra Solución</span>
+                </div>
+                <h2 class="section-title">Visión<br>inteligente.<br>Seguridad <span style="color:var(--orange)">real.</span></h2>
+                <p class="section-desc" style="margin-top:20px">
+                    RAC combina cuatro disciplinas críticas en un único sistema robusto, confiable y avanzado que transforma datos visuales en decisiones que salvan vidas.
+                </p>
+                <p class="section-desc" style="margin-top:16px">
+                    La unión de estos elementos vive en un sistema robusto, confiable y avanzado, que transforma datos en decisiones que salvan vidas.
+                </p>
+            </div>
+            <div class="pillars-right reveal">
+                <div class="pillar">
+                    <div class="p-icon"><i class="fa-solid fa-eye"></i></div>
+                    <div class="p-title">Visión</div>
+                    <div class="p-desc">Monitorea riesgos del entorno con cámaras en tiempo real.</div>
+                </div>
+                <div class="pillar">
+                    <div class="p-icon"><i class="fa-solid fa-industry"></i></div>
+                    <div class="p-title">Industria</div>
+                    <div class="p-desc">Entornos seguros, minería e industria de alto riesgo.</div>
+                </div>
+                <div class="pillar">
+                    <div class="p-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                    <div class="p-title">Seguridad</div>
+                    <div class="p-desc">Prevención y protección de personas ante cada incidente.</div>
+                </div>
+                <div class="pillar">
+                    <div class="p-icon"><i class="fa-solid fa-brain"></i></div>
+                    <div class="p-title">Inteligencia</div>
+                    <div class="p-desc">IA que analiza, aprende y previene de forma autónoma.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- ═══════════════════════════════════════ FUNCIONALIDADES ═══════════════════════════════════════ -->
+<div class="features-section" id="funcionalidades">
+    <section>
+        <div class="features-header">
+            <div>
+                <div class="section-label">
+                    <div class="line"></div>
+                    <span>Funcionalidades</span>
+                </div>
+                <h2 class="section-title">Todo lo que<br>necesita la industria.</h2>
+            </div>
+            <p class="section-desc" style="margin-bottom:0">
+                Un sistema completo que cubre desde la detección hasta el análisis de datos, diseñado para entornos industriales exigentes.
+            </p>
+        </div>
+        <div class="features-grid">
+            <div class="feat reveal">
+                <div class="feat-num">01</div>
+                <div class="feat-icon"><i class="fa-solid fa-helmet-safety"></i></div>
+                <div class="feat-title">Detección de EPP</div>
+                <div class="feat-desc">Identifica en tiempo real si el personal lleva cascos, chalecos, lentes y demás equipos de protección personal reglamentarios.</div>
+            </div>
+            <div class="feat reveal">
+                <div class="feat-num">02</div>
+                <div class="feat-icon"><i class="fa-solid fa-bell"></i></div>
+                <div class="feat-title">Alertas instantáneas</div>
+                <div class="feat-desc">Sistema de alarmas en tiempo real con umbral de confirmación configurable. Solo alerta cuando está seguro, sin falsos positivos.</div>
+            </div>
+            <div class="feat reveal">
+                <div class="feat-num">03</div>
+                <div class="feat-icon"><i class="fa-solid fa-database"></i></div>
+                <div class="feat-title">Registro de eventos</div>
+                <div class="feat-desc">Almacenamiento automático de incidentes con timestamp, confianza y contexto. Historial auditble para cumplimiento normativo.</div>
+            </div>
+            <div class="feat reveal">
+                <div class="feat-num">04</div>
+                <div class="feat-icon"><i class="fa-solid fa-chart-line"></i></div>
+                <div class="feat-title">Analytics e informes</div>
+                <div class="feat-desc">Gráficos de confianza en tiempo real y estadísticas de sesión que permiten tomar decisiones basadas en datos concretos.</div>
+            </div>
+            <div class="feat reveal">
+                <div class="feat-num">05</div>
+                <div class="feat-icon"><i class="fa-solid fa-camera"></i></div>
+                <div class="feat-title">Integración con cámaras</div>
+                <div class="feat-desc">Compatible con cualquier cámara IP o webcam existente. Sin hardware propietario. Instalación en horas, no en semanas.</div>
+            </div>
+            <div class="feat reveal" style="background: var(--orange); border-top-color: transparent;">
+                <div class="feat-num" style="color: rgba(255,255,255,0.7)">—</div>
+                <div class="feat-icon" style="color: var(--white)"><i class="fa-solid fa-shield-halved"></i></div>
+                <div class="feat-title">Prevención inteligente,<br>operaciones más seguras.</div>
+                <div class="feat-desc" style="color: rgba(255,255,255,0.8)">Cero dependencia de internet. Procesamiento local para máxima velocidad y privacidad de datos operativos.</div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- ═══════════════════════════════════════ PIPELINE ═══════════════════════════════════════ -->
+<div class="pipeline-section" id="como-funciona">
+    <div class="pipeline-inner">
+        <div class="section-label reveal">
+            <div class="line"></div>
+            <span>Cómo Funciona</span>
+        </div>
+        <h2 class="section-title reveal">El pipeline de<br>detección.</h2>
+        <div class="pipeline-grid">
+            <div class="pipe-step reveal">
+                <div class="pipe-num">01</div>
+                <div class="pipe-step-title">Captura de video</div>
+                <div class="pipe-step-desc">La cámara captura frames a 60 FPS. El sistema procesa un frame cada 150ms para balancear velocidad y precisión.</div>
+            </div>
+            <div class="pipe-step reveal">
+                <div class="pipe-num">02</div>
+                <div class="pipe-step-title">Detección de rostro</div>
+                <div class="pipe-step-desc">Haar Cascade detecta el rostro en el frame. Se aplica un crop ampliado hacia arriba para incluir el área del casco.</div>
+            </div>
+            <div class="pipe-step reveal">
+                <div class="pipe-num">03</div>
+                <div class="pipe-step-title">Inferencia CNN</div>
+                <div class="pipe-step-desc">Red neuronal convolucional de 3 capas analiza el recorte de 64×64 px en escala de grises. Entrenada con +190 imágenes.</div>
+            </div>
+            <div class="pipe-step reveal">
+                <div class="pipe-num">04</div>
+                <div class="pipe-step-title">Confirmación y alerta</div>
+                <div class="pipe-step-desc">Solo se emite alerta si 10 frames consecutivos coinciden con ≥65% de confianza. Diseñado para cero falsos positivos.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ DEMO CTA ═══════════════════════════════════════ -->
+<div class="demo-section">
+    <div style="max-width:1300px; margin:0 auto; padding:80px 60px">
+        <div class="demo-inner reveal">
+            <div class="demo-left">
+                <div class="demo-label">
+                    <div class="dot-live"></div>
+                    <span>Sistema activo ahora</span>
+                </div>
+                <h2>Probá el sistema<br>en tiempo real.</h2>
+                <p>Abrí el detector, activá tu cámara y verifícalo vos mismo. Con o sin casco — el sistema decide en menos de 2 segundos.</p>
+            </div>
+            <div class="demo-right">
+                <a href="/app" class="btn-primary-lg">
+                    <i class="fa-solid fa-circle-play"></i>
+                    Abrir detector
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ CONTACTO ═══════════════════════════════════════ -->
+<div class="contact-section" id="contacto">
+    <div class="contact-inner">
+        <div class="reveal">
+            <div class="contact-info-title">Contacto</div>
+            <div class="contact-item"><i class="fa-solid fa-envelope"></i><a href="mailto:contacto@racvision.org">contacto@racvision.org</a></div>
+            <div class="contact-item"><i class="fa-solid fa-globe"></i><a href="#">www.racvision.org</a></div>
+            <div class="contact-item"><i class="fa-solid fa-location-dot"></i><span>San Juan, Argentina</span></div>
+        </div>
+        <div class="contact-values reveal">
+            <div class="cv-title">Nuestro compromiso</div>
+            <div class="cv-item"><i class="fa-solid fa-shield-halved"></i><span>Confiabilidad: resultados seguros y consistentes</span></div>
+            <div class="cv-item"><i class="fa-solid fa-crosshairs"></i><span>Precisión: IA entrenada para el entorno industrial</span></div>
+            <div class="cv-item"><i class="fa-solid fa-lock"></i><span>Seguridad: datos locales, sin dependencia en la nube</span></div>
+            <div class="cv-item"><i class="fa-solid fa-chart-line"></i><span>Eficiencia: decisiones en tiempo real, sin demoras</span></div>
+        </div>
+        <div class="reveal">
+            <div class="contact-info-title">Tono de comunicación</div>
+            <p style="font-size:13px; color:var(--gray); line-height:1.8; margin-bottom:20px">
+                Técnico, claro y directo. Enfocado en resultados, seguridad y confiabilidad. Hablamos el lenguaje de la industria.
+            </p>
+            <a href="/app" class="btn-primary-lg" style="display:inline-flex">
+                <i class="fa-solid fa-play"></i>
+                Ver demo
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ FOOTER ═══════════════════════════════════════ -->
+<footer>
+    <div class="footer-inner">
+        <div class="footer-logo">
+            <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC">
+            <span>Seguridad Industrial</span>
+        </div>
+        <div class="footer-tagline">
+            Tecnología que ve, inteligencia que <span>protege.</span>
+        </div>
+        <div class="footer-copy">
+            © 2026 RAC Vision. San Juan, Argentina.
+        </div>
+    </div>
+</footer>
+
+<script>
+    // Nav scroll effect
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+        navbar.classList.toggle('scrolled', window.scrollY > 40);
+    });
+
+    // Reveal on scroll
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry, i) => {
+            if (entry.isIntersecting) {
+                // stagger siblings
+                const siblings = [...entry.target.parentElement.querySelectorAll('.reveal')];
+                const idx = siblings.indexOf(entry.target);
+                setTimeout(() => {
+                    entry.target.classList.add('visible');
+                }, idx * 80);
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.12 });
+    reveals.forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

@@ -2,6 +2,8 @@ import keras
 import cv2
 import numpy as np
 import glob
+import os
+
 
 # Buscar todos los modelos en la carpeta
 modelos_disponibles = glob.glob("*.keras")
@@ -75,33 +77,68 @@ def crop_head(img):
         w_orig_box = int(w / scale)
         h_orig_box = int(h / scale)
         
-        y_start = max(0, y_orig - int(h_orig_box * 0.45))
-        y_end = min(h_orig, y_orig + h_orig_box + int(h_orig_box * 0.1))
-        x_start = max(0, x_orig - int(w_orig_box * 0.1))
-        x_end = min(w_orig, x_orig + w_orig_box + int(w_orig_box * 0.1))
+        # Margen SUPERIOR grande (1.2x) para capturar siempre el casco por encima de la cara
+        y_start = max(0, y_orig - int(h_orig_box * 1.2))
+        y_end = min(h_orig, y_orig + h_orig_box + int(h_orig_box * 0.15))
+        x_start = max(0, x_orig - int(w_orig_box * 0.15))
+        x_end = min(w_orig, x_orig + w_orig_box + int(w_orig_box * 0.15))
         return img[y_start:y_end, x_start:x_end], (x_start, y_start, x_end - x_start, y_end - y_start)
     return None, None
 
-print("¡Modelo cargado exitosamente! Abriendo la camara...")
+print("¡Modelo cargado exitosamente!")
+print()
 
-# Inicializar la camara (el numero 0 suele ser la webcam por defecto)
-# Pedir al usuario que elija el índice de la cámara para permitir cambiar entre DroidCam y la integrada
-print("--- CONFIGURACIÓN DE CÁMARA ---")
-print("Si se abre una cámara incorrecta (ej. DroidCam), intenta usar otro número (ej. 1 o 2).")
-seleccion_cam = input("Ingresa el número de la cámara a usar (0, 1, 2) [Por defecto: 0]: ")
-if seleccion_cam.strip() == "":
-    indice_cam = 0
-else:
+# --- DETECCIÓN DE CÁMARAS CON NOMBRES ---
+def listar_camaras():
+    """Devuelve lista de (índice, nombre) de cámaras disponibles."""
+    camaras = []
     try:
-        indice_cam = int(seleccion_cam)
-    except:
-        print("Selección no válida. Usando la cámara 0.")
-        indice_cam = 0
+        # Windows: nombres reales via pygrabber (DirectShow)
+        from pygrabber.dshow_graph import FilterGraph
+        graph = FilterGraph()
+        nombres = graph.get_input_devices()
+        for i, nombre in enumerate(nombres):
+            camaras.append((i, nombre))
+        if camaras:
+            return camaras
+    except Exception:
+        pass
 
-cap = cv2.VideoCapture(indice_cam)
+    # Fallback: silenciar warnings y probar índices
+    os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
+    for i in range(8):
+        cap_test = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+        if cap_test.isOpened():
+            camaras.append((i, f"Cámara #{i}"))
+            cap_test.release()
+    return camaras
+
+print("--- CÁMARAS DISPONIBLES ---")
+camaras_disponibles = listar_camaras()
+
+if not camaras_disponibles:
+    print("[!] No se encontró ninguna cámara.")
+    exit()
+
+for idx, (indice, nombre) in enumerate(camaras_disponibles):
+    print(f"  [{idx}] {nombre}")
+print("---------------------------")
+
+seleccion_cam = input(f"Elegí la cámara (0-{len(camaras_disponibles)-1}) [Por defecto: 0]: ").strip()
+try:
+    sel = int(seleccion_cam) if seleccion_cam else 0
+    if sel < 0 or sel >= len(camaras_disponibles):
+        raise ValueError
+    indice_cam, nombre_cam = camaras_disponibles[sel]
+except (ValueError, IndexError):
+    print("Selección no válida. Usando la cámara 0.")
+    indice_cam, nombre_cam = camaras_disponibles[0]
+
+print(f"\n→ Usando: {nombre_cam} (índice {indice_cam})")
+cap = cv2.VideoCapture(indice_cam, cv2.CAP_DSHOW)
 
 if not cap.isOpened():
-    print(f"Error: No se pudo acceder a la cámara con el índice {indice_cam}.")
+    print(f"Error: No se pudo acceder a '{nombre_cam}'.")
     exit()
 
 print("\n--- INSTRUCCIONES ---")
