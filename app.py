@@ -140,6 +140,8 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    # Iniciar la aplicación web en el puerto 5000
-    # debug=False para evitar que el modelo se cargue dos veces (reloader de Flask)
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    import os
+    # Railway asigna un puerto dinámico mediante la variable de entorno PORT
+    # Si no existe (local), usa el puerto 5000 por defecto.
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
