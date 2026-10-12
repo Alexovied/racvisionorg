@@ -24,7 +24,26 @@ def _patched_glorot_init(self, seed=None, **kwargs):
     _orig_glorot_init(self, seed=seed)
 
 keras.initializers.GlorotUniform.__init__ = _patched_glorot_init
-print("[+] Patch GlorotUniform aplicado")
+
+# En el VPS (Keras 3.12) el modelo trae además argumentos de BatchNormalization
+# y Dense que esa versión no acepta. También se ignoran.
+_orig_bn_init = keras.layers.BatchNormalization.__init__
+
+def _patched_bn_init(self, *args, **kwargs):
+    for k in ("renorm", "renorm_clipping", "renorm_momentum"):
+        kwargs.pop(k, None)
+    _orig_bn_init(self, *args, **kwargs)
+
+keras.layers.BatchNormalization.__init__ = _patched_bn_init
+
+_orig_dense_init = keras.layers.Dense.__init__
+
+def _patched_dense_init(self, *args, **kwargs):
+    kwargs.pop("quantization_config", None)
+    _orig_dense_init(self, *args, **kwargs)
+
+keras.layers.Dense.__init__ = _patched_dense_init
+print("[+] Patches de compatibilidad Keras aplicados")
 # ────────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)

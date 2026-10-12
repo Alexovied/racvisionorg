@@ -39,6 +39,15 @@ class _FakeGlorotUniform:  # app.py le aplica un patch a __init__
 
 
 _keras.initializers.GlorotUniform = _FakeGlorotUniform
+
+
+class _FakeLayer:  # app.py también parchea BatchNormalization y Dense
+    def __init__(self, *args, **kwargs):
+        pass
+
+
+_keras.layers.BatchNormalization = type("BatchNormalization", (_FakeLayer,), {})
+_keras.layers.Dense = type("Dense", (_FakeLayer,), {})
 sys.modules["keras"] = _keras
 sys.modules["keras.applications"] = _keras.applications
 sys.modules["keras.applications.mobilenet_v2"] = _mobilenet
