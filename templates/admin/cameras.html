@@ -1,0 +1,130 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Cámaras{% endblock %}
+{% block page_title %}Gestión de Cámaras{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Registra y administra las fuentes de video del sistema.</p>
+    <button class="btn-action btn-create" onclick="document.getElementById('cam-modal').classList.add('visible')">
+        <i class="fa-solid fa-plus"></i> Nueva Cámara
+    </button>
+</div>
+
+{% if cameras %}
+<div class="cameras-grid">
+    {% for cam in cameras %}
+    <div class="admin-card camera-card {{ 'camera-inactive' if not cam.active }}">
+        <div class="camera-header">
+            <div class="camera-status {{ 'cam-active' if cam.active else 'cam-inactive' }}">
+                <span class="cam-dot"></span>
+                {{ 'Activa' if cam.active else 'Inactiva' }}
+            </div>
+            <span class="camera-type-badge">{{ cam.type | upper }}</span>
+        </div>
+        <div class="camera-body">
+            <div class="camera-icon-box">
+                <i class="fa-solid {{ 'fa-video' if cam.type == 'webcam' else 'fa-tower-broadcast' }}"></i>
+            </div>
+            <h4 class="camera-name">{{ cam.name }}</h4>
+            <p class="camera-location"><i class="fa-solid fa-location-dot"></i> {{ cam.location or 'Sin ubicación' }}</p>
+            {% if cam.url %}
+            <p class="camera-url"><i class="fa-solid fa-link"></i> {{ cam.url[:40] }}{{ '...' if cam.url|length > 40 }}</p>
+            {% endif %}
+        </div>
+        <div class="camera-actions">
+            <form method="POST" action="{{ url_for('admin.toggle_camera', cam_id=cam.id) }}">
+                <button type="submit" class="btn-icon {{ 'btn-toggle-off' if cam.active else 'btn-toggle-on' }}" title="{{ 'Desactivar' if cam.active else 'Activar' }}">
+                    <i class="fa-solid {{ 'fa-toggle-on' if cam.active else 'fa-toggle-off' }}"></i>
+                </button>
+            </form>
+            {% if current_user.role == 'admin' %}
+            <form method="POST" action="{{ url_for('admin.delete_camera', cam_id=cam.id) }}" onsubmit="return confirm('¿Eliminar la cámara {{ cam.name }}?')">
+                <button type="submit" class="btn-icon btn-delete" title="Eliminar">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="admin-card">
+    <div class="empty-state">
+        <i class="fa-solid fa-video-slash"></i>
+        <p>No hay cámaras registradas</p>
+        <span>Registra tu primera cámara para comenzar el monitoreo.</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- MODAL: NEW CAMERA -->
+<div class="modal-overlay" id="cam-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3><i class="fa-solid fa-video"></i> Registrar Cámara</h3>
+            <button class="modal-close" onclick="document.getElementById('cam-modal').classList.remove('visible')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form method="POST" action="{{ url_for('admin.cameras') }}">
+            <div class="form-group">
+                <label for="cam-name">Nombre</label>
+                <div class="input-wrapper">
+                    <input type="text" id="cam-name" name="name" placeholder="Ej: Cámara Entrada Principal" required>
+                    <i class="fa-solid fa-tag"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="cam-location">Ubicación</label>
+                <div class="input-wrapper">
+                    <input type="text" id="cam-location" name="location" placeholder="Ej: Sector A - Planta Baja">
+                    <i class="fa-solid fa-location-dot"></i>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="cam-type">Tipo</label>
+                    <div class="select-wrapper">
+                        <select id="cam-type" name="type" onchange="toggleUrlField()">
+                            <option value="webcam">Webcam</option>
+                            <option value="ip">Cámara IP</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </div>
+                </div>
+
+                <div class="form-group" id="url-group" style="display: none;">
+                    <label for="cam-url">URL / Dirección IP</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="cam-url" name="url" placeholder="rtsp://192.168.1.100/stream">
+                        <i class="fa-solid fa-link"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-action btn-cancel" onclick="document.getElementById('cam-modal').classList.remove('visible')">Cancelar</button>
+                <button type="submit" class="btn-action btn-create">
+                    <i class="fa-solid fa-check"></i> Registrar Cámara
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleUrlField() {
+        const type = document.getElementById('cam-type').value;
+        document.getElementById('url-group').style.display = type === 'ip' ? 'block' : 'none';
+    }
+
+    // Close modal on overlay click
+    document.getElementById('cam-modal').addEventListener('click', function(e) {
+        if (e.target === this) this.classList.remove('visible');
+    });
+</script>
+{% endblock %}

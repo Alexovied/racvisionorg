@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAC Admin — {% block title %}Panel{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
+                <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC">
+                <div class="sidebar-logo-text">
+                    <span class="sidebar-brand">RAC</span>
+                    <span class="sidebar-sub">Panel Admin</span>
+                </div>
+            </div>
+            <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
+                <i class="fa-solid fa-chart-pie"></i>
+                <span>Dashboard</span>
+            </a>
+            {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('admin.users') }}" class="nav-item {% if request.endpoint == 'admin.users' %}active{% endif %}">
+                <i class="fa-solid fa-users-gear"></i>
+                <span>Usuarios</span>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('admin.cameras') }}" class="nav-item {% if request.endpoint == 'admin.cameras' %}active{% endif %}">
+                <i class="fa-solid fa-video"></i>
+                <span>Cámaras</span>
+            </a>
+            {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('admin.config') }}" class="nav-item {% if request.endpoint == 'admin.config' %}active{% endif %}">
+                <i class="fa-solid fa-sliders"></i>
+                <span>Configuración</span>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('admin.audit') }}" class="nav-item {% if request.endpoint == 'admin.audit' %}active{% endif %}">
+                <i class="fa-solid fa-clipboard-list"></i>
+                <span>Auditoría</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-divider"></div>
+            <a href="/app" class="nav-item nav-external" target="_blank">
+                <i class="fa-solid fa-helmet-safety"></i>
+                <span>Abrir Detector</span>
+            </a>
+            <a href="/" class="nav-item nav-external">
+                <i class="fa-solid fa-globe"></i>
+                <span>Ir al Sitio</span>
+            </a>
+            <div class="sidebar-divider"></div>
+            <a href="{{ url_for('admin.logout') }}" class="nav-item nav-logout">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span>Cerrar Sesión</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content" id="main-content">
+        <!-- TOP BAR -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="mobile-toggle" id="mobile-toggle">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <h2 class="page-title">{% block page_title %}Dashboard{% endblock %}</h2>
+            </div>
+            <div class="topbar-right">
+                <div class="topbar-user">
+                    <div class="user-avatar">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <div class="user-info">
+                        <span class="user-name">{{ current_user.username }}</span>
+                        <span class="user-role">{{ current_user.role | capitalize }}</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- FLASH MESSAGES -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flash-container">
+                {% for category, message in messages %}
+                <div class="flash-msg flash-{{ category }}" onclick="this.remove()">
+                    <i class="fa-solid {% if category == 'success' %}fa-circle-check{% elif category == 'error' %}fa-circle-xmark{% else %}fa-triangle-exclamation{% endif %}"></i>
+                    <span>{{ message }}</span>
+                    <i class="fa-solid fa-xmark flash-close"></i>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- PAGE CONTENT -->
+        <div class="content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Mobile sidebar overlay -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <script>
+        // Sidebar toggle
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('main-content');
+        const mobileToggle = document.getElementById('mobile-toggle');
+        const overlay = document.getElementById('sidebar-overlay');
+
+        mobileToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('visible');
+        });
+
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('visible');
+        });
+
+        // Auto-dismiss flash messages after 5s
+        document.querySelectorAll('.flash-msg').forEach(el => {
+            setTimeout(() => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(20px)';
+                setTimeout(() => el.remove(), 300);
+            }, 5000);
+        });
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

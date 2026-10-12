@@ -1,0 +1,365 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    .live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        color: #10B981;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        padding: 0.25rem 0.65rem;
+        border-radius: 999px;
+        text-transform: uppercase;
+    }
+    .live-badge.disconnected {
+        color: #6B7280;
+        background: rgba(107, 114, 128, 0.1);
+        border-color: rgba(107, 114, 128, 0.2);
+    }
+    .live-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #10B981;
+        animation: livePulse 1.5s infinite;
+    }
+    .live-badge.disconnected .live-dot {
+        background: #6B7280;
+        animation: none;
+    }
+    @keyframes livePulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%       { opacity: 0.4; transform: scale(0.75); }
+    }
+    .kpi-value { transition: color 0.4s ease; }
+    .kpi-value.updated { color: #10B981 !important; }
+    .event-item-new {
+        animation: slideIn 0.35s ease forwards;
+    }
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateX(12px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+    .alert-flash {
+        animation: alertFlash 0.7s ease;
+    }
+    @keyframes alertFlash {
+        0%, 100% { background-color: inherit; }
+        50%       { background-color: rgba(239, 68, 68, 0.12); }
+    }
+    .dashboard-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.25rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- LIVE STATUS HEADER -->
+<div class="dashboard-header-row">
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">
+        Datos actualizados automáticamente cada 5 segundos
+    </p>
+    <span class="live-badge" id="live-badge">
+        <span class="live-dot" id="live-dot"></span>
+        <span id="live-label">EN VIVO</span>
+    </span>
+</div>
+
+<!-- KPI CARDS -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-icon kpi-blue">
+            <i class="fa-solid fa-wave-square"></i>
+        </div>
+        <div class="kpi-data">
+            <span class="kpi-value" id="kpi-total">{{ stats.total_events }}</span>
+            <span class="kpi-label">Total Detecciones</span>
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-icon kpi-red">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="kpi-data">
+            <span class="kpi-value" id="kpi-alerts">{{ stats.alerts_24h }}</span>
+            <span class="kpi-label">Alertas (24h)</span>
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-icon kpi-green">
+            <i class="fa-solid fa-video"></i>
+        </div>
+        <div class="kpi-data">
+            <span class="kpi-value" id="kpi-cameras">{{ stats.active_cameras }}<small>/{{ stats.total_cameras }}</small></span>
+            <span class="kpi-label">Cámaras Activas</span>
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-icon kpi-orange">
+            <i class="fa-solid fa-users"></i>
+        </div>
+        <div class="kpi-data">
+            <span class="kpi-value" id="kpi-users">{{ stats.total_users }}</span>
+            <span class="kpi-label">Usuarios</span>
+        </div>
+    </div>
+</div>
+
+<!-- CHART + RECENT EVENTS -->
+<div class="dashboard-row">
+    <div class="admin-card chart-card">
+        <div class="admin-card-header">
+            <h3><i class="fa-solid fa-chart-bar"></i> Detecciones por Hora (24h)</h3>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="detections-chart"></canvas>
+        </div>
+    </div>
+
+    <div class="admin-card events-card">
+        <div class="admin-card-header">
+            <h3><i class="fa-solid fa-clock-rotate-left"></i> Últimos Eventos</h3>
+            <a href="{{ url_for('admin.audit') }}" class="card-link">Ver todos <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+        <div class="events-list" id="live-events-list">
+            {% if stats.recent_events %}
+                {% for event in stats.recent_events %}
+                <div class="event-item {{ 'event-danger' if event.type == 'sin_casco' else 'event-success' }}">
+                    <div class="event-left">
+                        <i class="fa-solid {{ 'fa-circle-exclamation' if event.type == 'sin_casco' else 'fa-circle-check' }}"></i>
+                        <div>
+                            <span class="event-type">{{ 'Sin Casco' if event.type == 'sin_casco' else 'Con Casco' }}</span>
+                            <span class="event-camera">{{ event.camera }}</span>
+                        </div>
+                    </div>
+                    <div class="event-right">
+                        <span class="event-conf">{{ event.confidence }}%</span>
+                        <span class="event-time">{{ event.timestamp[11:19] if event.timestamp|length > 19 else event.timestamp }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state" id="events-empty">
+                    <i class="fa-solid fa-inbox"></i>
+                    <p>No hay eventos registrados aún</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── CHART SETUP ────────────────────────────────────────────────
+    const ctx = document.getElementById('detections-chart').getContext('2d');
+
+    const detChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ stats.hours_labels | tojson }},
+            datasets: [
+                {
+                    label: 'Con Casco',
+                    data: {{ stats.con_casco_data | tojson }},
+                    backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                    borderColor: '#10B981',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    barPercentage: 0.7
+                },
+                {
+                    label: 'Sin Casco',
+                    data: {{ stats.sin_casco_data | tojson }},
+                    backgroundColor: 'rgba(239, 68, 68, 0.6)',
+                    borderColor: '#EF4444',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    barPercentage: 0.7
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 400 },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        color: '#9CA3AF',
+                        font: { family: 'Outfit', size: 12 },
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 16
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#6B7280', font: { family: 'Outfit', size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.03)' }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: '#6B7280',
+                        font: { family: 'Outfit', size: 11 },
+                        stepSize: 1
+                    },
+                    grid: { color: 'rgba(255,255,255,0.03)' }
+                }
+            }
+        }
+    });
+
+    // ── HELPERS ────────────────────────────────────────────────────
+    function setLiveStatus(online) {
+        const badge = document.getElementById('live-badge');
+        const label = document.getElementById('live-label');
+        if (online) {
+            badge.classList.remove('disconnected');
+            label.textContent = 'EN VIVO';
+        } else {
+            badge.classList.add('disconnected');
+            label.textContent = 'SIN CONEXIÓN';
+        }
+    }
+
+    function flashKpi(el, newVal) {
+        if (el.dataset.lastVal === String(newVal)) return;
+        el.dataset.lastVal = String(newVal);
+        el.classList.add('updated');
+        setTimeout(() => el.classList.remove('updated'), 1200);
+    }
+
+    function formatTime(ts) {
+        if (!ts || ts.length < 19) return ts || '—';
+        return ts.substring(11, 19);
+    }
+
+    function buildEventHTML(event) {
+        const isDanger = event.type === 'sin_casco';
+        const cls   = isDanger ? 'event-danger' : 'event-success';
+        const icon  = isDanger ? 'fa-circle-exclamation' : 'fa-circle-check';
+        const label = isDanger ? 'Sin Casco' : 'Con Casco';
+        return `<div class="event-item ${cls} event-item-new">
+            <div class="event-left">
+                <i class="fa-solid ${icon}"></i>
+                <div>
+                    <span class="event-type">${label}</span>
+                    <span class="event-camera">${event.camera || 'webcam'}</span>
+                </div>
+            </div>
+            <div class="event-right">
+                <span class="event-conf">${event.confidence}%</span>
+                <span class="event-time">${formatTime(event.timestamp)}</span>
+            </div>
+        </div>`;
+    }
+
+    // ── STATE ──────────────────────────────────────────────────────
+    let lastTopEventId = null;
+    let lastAlerts24h  = {{ stats.alerts_24h }};
+
+    // Seed lastTopEventId from server-rendered events so we don't re-render them
+    (function initLastId() {
+        const serverEvents = {{ stats.recent_events | tojson }};
+        if (serverEvents && serverEvents.length > 0) {
+            lastTopEventId = serverEvents[0].id;
+            document.getElementById('kpi-alerts').dataset.lastVal = String({{ stats.alerts_24h }});
+            document.getElementById('kpi-total').dataset.lastVal  = String({{ stats.total_events }});
+        }
+    })();
+
+    // ── POLLING ────────────────────────────────────────────────────
+    async function refreshDashboard() {
+        try {
+            const [statsRes, eventsRes] = await Promise.all([
+                fetch('/admin/api/stats'),
+                fetch('/admin/api/recent-events?limit=10')
+            ]);
+            if (!statsRes.ok || !eventsRes.ok) throw new Error('HTTP error');
+
+            const stats  = await statsRes.json();
+            const events = await eventsRes.json();
+            setLiveStatus(true);
+
+            // KPI updates
+            const kpiTotal   = document.getElementById('kpi-total');
+            const kpiAlerts  = document.getElementById('kpi-alerts');
+            const kpiCameras = document.getElementById('kpi-cameras');
+            const kpiUsers   = document.getElementById('kpi-users');
+
+            flashKpi(kpiTotal,  stats.total_events);
+            flashKpi(kpiAlerts, stats.alerts_24h);
+
+            kpiTotal.textContent  = stats.total_events;
+            kpiAlerts.textContent = stats.alerts_24h;
+            kpiCameras.innerHTML  = `${stats.active_cameras}<small>/${stats.total_cameras}</small>`;
+            kpiUsers.textContent  = stats.total_users;
+
+            // Flash alert KPI card if new sin_casco alerts
+            if (stats.alerts_24h > lastAlerts24h) {
+                kpiAlerts.closest('.kpi-card').classList.add('alert-flash');
+                setTimeout(() => kpiAlerts.closest('.kpi-card').classList.remove('alert-flash'), 750);
+            }
+            lastAlerts24h = stats.alerts_24h;
+
+            // Chart update
+            detChart.data.labels           = stats.hours_labels;
+            detChart.data.datasets[0].data = stats.con_casco_data;
+            detChart.data.datasets[1].data = stats.sin_casco_data;
+            detChart.update('active');
+
+            // Events list — only update if new events arrived
+            if (!events.length) return;
+            const newTopId = events[0].id;
+            if (newTopId === lastTopEventId) return;
+
+            const lastIdx  = lastTopEventId
+                ? events.findIndex(e => e.id === lastTopEventId)
+                : events.length;
+            const newItems = (lastTopEventId && lastIdx >= 0)
+                ? events.slice(0, lastIdx)
+                : events;
+
+            lastTopEventId = newTopId;
+
+            const list = document.getElementById('live-events-list');
+            const emptyState = list.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+
+            // Prepend newest first (reverse so insertion order is correct)
+            [...newItems].reverse().forEach(event => {
+                list.insertAdjacentHTML('afterbegin', buildEventHTML(event));
+            });
+
+            // Cap at 10 items
+            const allItems = list.querySelectorAll('.event-item');
+            for (let i = 10; i < allItems.length; i++) allItems[i].remove();
+
+        } catch (err) {
+            setLiveStatus(false);
+            console.warn('[Dashboard] Polling error:', err);
+        }
+    }
+
+    // Poll every 5 seconds
+    setInterval(refreshDashboard, 5000);
+</script>
+{% endblock %}
+

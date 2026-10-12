@@ -22,9 +22,14 @@
                     <p>Monitoreo inteligente en tiempo real y seguridad industrial</p>
                 </div>
             </div>
-            <div class="status-indicator">
-                <span class="pulse-dot idle" id="system-pulse"></span>
-                <span id="system-status-text">Listo</span>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <a href="/admin" style="display: flex; align-items: center; gap: 0.4rem; background: rgba(232,117,26,0.12); color: #E8751A; padding: 0.4rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(232,117,26,0.2); transition: background 0.2s;" onmouseover="this.style.background='rgba(232,117,26,0.2)'" onmouseout="this.style.background='rgba(232,117,26,0.12)'">
+                    <i class="fa-solid fa-gear"></i> Admin
+                </a>
+                <div class="status-indicator">
+                    <span class="pulse-dot idle" id="system-pulse"></span>
+                    <span id="system-status-text">Listo</span>
+                </div>
             </div>
         </header>
 
@@ -60,8 +65,8 @@
                 <div class="card status-card info-card" id="status-panel">
                     <div class="status-content">
                         <h3 class="status-title">Estado de Seguridad</h3>
-                        <div class="status-value" id="current-state-text">Buscando Rostro...</div>
-                        <p class="status-desc" id="current-desc-text">Inicia la cámara y colócate frente a ella.</p>
+                        <div class="status-value" id="current-state-text">Buscando personas...</div>
+                        <p class="status-desc" id="current-desc-text">Inicia la cámara para empezar a monitorear.</p>
                     </div>
                     <div class="status-icon-box" id="status-icon-container">
                         <i class="fa-solid fa-user-gear pulse-icon" id="status-icon"></i>
@@ -142,12 +147,46 @@
 
         let localStream = null;
         let activeInterval = null;
+        let isDetecting = false;   // flag para cancelar ciclos async en vuelo
         let lastState = null;
-        let pendingState = null;
-        let confirmCount = 0;
-        const CONFIRM_THRESHOLD = 10;
-        const MIN_CONFIDENCE = 65;    // si el modelo duda (<65%) se ignora el frame
-        const scanRateMs = 150;
+
+        // Config values — loaded dynamically from admin panel, with sensible defaults
+        let MIN_CONFIDENCE = 51;
+        let scanRateMs = 100;
+
+        // ── VENTANA DESLIZANTE + UMBRALES ASIMÉTRICOS ───────────────────────────
+        // Tamaño de la ventana circular de estados (últimos N frames con cara)
+        const WINDOW_SIZE = 8;
+        // SIN_CASCO: 60% de votos para activar alerta (balance velocidad / falsos positivos)
+        const THRESH_SIN_CASCO = 0.60;
+        // CON_CASCO: 70% de votos + ventana llena para confirmar seguridad
+        const THRESH_CON_CASCO = 0.70;
+        // Buffer circular de estados detectados (solo CON_CASCO / SIN_CASCO, NO_FACE no entra)
+        let stateWindow = [];
+        // Frames seguidos sin ninguna persona. Si la cámara queda vacía, el verde
+        // anterior deja de valer y vuelve a "Buscando personas...". La alerta roja
+        // no se apaga sola: sigue hasta que se vea a alguien con casco.
+        const FRAMES_SIN_PERSONAS_RESET = 15;
+        let framesSinPersonas = 0;
+        // ────────────────────────────────────────────────────────────────────────
+
+        // Si la sesión venció, la API responde 401: volver al login y luego a /app.
+        function redirectToLogin() {
+            window.location.href = '/admin/login?next=' + encodeURIComponent('/app');
+        }
+
+        // Fetch config from admin panel API
+        fetch('/admin/api/config')
+            .then(r => {
+                if (r.status === 401) { redirectToLogin(); throw new Error('401'); }
+                return r.json();
+            })
+            .then(cfg => {
+                if (cfg.min_confidence) MIN_CONFIDENCE = cfg.min_confidence;
+                if (cfg.scan_rate_ms) scanRateMs = cfg.scan_rate_ms;
+                console.log('[Config] Loaded:', cfg);
+            })
+            .catch(() => console.log('[Config] Using defaults'));
 
         function setupCanvasSize() {
             overlay.width = video.videoWidth || 640;
@@ -158,6 +197,8 @@
 
         async function startWebcam() {
             try {
+                // Resetear buffer de suavizado del backend al iniciar
+                fetch('/reset_buffer', { method: 'POST' }).catch(() => {});
                 loadingOverlay.innerHTML = '<i class="fa-solid fa-spinner spinner"></i><p>Solicitando acceso a la cámara...</p>';
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: { width: { ideal: 640 }, height: { ideal: 480 } },
@@ -176,7 +217,9 @@
                     systemPulse.className = "pulse-dot active";
                     systemStatusText.innerText = "Monitoreando";
 
-                    activeInterval = setInterval(detectFrame, scanRateMs);
+                    isDetecting = true;
+                    // Loop secuencial: arranca el ciclo de detección sin setInterval
+                    detectLoop();
                 };
             } catch (err) {
                 console.error("Error al acceder a la cámara:", err);
@@ -185,8 +228,11 @@
         }
 
         function stopWebcam() {
+            // Detener el flag PRIMERO para que cualquier ciclo async en vuelo aborte
+            isDetecting = false;
+
             if (activeInterval) {
-                clearInterval(activeInterval);
+                clearTimeout(activeInterval);
                 activeInterval = null;
             }
             if (localStream) {
@@ -194,6 +240,8 @@
                 localStream = null;
             }
             video.srcObject = null;
+            // Resetear buffer de suavizado del backend al detener
+            fetch('/reset_buffer', { method: 'POST' }).catch(() => {});
             
             overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
             loadingOverlay.style.display = 'flex';
@@ -216,28 +264,42 @@
             barSin.style.width = "0%";
             
             statusPanel.className = "card status-card info-card";
-            currentStateText.innerText = "Buscando Rostro...";
-            currentDescText.innerText = "Inicia la cámara y colócate frente a ella.";
+            currentStateText.innerText = "Buscando personas...";
+            currentDescText.innerText = "Inicia la cámara para empezar a monitorear.";
             statusIcon.className = "fa-solid fa-user-gear pulse-icon";
             lastState = null;
-            pendingState = null;
-            confirmCount = 0;
+            stateWindow = [];   // limpiar ventana deslizante
+            framesSinPersonas = 0;
+        }
+
+        // Loop secuencial de detección:
+        // Espera a que el backend responda antes de enviar el siguiente frame.
+        // Esto evita la acumulación de requests paralelos que saturaba Flask.
+        async function detectLoop() {
+            if (!isDetecting) return;
+
+            await detectFrame();
+
+            // Programar el siguiente ciclo sólo DESPUÉS de que este terminó
+            if (isDetecting) {
+                activeInterval = setTimeout(detectLoop, scanRateMs);
+            }
         }
 
         async function detectFrame() {
-            if (!localStream || video.paused || video.ended) return;
+            if (!isDetecting || !localStream || video.paused || video.ended) return;
+            if (!video.videoWidth || !video.videoHeight) return;
 
-            if (overlay.width !== video.videoWidth) {
-                setupCanvasSize();
-            }
+            if (overlay.width !== video.videoWidth) setupCanvasSize();
 
             captureCtx.save();
             captureCtx.translate(captureCanvas.width, 0);
             captureCtx.scale(-1, 1);
             captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
             captureCtx.restore();
-            
-            const base64Image = captureCanvas.toDataURL('image/png');
+
+            // JPEG calidad 0.75: buen balance tamaño/calidad (era 0.85 → ~15% más pesado)
+            const base64Image = captureCanvas.toDataURL('image/jpeg', 0.75);
 
             try {
                 const response = await fetch('/predict', {
@@ -246,12 +308,13 @@
                     body: JSON.stringify({ image: base64Image })
                 });
 
-                if (!response.ok) throw new Error("Error en la respuesta de la API");
+                if (response.status === 401) { isDetecting = false; redirectToLogin(); return; }
+                if (!isDetecting) return;
+                if (!response.ok) throw new Error('Error en la respuesta de la API');
                 const data = await response.json();
-
-                updateDashboard(data);
+                if (isDetecting) updateDashboard(data);
             } catch (err) {
-                console.error("Error al procesar el fotograma:", err);
+                if (isDetecting) console.error('Error al procesar el fotograma:', err);
             }
         }
 
@@ -259,92 +322,146 @@
             overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
 
             const hasFace = data.has_face;
-            const showResult = data.show_result !== undefined ? data.show_result : hasFace;
-            const con = data.con_casco;
-            const sin = data.sin_casco;
-            const bbox = data.bbox;
-
-            probConVal.innerText = `${con.toFixed(1)}%`;
-            probSinVal.innerText = `${sin.toFixed(1)}%`;
-            barCon.style.width = `${con}%`;
-            barSin.style.width = `${sin}%`;
-
-            let state = "NO_FACE";
-            if (showResult) {
-                const maxConf = Math.max(con, sin);
-                if (maxConf >= MIN_CONFIDENCE) {
-                    state = con > sin ? "CON_CASCO" : "SIN_CASCO";
-                } else {
-                    // Confianza baja (<65%): el modelo duda, no contar este frame
-                    state = "NO_FACE";
-                }
+            const faces = data.faces || [];
+            
+            let globalState = "NO_FACE";
+            let maxRiskConf = 0;
+            
+            if (hasFace && faces.length > 0) {
+                globalState = "CON_CASCO";
+                let sumCon = 0;
+                let sumSin = 0;
+                
+                faces.forEach(face => {
+                    const con = face.con_casco;
+                    const sin = face.sin_casco;
+                    const bbox = face.bbox;
+                    
+                    sumCon += con;
+                    sumSin += sin;
+                    
+                    let faceState = "NO_FACE";
+                    const maxConf = Math.max(con, sin);
+                    
+                    if (maxConf >= MIN_CONFIDENCE) {
+                        faceState = con > sin ? "CON_CASCO" : "SIN_CASCO";
+                        
+                        if (faceState === "SIN_CASCO") {
+                            if (globalState !== "SIN_CASCO") {
+                                globalState = "SIN_CASCO";
+                                maxRiskConf = sin;
+                            } else if (sin > maxRiskConf) {
+                                maxRiskConf = sin;
+                            }
+                        } else if (faceState === "CON_CASCO") {
+                            if (globalState === "CON_CASCO" && con > maxRiskConf) {
+                                maxRiskConf = con;
+                            }
+                        }
+                    }
+                    
+                    if (bbox && faceState !== "NO_FACE") {
+                        const [x, y, w, h] = bbox;
+                        const color = faceState === "CON_CASCO" ? "#10B981" : "#EF4444";
+                        overlayCtx.strokeStyle = color;
+                        overlayCtx.lineWidth = 4;
+                        overlayCtx.shadowBlur = 15;
+                        overlayCtx.shadowColor = color;
+                        
+                        overlayCtx.strokeRect(x, y, w, h);
+                        overlayCtx.shadowBlur = 0;
+                        
+                        overlayCtx.fillStyle = color;
+                        overlayCtx.font = "bold 16px Outfit, sans-serif";
+                        const labelText = faceState === "CON_CASCO" ? "CON CASCO" : "SIN CASCO";
+                        overlayCtx.fillText(labelText, x + 5, Math.max(y - 10, 20));
+                    }
+                });
+                
+                const avgCon = sumCon / faces.length;
+                const avgSin = sumSin / faces.length;
+                probConVal.innerText = `${avgCon.toFixed(1)}%`;
+                probSinVal.innerText = `${avgSin.toFixed(1)}%`;
+                barCon.style.width = `${avgCon}%`;
+                barSin.style.width = `${avgSin}%`;
+            } else {
+                probConVal.innerText = "0.0%";
+                probSinVal.innerText = "0.0%";
+                barCon.style.width = "0%";
+                barSin.style.width = "0%";
             }
 
-            if (hasFace && bbox) {
-                const [x, y, w, h] = bbox;
-                const color = state === "CON_CASCO" ? "#10B981" : "#EF4444";
-                overlayCtx.strokeStyle = color;
-                overlayCtx.lineWidth = 4;
-                overlayCtx.shadowBlur = 15;
-                overlayCtx.shadowColor = color;
-                
-                overlayCtx.strokeRect(x, y, w, h);
-                overlayCtx.shadowBlur = 0;
-                
-                overlayCtx.fillStyle = color;
-                overlayCtx.font = "bold 16px Outfit, sans-serif";
-                const labelText = state === "CON_CASCO" ? "CON CASCO" : "SIN CASCO";
-                overlayCtx.fillText(labelText, x + 5, Math.max(y - 10, 20));
-            }
+            const state = globalState;
 
-            // --- SISTEMA DE CONFIRMACIÓN (10 detecciones consecutivas) ---
+            // ── SISTEMA DE VENTANA DESLIZANTE + UMBRALES ASIMÉTRICOS ────────────
             if (state === "NO_FACE") {
-                pendingState = null;
-                confirmCount = 0;
-                if (lastState !== "NO_FACE") {
+                framesSinPersonas++;
+                if (lastState === "CON_CASCO" && framesSinPersonas >= FRAMES_SIN_PERSONAS_RESET) {
+                    stateWindow = [];
+                    lastState = null;
+                }
+                // Los frames sin personas no alteran la ventana pero sí actualizan la UI
+                // si estábamos en NO_FACE o nunca detectamos nada.
+                if (lastState !== "NO_FACE" && stateWindow.length === 0) {
                     lastState = "NO_FACE";
                     statusPanel.className = "card status-card info-card";
-                    currentStateText.innerText = "Buscando Rostro...";
-                    currentDescText.innerText = "Posiciona tu rostro completo en el encuadre.";
+                    currentStateText.innerText = "Buscando personas...";
+                    currentDescText.innerText = "No hay nadie a la vista de la cámara.";
                     statusIcon.className = "fa-solid fa-user-gear pulse-icon";
                 }
                 return;
             }
 
-            if (state === pendingState) {
-                confirmCount++;
+            framesSinPersonas = 0;
 
-                if (confirmCount < CONFIRM_THRESHOLD) {
-                    if (lastState !== state) {
-                        currentDescText.innerText = `Verificando... (${confirmCount}/${CONFIRM_THRESHOLD})`;
-                    }
-                    return;
-                }
+            // Agregar voto a la ventana circular
+            stateWindow.push(state);
+            if (stateWindow.length > WINDOW_SIZE) stateWindow.shift();
 
-                if (state !== lastState) {
-                    lastState = state;
-                    const timestamp = new Date().toLocaleTimeString();
+            // Contar votos por tipo dentro de la ventana
+            const totalVotos = stateWindow.length;
+            const votosSin = stateWindow.filter(s => s === "SIN_CASCO").length;
+            const votosCon = stateWindow.filter(s => s === "CON_CASCO").length;
+            const ratioSin = votosSin / totalVotos;
+            const ratioCon = votosCon / totalVotos;
 
-                    if (state === "CON_CASCO") {
-                        statusPanel.className = "card status-card success-card";
-                        currentStateText.innerText = "ACCESO SEGURO";
-                        currentDescText.innerText = "Rostro identificado con Casco de Seguridad.";
-                        statusIcon.className = "fa-solid fa-user-shield check-icon";
-                        addLog(timestamp, "Con Casco", con, "log-success");
-                    } else if (state === "SIN_CASCO") {
-                        statusPanel.className = "card status-card danger-card";
-                        currentStateText.innerText = "ALERTA: SIN CASCO";
-                        currentDescText.innerText = "¡Peligro! El usuario no lleva el casco de seguridad puesto.";
-                        statusIcon.className = "fa-solid fa-triangle-exclamation alarm-icon";
-                        addLog(timestamp, "Sin Casco", sin, "log-danger");
-                    }
-                }
+            // Progreso visual mientras la ventana se llena
+            const llena = totalVotos >= WINDOW_SIZE;
 
-            } else {
-                pendingState = state;
-                confirmCount = 1;
-                currentDescText.innerText = `Verificando... (1/${CONFIRM_THRESHOLD})`;
+            let decidedState = null;
+            if (ratioSin >= THRESH_SIN_CASCO) {
+                // Umbral bajo: detectar peligro rápido
+                decidedState = "SIN_CASCO";
+            } else if (ratioCon >= THRESH_CON_CASCO && llena) {
+                // Umbral alto: confirmar seguridad sólo con ventana llena
+                decidedState = "CON_CASCO";
             }
+
+            if (!decidedState) {
+                // Ventana aún no tiene consenso → mostrar progreso
+                currentDescText.innerText = `Verificando... (${Math.round(Math.max(ratioSin, ratioCon) * 100)}%)`;
+                return;
+            }
+
+            if (decidedState !== lastState) {
+                lastState = decidedState;
+                const timestamp = new Date().toLocaleTimeString();
+
+                if (decidedState === "CON_CASCO") {
+                    statusPanel.className = "card status-card success-card";
+                    currentStateText.innerText = "TODOS CON CASCO";
+                    currentDescText.innerText = "Todas las personas a la vista tienen casco.";
+                    statusIcon.className = "fa-solid fa-user-shield check-icon";
+                    addLog(timestamp, "Con Casco", maxRiskConf, "log-success");
+                } else if (decidedState === "SIN_CASCO") {
+                    statusPanel.className = "card status-card danger-card";
+                    currentStateText.innerText = "ALERTA: SIN CASCO";
+                    currentDescText.innerText = "¡Peligro! Al menos un usuario no lleva casco.";
+                    statusIcon.className = "fa-solid fa-triangle-exclamation alarm-icon";
+                    addLog(timestamp, "Sin Casco", maxRiskConf, "log-danger");
+                }
+            }
+            // ────────────────────────────────────────────────────────────────────
         }
 
         function addLog(time, label, confidence, cssClass) {
@@ -373,7 +490,33 @@
             if (logList.children.length > 20) {
                 logList.removeChild(logList.lastChild);
             }
+
+            const eventType = label === 'Con Casco' ? 'con_casco' : 'sin_casco';
+
+            // Disparar auditoría y alarma física simultáneamente.
+            // La alarma se activa en admin.py (vía /admin/api/events → enviar_comando_esp32)
+            // y también directamente vía /api/alarm por si el frontend necesita control
+            // independiente sin pasar por el log de auditoría.
+            Promise.all([
+                // 1) Auditoría → también despacha hardware en admin.py
+                fetch('/admin/api/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: eventType,
+                        confidence: confidence,
+                        camera: 'webcam'
+                    })
+                }),
+                // 2) Alarma física directa (redundancia y control granular)
+                fetch('/api/alarm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ state: eventType })
+                })
+            ]).catch(() => {});
         }
+
 
         btnClearLog.onclick = () => {
             logList.innerHTML = '';

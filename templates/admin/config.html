@@ -1,0 +1,108 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Configuración{% endblock %}
+{% block page_title %}Configuración del Sistema{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Ajusta los parámetros del motor de detección y comportamiento del sistema.</p>
+</div>
+
+<form method="POST" action="{{ url_for('admin.config') }}">
+    <input type="hidden" name="action" value="save">
+
+    <div class="config-grid">
+        <!-- CONFIDENCE THRESHOLD -->
+        <div class="admin-card config-card">
+            <div class="config-icon-box config-blue">
+                <i class="fa-solid fa-bullseye"></i>
+            </div>
+            <div class="config-info">
+                <h4>Umbral de Confianza Mínima</h4>
+                <p>Porcentaje mínimo de certeza para considerar una detección válida. Valores más altos = menos falsos positivos.</p>
+            </div>
+            <div class="config-control">
+                <div class="input-wrapper" style="flex: 1;">
+                    <input type="number" name="min_confidence" id="input-confidence"
+                        min="50" max="99" value="{{ config.min_confidence }}" required
+                        style="padding-left: 0.85rem;">
+                </div>
+                <span class="config-value">%</span>
+            </div>
+        </div>
+
+        <!-- CONFIRM THRESHOLD -->
+        <div class="admin-card config-card">
+            <div class="config-icon-box config-green">
+                <i class="fa-solid fa-check-double"></i>
+            </div>
+            <div class="config-info">
+                <h4>Frames de Confirmación</h4>
+                <p>Cantidad de frames consecutivos con el mismo resultado antes de confirmar una detección. Más frames = más estable.</p>
+            </div>
+            <div class="config-control">
+                <div class="input-wrapper" style="flex: 1;">
+                    <input type="number" name="confirm_threshold" id="input-confirm"
+                        min="1" max="20" value="{{ config.confirm_threshold }}" required
+                        style="padding-left: 0.85rem;">
+                </div>
+                <span class="config-value">frames</span>
+            </div>
+        </div>
+
+        <!-- SCAN RATE -->
+        <div class="admin-card config-card">
+            <div class="config-icon-box config-orange">
+                <i class="fa-solid fa-gauge-high"></i>
+            </div>
+            <div class="config-info">
+                <h4>Intervalo de Escaneo</h4>
+                <p>Milisegundos entre cada análisis de frame. Menor valor = más rápido pero más carga de CPU.</p>
+            </div>
+            <div class="config-control">
+                <div class="input-wrapper" style="flex: 1;">
+                    <input type="number" name="scan_rate_ms" id="input-scan"
+                        min="50" max="1000" step="50" value="{{ config.scan_rate_ms }}" required
+                        style="padding-left: 0.85rem;">
+                </div>
+                <span class="config-value">ms</span>
+            </div>
+        </div>
+
+        <!-- ACTIVE MODEL -->
+        <div class="admin-card config-card">
+            <div class="config-icon-box config-purple">
+                <i class="fa-solid fa-brain"></i>
+            </div>
+            <div class="config-info">
+                <h4>Modelo Activo</h4>
+                <p>Selecciona el archivo de modelo Keras a utilizar para las predicciones. Requiere reinicio del servidor.</p>
+            </div>
+            <div class="config-control">
+                <div class="select-wrapper select-compact">
+                    <select name="active_model" id="select-model">
+                        {% for m in models %}
+                        <option value="{{ m }}" {% if m == config.active_model %}selected{% endif %}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                    <i class="fa-solid fa-chevron-down"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="config-actions">
+        <button type="submit" class="btn-action btn-create">
+            <i class="fa-solid fa-floppy-disk"></i> Guardar Configuración
+        </button>
+    </div>
+</form>
+
+<!-- RESET FORM (separate) -->
+<form method="POST" action="{{ url_for('admin.config') }}" class="config-reset-form" onsubmit="return confirm('¿Restaurar todos los valores por defecto?')">
+    <input type="hidden" name="action" value="reset">
+    <button type="submit" class="btn-action btn-reset">
+        <i class="fa-solid fa-rotate-left"></i> Restaurar Valores por Defecto
+    </button>
+</form>
+{% endblock %}

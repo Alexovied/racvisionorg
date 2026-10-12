@@ -1,0 +1,151 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Usuarios{% endblock %}
+{% block page_title %}Gestión de Usuarios{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Administra los usuarios que pueden acceder al sistema.</p>
+    <button class="btn-action btn-create" onclick="openModal('create')">
+        <i class="fa-solid fa-user-plus"></i> Nuevo Usuario
+    </button>
+</div>
+
+<div class="admin-card">
+    <div class="table-responsive">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th>Fecha de Creación</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            <div class="user-avatar-sm">
+                                <i class="fa-solid fa-user"></i>
+                            </div>
+                            <span>{{ user.username }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="role-badge role-{{ user.role }}">
+                            <i class="fa-solid {% if user.role == 'admin' %}fa-shield-halved{% elif user.role == 'operator' %}fa-wrench{% else %}fa-eye{% endif %}"></i>
+                            {{ user.role | capitalize }}
+                        </span>
+                    </td>
+                    <td class="text-muted">{{ user.created_at[:10] if user.created_at else '—' }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn-icon btn-edit" onclick="openEditModal('{{ user.id }}', '{{ user.username }}', '{{ user.role }}')" title="Editar">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                            {% if user.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" onsubmit="return confirm('¿Eliminar el usuario {{ user.username }}?')">
+                                <button type="submit" class="btn-icon btn-delete" title="Eliminar">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL: CREATE USER -->
+<div class="modal-overlay" id="create-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3><i class="fa-solid fa-user-plus"></i> <span id="modal-title">Nuevo Usuario</span></h3>
+            <button class="modal-close" onclick="closeModal('create')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form method="POST" action="{{ url_for('admin.users') }}" id="user-form">
+            <input type="hidden" name="action" id="form-action" value="create">
+            <input type="hidden" name="user_id" id="form-user-id" value="">
+            
+            <div class="form-group">
+                <label for="form-username">Nombre de usuario</label>
+                <div class="input-wrapper">
+                    <input type="text" id="form-username" name="username" placeholder="Ej: operador1" required>
+                    <i class="fa-solid fa-user"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="form-password"><span id="password-label">Contraseña</span></label>
+                <div class="input-wrapper">
+                    <input type="password" id="form-password" name="password" placeholder="Mínimo 4 caracteres">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="form-role">Rol</label>
+                <div class="select-wrapper">
+                    <select id="form-role" name="role">
+                        <option value="admin">Admin — Acceso total</option>
+                        <option value="operator" selected>Operador — Dashboard + Auditoría</option>
+                        <option value="viewer">Visualizador — Solo dashboard</option>
+                    </select>
+                    <i class="fa-solid fa-chevron-down"></i>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-action btn-cancel" onclick="closeModal('create')">Cancelar</button>
+                <button type="submit" class="btn-action btn-create" id="modal-submit-btn">
+                    <i class="fa-solid fa-check"></i> <span id="modal-submit-text">Crear Usuario</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function openModal(type) {
+        document.getElementById('form-action').value = 'create';
+        document.getElementById('form-user-id').value = '';
+        document.getElementById('form-username').value = '';
+        document.getElementById('form-password').value = '';
+        document.getElementById('form-password').required = true;
+        document.getElementById('form-role').value = 'operator';
+        document.getElementById('modal-title').textContent = 'Nuevo Usuario';
+        document.getElementById('modal-submit-text').textContent = 'Crear Usuario';
+        document.getElementById('password-label').textContent = 'Contraseña';
+        document.getElementById('create-modal').classList.add('visible');
+    }
+
+    function openEditModal(id, username, role) {
+        document.getElementById('form-action').value = 'edit';
+        document.getElementById('form-user-id').value = id;
+        document.getElementById('form-username').value = username;
+        document.getElementById('form-password').value = '';
+        document.getElementById('form-password').required = false;
+        document.getElementById('form-role').value = role;
+        document.getElementById('modal-title').textContent = 'Editar Usuario';
+        document.getElementById('modal-submit-text').textContent = 'Guardar Cambios';
+        document.getElementById('password-label').textContent = 'Nueva Contraseña (dejar vacío para no cambiar)';
+        document.getElementById('create-modal').classList.add('visible');
+    }
+
+    function closeModal(id) {
+        document.getElementById(id + '-modal').classList.remove('visible');
+    }
+
+    // Close modal on overlay click
+    document.getElementById('create-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal('create');
+    });
+</script>
+{% endblock %}

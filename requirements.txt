@@ -1,5 +1,10 @@
 flask==3.0.3
+flask-login==0.6.3
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
 tensorflow-cpu==2.15.1
+tf-keras==2.21.0
 gunicorn==22.0.0
+scikit-learn==1.4.2
+pyserial>=3.5
+requests>=2.31.0

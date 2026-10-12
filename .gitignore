@@ -4,7 +4,14 @@ __pycache__/
 *.pyo
 .env
 venv/
+.venv/
 env/
+
+# Datos de ejecución y secretos (users.json, .secret_key, events.json, ...)
+data/
+
+# Modelos alternativos / históricos
+modelos/
 
 # Modelos grandes de Keras (excepto modelo.keras que es el principal)
 modelo_2026*.keras
@@ -22,3 +29,10 @@ sin_casco/
 
 # Agentes
 .agents/
+
+# Entrenamiento del detector de cascos (zip de fotos y pesos de PyTorch)
+entrenamiento/*.zip
+detector_casco.pt
+
+# Configuración local de MCP (colab-mcp)
+.mcp.json

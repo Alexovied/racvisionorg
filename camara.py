@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import glob
 import os
+from collections import deque
 
 
 # Buscar todos los modelos en la carpeta
@@ -42,7 +43,8 @@ profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_pro
 
 def crop_head(img):
     h_orig, w_orig = img.shape[:2]
-    max_dim = 500  # Tamaño máximo de detección para máxima velocidad
+    # ⚠️ Mismo max_dim=800 que ea.py (antes era 500 → recortes diferentes)
+    max_dim = 800
     scale = max_dim / max(h_orig, w_orig)
     if scale < 1.0:
         img_resized = cv2.resize(img, (int(w_orig * scale), int(h_orig * scale)))
@@ -144,6 +146,10 @@ if not cap.isOpened():
 print("\n--- INSTRUCCIONES ---")
 print("Presiona la tecla 'q' en la ventana del video para salir.")
 
+# Buffer de suavizado temporal (mismo enfoque que app.py)
+SMOOTHING_SIZE = 3
+pred_buffer = deque(maxlen=SMOOTHING_SIZE)
+
 while True:
     # Leer el frame actual de la camara
     ret, frame = cap.read()
@@ -160,14 +166,28 @@ while True:
         gray_test = gray_test.reshape(1, 64, 64, 1)
         
         result = model(gray_test, training=False).numpy()
-        con = result[0][0] * 100
-        sin = result[0][1] * 100
+        raw_con = result[0][0] * 100
+        raw_sin = result[0][1] * 100
+        
+        # Suavizado temporal: promedio ponderado de últimos N frames
+        pred_buffer.append((raw_con, raw_sin))
+        n = len(pred_buffer)
+        weights = np.arange(1, n + 1, dtype='float32')
+        weights = weights / weights.sum()
+        avg_con = sum(w * p[0] for w, p in zip(weights, pred_buffer))
+        avg_sin = sum(w * p[1] for w, p in zip(weights, pred_buffer))
+        total = avg_con + avg_sin
+        if total > 0:
+            con = avg_con / total * 100
+            sin = avg_sin / total * 100
+        else:
+            con, sin = 50.0, 50.0
         
         if con > sin:
-            label = f"Con casco: {con:.2f}%"
+            label = f"Con casco: {con:.1f}%"
             color = (0, 255, 0) # Verde
         else:
-            label = f"Sin casco: {sin:.2f}%"
+            label = f"Sin casco: {sin:.1f}%"
             color = (0, 0, 255) # Rojo
             
         cx, cy, cw, ch = bbox
