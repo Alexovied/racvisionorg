@@ -75,6 +75,17 @@ def _yunet_detect(img):
     return boxes
 
 
+def yunet_rows(img):
+    """Filas crudas de YuNet (caja + 5 puntos de la cara + puntaje), las que
+    necesita FaceRecognizerSF.alignCrop. None si no hay YuNet o no hay caras."""
+    if _yunet is None or img is None or min(img.shape[:2]) < 20:
+        return None
+    with _yunet_lock:
+        _yunet.setInputSize((img.shape[1], img.shape[0]))
+        _, faces = _yunet.detect(img)
+    return faces
+
+
 def _safe_haar(cascade, gray, min_neighbors=3, min_size=(40, 40)):
     h, w = gray.shape[:2]
     if h < min_size[0] * 2 or w < min_size[0] * 2:

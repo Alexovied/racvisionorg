@@ -36,3 +36,7 @@ detector_casco.pt
 
 # Configuración local de MCP (colab-mcp)
 .mcp.json
+
+# Fotos para el alta de personas (datos biométricos, no se suben)
+personas/
+personas_prueba/

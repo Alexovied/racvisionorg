@@ -92,6 +92,7 @@ else:
 
 from face_detector import detect_faces
 import helmet_detector
+import face_id
 
 # (Suavizado temporal eliminado para manejar múltiples rostros independientemente en el frontend)
 
@@ -170,7 +171,9 @@ def predict():
                 "has_face": len(cabezas) > 0,
                 "faces": [{"con_casco": c["p_casco"] * 100,
                            "sin_casco": c["p_sin"] * 100,
-                           "bbox": c["bbox"]} for c in cabezas]
+                           "bbox": c["bbox"],
+                           # None = no se ve la cara; "Desconocido" = cara que no está dada de alta
+                           "nombre": face_id.identificar(img, c["bbox"])} for c in cabezas]
             })
 
         # Respaldo sin detector_casco.onnx: cara (YuNet) + clasificador Keras

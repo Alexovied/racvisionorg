@@ -373,7 +373,8 @@
                         
                         overlayCtx.fillStyle = color;
                         overlayCtx.font = "bold 16px Outfit, sans-serif";
-                        const labelText = faceState === "CON_CASCO" ? "CON CASCO" : "SIN CASCO";
+                        const estadoText = faceState === "CON_CASCO" ? "CON CASCO" : "SIN CASCO";
+                        const labelText = face.nombre ? `${face.nombre} · ${estadoText}` : estadoText;
                         overlayCtx.fillText(labelText, x + 5, Math.max(y - 10, 20));
                     }
                 });
