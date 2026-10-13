@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSINT Self-Check</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --txt:#e6edf3;
+    --muted:#8b949e; --accent:#58a6ff; --accent2:#3fb950; --warn:#d29922; --danger:#f85149;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:24px 16px}
+  .wrap{max-width:860px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 20px;font-size:14px}
+  .notice{background:#1c2128;border:1px solid var(--border);border-left:3px solid var(--warn);padding:12px 14px;border-radius:var(--radius);font-size:13px;color:var(--muted);margin-bottom:20px}
+  .notice b{color:var(--txt)}
+  form{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:600px){.grid{grid-template-columns:1fr}}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+  input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--txt);padding:9px 11px;border-radius:8px;font-size:14px}
+  input:focus{outline:none;border-color:var(--accent)}
+  .btn{margin-top:14px;background:var(--accent);color:#0d1117;border:none;font-weight:600;padding:10px 18px;border-radius:8px;cursor:pointer;font-size:14px}
+  .btn:hover{filter:brightness(1.08)}
+  .cat{margin-bottom:18px}
+  .cat h2{font-size:14px;margin:0 0 2px;display:flex;align-items:center;gap:8px}
+  .cat .desc{color:var(--muted);font-size:12px;margin:0 0 10px}
+  .links{display:flex;flex-wrap:wrap;gap:8px}
+  a.pill{display:inline-block;background:var(--panel);border:1px solid var(--border);color:var(--accent);text-decoration:none;padding:7px 12px;border-radius:999px;font-size:13px}
+  a.pill:hover{border-color:var(--accent);background:#1c2a3a}
+  a.pill small{color:var(--muted);display:block;font-size:10px;text-transform:uppercase;letter-spacing:.03em}
+  .empty{color:var(--muted);font-size:13px}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  footer{color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px;margin-top:10px}
+  code{background:#1c2128;padding:1px 5px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔎 OSINT Self-Check</h1>
+  <p class="sub">Revisa tu propia huella digital con fuentes públicas y oficiales. No consulta bases de datos filtradas ni ilegales: solo genera búsquedas para que las abras tú.</p>
+
+  <div class="notice">
+    <b>Úsalo solo con tus propios datos</b> (o con permiso explícito). Esta herramienta no "hackea" nada ni accede a registros privados: construye enlaces a buscadores, servicios de filtraciones conocidas y redes sociales públicas. Lo que encuentres, ya estaba expuesto públicamente.
+  </div>
+
+  <form id="f">
+    <div class="grid">
+      <div><label>Nombre completo</label><input id="name" placeholder="Nombre Apellido" autocomplete="off"></div>
+      <div><label>Usuario / alias</label><input id="user" placeholder="miusuario" autocomplete="off"></div>
+      <div><label>Email</label><input id="email" type="email" placeholder="tucorreo@ejemplo.com" autocomplete="off"></div>
+      <div><label>Teléfono (con prefijo)</label><input id="phone" placeholder="+34600111222" autocomplete="off"></div>
+      <div><label>Ciudad / país</label><input id="city" placeholder="Madrid, España" autocomplete="off"></div>
+      <div><label>Dominio propio (opcional)</label><input id="domain" placeholder="miweb.com" autocomplete="off"></div>
+    </div>
+    <button class="btn" type="submit">Generar enlaces OSINT</button>
+  </form>
+
+  <div id="out"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+
+// Cada fuente recibe los datos y devuelve {label, url} o null si no aplica.
+const CATS = [
+  {
+    title:"Filtraciones de datos (breaches)", color:"var(--danger)",
+    desc:"¿Tu email o teléfono apareció en hackeos conocidos? Fuentes legítimas de notificación.",
+    build:d=>[
+      d.email && {label:"Have I Been Pwned", sub:"email", url:`https://haveibeenpwned.com/account/${enc(d.email)}`},
+      d.email && {label:"HIBP – comprobar", sub:"abrir web", url:`https://haveibeenpwned.com/`},
+      d.email && {label:"Firefox Monitor", sub:"email", url:`https://monitor.mozilla.org/`},
+      d.email && {label:"DeHashed (requiere cuenta)", sub:"email", url:`https://dehashed.com/search?query=${enc(d.email)}`},
+    ]
+  },
+  {
+    title:"Buscadores generales + Google Dorks", color:"var(--accent)",
+    desc:"Búsquedas afinadas para ver qué indexan los buscadores sobre ti.",
+    build:d=>{
+      const q = [d.name&&`"${d.name}"`, d.user&&`"${d.user}"`, d.city].filter(Boolean).join(" ");
+      const r=[];
+      if(q){
+        r.push({label:"Google", sub:"nombre/alias", url:`https://www.google.com/search?q=${enc(q)}`});
+        r.push({label:"Bing", sub:"nombre/alias", url:`https://www.bing.com/search?q=${enc(q)}`});
+        r.push({label:"DuckDuckGo", sub:"nombre/alias", url:`https://duckduckgo.com/?q=${enc(q)}`});
+      }
+      if(d.name) r.push({label:"Dork: documentos", sub:"pdf/doc con tu nombre", url:`https://www.google.com/search?q=${enc(`"${d.name}" (filetype:pdf OR filetype:docx OR filetype:xlsx)`)}`});
+      if(d.email) r.push({label:"Dork: email expuesto", sub:"email en webs", url:`https://www.google.com/search?q=${enc(`"${d.email}"`)}`});
+      if(d.phone) r.push({label:"Dork: teléfono", sub:"tu número en webs", url:`https://www.google.com/search?q=${enc(`"${d.phone}"`)}`});
+      if(d.user) r.push({label:"Dork: pastebin/foros", sub:"filtraciones de texto", url:`https://www.google.com/search?q=${enc(`"${d.user}" site:pastebin.com OR site:ghostbin.com`)}`});
+      return r;
+    }
+  },
+  {
+    title:"Nombre de usuario en redes", color:"var(--accent2)",
+    desc:"Comprueba en qué plataformas existe tu alias (enumeración de usernames).",
+    build:d=>{
+      if(!d.user) return [];
+      const u=enc(d.user);
+      return [
+        {label:"WhatsMyName", sub:"600+ sitios", url:`https://whatsmyname.app/`},
+        {label:"Instant Username", sub:"disponibilidad", url:`https://instantusername.com/#/?q=${u}`},
+        {label:"Instagram", sub:"@"+d.user, url:`https://instagram.com/${u}`},
+        {label:"X / Twitter", sub:"@"+d.user, url:`https://x.com/${u}`},
+        {label:"GitHub", sub:"@"+d.user, url:`https://github.com/${u}`},
+        {label:"TikTok", sub:"@"+d.user, url:`https://www.tiktok.com/@${u}`},
+        {label:"Reddit", sub:"u/"+d.user, url:`https://www.reddit.com/user/${u}`},
+        {label:"Telegram", sub:"t.me", url:`https://t.me/${u}`},
+      ];
+    }
+  },
+  {
+    title:"Email: reputación y rastreo", color:"var(--warn)",
+    desc:"De dónde viene tu email y dónde está registrado (sin revelar contraseñas).",
+    build:d=>{
+      if(!d.email) return [];
+      return [
+        {label:"EmailRep", sub:"reputación", url:`https://emailrep.io/${enc(d.email)}`},
+        {label:"Epieos", sub:"servicios vinculados", url:`https://epieos.com/`},
+        {label:"Gravatar", sub:"foto/perfil público", url:`https://en.gravatar.com/site/check/${enc(d.email)}`},
+      ];
+    }
+  },
+  {
+    title:"Teléfono", color:"var(--accent)",
+    desc:"Información pública básica de un número (operadora, país, formato).",
+    build:d=>{
+      if(!d.phone) return [];
+      return [
+        {label:"Buscar en Google", sub:"menciones", url:`https://www.google.com/search?q=${enc(`"${d.phone}"`)}`},
+        {label:"Truecaller", sub:"nombre asociado", url:`https://www.truecaller.com/`},
+      ];
+    }
+  },
+  {
+    title:"Tu dominio / web", color:"var(--accent2)",
+    desc:"Qué se sabe públicamente de un dominio tuyo.",
+    build:d=>{
+      if(!d.domain) return [];
+      const dm=enc(d.domain);
+      return [
+        {label:"WHOIS", sub:"registro", url:`https://who.is/whois/${dm}`},
+        {label:"crt.sh", sub:"subdominios/certificados", url:`https://crt.sh/?q=${dm}`},
+        {label:"DNSdumpster", sub:"infraestructura DNS", url:`https://dnsdumpster.com/`},
+        {label:"Wayback Machine", sub:"versiones antiguas", url:`https://web.archive.org/web/*/${d.domain}`},
+      ];
+    }
+  },
+  {
+    title:"Derechos: pide que borren tus datos", color:"var(--accent)",
+    desc:"Si encuentras datos tuyos que no quieres públicos, aquí reclamas.",
+    build:d=>[
+      {label:"AEPD (España)", sub:"protección de datos", url:`https://www.aepd.es/derechos-y-deberes/conoce-tus-derechos`},
+      {label:"AAIP (Argentina)", sub:"datos personales", url:`https://www.argentina.gob.ar/aaip`},
+      {label:"Google: retirar info", sub:"formulario", url:`https://support.google.com/websearch/troubleshooter/9685456`},
+    ]
+  },
+];
+
+$("f").addEventListener("submit", e=>{
+  e.preventDefault();
+  const d = {
+    name:$("name").value.trim(), user:$("user").value.trim(),
+    email:$("email").value.trim(), phone:$("phone").value.trim().replace(/\s/g,""),
+    city:$("city").value.trim(), domain:$("domain").value.trim().replace(/^https?:\/\//,"").replace(/\/.*$/,"")
+  };
+  const out=$("out"); out.innerHTML="";
+  if(!Object.values(d).some(Boolean)){ out.innerHTML='<p class="empty">Rellena al menos un campo.</p>'; return; }
+  let any=false;
+  for(const c of CATS){
+    const links=(c.build(d)||[]).filter(Boolean);
+    if(!links.length) continue;
+    any=true;
+    const div=document.createElement("div"); div.className="cat";
+    div.innerHTML=`<h2><span class="dot" style="background:${c.color}"></span>${c.title}</h2><p class="desc">${c.desc}</p>`;
+    const box=document.createElement("div"); box.className="links";
+    for(const l of links){
+      const a=document.createElement("a"); a.className="pill"; a.href=l.url; a.target="_blank"; a.rel="noopener noreferrer";
+      a.innerHTML=`${l.label}${l.sub?`<small>${l.sub}</small>`:""}`;
+      box.appendChild(a);
+    }
+    div.appendChild(box); out.appendChild(div);
+  }
+  if(!any) out.innerHTML='<p class="empty">No hay fuentes para esos datos. Prueba con un email o usuario.</p>';
+  out.insertAdjacentHTML("beforeend",'<footer>Ninguna consulta sale de tu navegador hasta que <b>tú</b> haces clic en un enlace. Esta página no guarda ni envía nada.</footer>');
+});
+</script>
+</body>
+</html>
