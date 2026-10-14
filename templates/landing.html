@@ -8,7 +8,7 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="RAC Vision">
     <meta property="og:title" content="RAC Vision — Detección de cascos con IA">
-    <meta property="og:description" content="Sistema de visión con inteligencia artificial que detecta en tiempo real a personas sin casco y avisa al instante. Hecho en Buenos Aires.">
+    <meta property="og:description" content="Sistema de visión con inteligencia artificial que detecta en tiempo real a personas sin casco o sin chaleco reflectante y avisa al instante. Hecho en Buenos Aires.">
     <meta property="og:url" content="https://racvision.org/">
     <meta property="og:image" content="https://racvision.org/static/og-image.png">
     <meta property="og:locale" content="es_AR">
@@ -26,14 +26,26 @@
       "telephone": "+54 11 2658-5564",
       "address": {"@type": "PostalAddress", "addressLocality": "Buenos Aires", "addressCountry": "AR"},
       "founder": [{"@type": "Person", "name": "Alex Oviedo"}, {"@type": "Person", "name": "Mateo Silvero"}, {"@type": "Person", "name": "Luciano Campanelli"}],
-      "description": "Sistema de visión con inteligencia artificial para detectar el uso de casco de seguridad en tiempo real."
+      "description": "Sistema de visión con inteligencia artificial que detecta en tiempo real a trabajadores sin casco o sin chaleco reflectante y avisa al instante."
     }
     </script>
+    <!-- Google toma de acá el nombre del sitio que muestra en los resultados -->
+    <script type="application/ld+json">
+    {"@context": "https://schema.org", "@type": "WebSite", "name": "RAC Vision", "alternateName": ["RAC", "racvision"], "url": "https://racvision.org/"}
+    </script>
     <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="96x96" href="/static/favicon-96.png">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <meta name="description" content="RAC Vision (racvision.org) es un sistema de visión con inteligencia artificial que detecta en tiempo real a personas sin casco de seguridad, identifica a cada trabajador y avisa al instante. Hecho en Buenos Aires, Argentina.">
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <meta name="description" content="RAC Vision detecta con inteligencia artificial, en tiempo real, a trabajadores sin casco o sin chaleco reflectante, los identifica y alerta al instante con foto. Seguridad industrial desde cámaras IP. Hecho en Buenos Aires.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Fuentes e íconos sin bloquear el primer pintado -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    </noscript>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -702,7 +714,7 @@
             </div>
         </div>
         <div class="video-frame">
-            <video id="video-rac" autoplay muted loop playsinline controls preload="metadata"
+            <video id="video-rac" muted loop playsinline controls preload="none"
                    poster="{{ url_for('static', filename='video/racvision-promo-poster.jpg') }}">
                 <source src="{{ url_for('static', filename='video/racvision-promo-es.mp4') }}" type="video/mp4">
             </video>
@@ -715,15 +727,19 @@
             const botones = document.querySelectorAll('.video-lang button');
             const fuente = { es: "{{ url_for('static', filename='video/racvision-promo-es.mp4') }}",
                              en: "{{ url_for('static', filename='video/racvision-promo-en.mp4') }}" };
-            function usar(lang) {
+            function usar(lang, reproducir = true) {
                 botones.forEach(b => b.classList.toggle('activo', b.dataset.lang === lang));
                 if (video.querySelector('source').src.endsWith(fuente[lang])) return;
                 video.querySelector('source').src = fuente[lang];
                 video.load();
-                video.play().catch(() => {});
+                if (reproducir) video.play().catch(() => {});
             }
             botones.forEach(b => b.addEventListener('click', () => usar(b.dataset.lang)));
-            if (!(navigator.language || 'es').toLowerCase().startsWith('es')) usar('en');
+            if (!(navigator.language || 'es').toLowerCase().startsWith('es')) usar('en', false);
+            // Arranca recién al verse: con autoplay el navegador bajaba el MP4 durante la carga inicial
+            new IntersectionObserver((entradas, obs) => {
+                if (entradas[0].isIntersecting) { video.play().catch(() => {}); obs.disconnect(); }
+            }, { threshold: 0.25 }).observe(video);
         })();
     </script>
 </div>
