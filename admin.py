@@ -399,7 +399,8 @@ def validate_event_payload(data):
     if not isinstance(camera, str) or not camera.strip():
         return None, None, None, "'camera' debe ser un texto"
     camera = camera.strip()
-    if camera != DEFAULT_CAMERA:
+    # webcam-2, webcam-3...: las cámaras extra de /app/multi (/app?cam=N)
+    if camera != DEFAULT_CAMERA and not (camera.startswith("webcam-") and camera[7:].isdigit()):
         known = set()
         for c in data_store.load_cameras():
             known.add(c.get("id"))
