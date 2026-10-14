@@ -21,7 +21,10 @@
     .mon-card.alerta .mon-video { box-shadow: inset 0 0 0 3px var(--red); }
     .mon-foot { display: flex; gap: 0.5rem; padding: 0.8rem 1.1rem; }
     .mon-foot select { flex: 1; min-width: 0; background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border);
-                       border-radius: var(--radius-sm); padding: 0.5rem 0.6rem; font-family: var(--font); font-size: 0.82rem; }
+                       border-radius: var(--radius-sm); padding: 0.5rem 0.6rem; font-family: var(--font); font-size: 0.82rem;
+                       color-scheme: dark; }
+    /* La lista desplegable la dibuja el sistema: sin esto, texto claro sobre fondo blanco */
+    .mon-foot select option { background: var(--card-bg-solid); color: var(--text); }
     .mon-foot .btn-action { padding: 0.5rem 0.9rem; font-size: 0.82rem; }
     @media (max-width: 480px) { .monitor-grid { grid-template-columns: 1fr; } }
 </style>
