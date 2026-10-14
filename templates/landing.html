@@ -679,6 +679,55 @@
     <span>Más seguridad · Más control · Mejores decisiones</span>
 </div>
 
+<!-- ═══════════════════════════════════════ VIDEO ═══════════════════════════════════════ -->
+<div class="video-section" id="video">
+    <style>
+        .video-section { padding: 90px 24px 40px; background: var(--black); }
+        .video-inner { max-width: 1100px; margin: 0 auto; }
+        .video-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+        .video-head h2 { font-size: clamp(1.6rem, 3.5vw, 2.4rem); font-weight: 800; color: #fff; }
+        .video-head h2 span { color: var(--orange); }
+        .video-lang { display: flex; gap: 6px; }
+        .video-lang button { background: transparent; color: #aaa; border: 1px solid var(--border); padding: 6px 14px; font-family: inherit; font-weight: 700; font-size: .8rem; letter-spacing: 1px; cursor: pointer; }
+        .video-lang button.activo { background: var(--orange); border-color: var(--orange); color: #fff; }
+        .video-frame { position: relative; border: 1px solid var(--border); background: #000; }
+        .video-frame video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+    </style>
+    <div class="video-inner reveal">
+        <div class="video-head">
+            <h2>RAC Vision en <span>60 segundos</span></h2>
+            <div class="video-lang" role="group" aria-label="Idioma del video">
+                <button type="button" data-lang="es" class="activo">ES</button>
+                <button type="button" data-lang="en">EN</button>
+            </div>
+        </div>
+        <div class="video-frame">
+            <video id="video-rac" autoplay muted loop playsinline controls preload="metadata"
+                   poster="{{ url_for('static', filename='video/racvision-promo-poster.jpg') }}">
+                <source src="{{ url_for('static', filename='video/racvision-promo-es.mp4') }}" type="video/mp4">
+            </video>
+        </div>
+    </div>
+    <script>
+        // Video en inglés si el navegador no está en español; los botones permiten cambiarlo
+        (function () {
+            const video = document.getElementById('video-rac');
+            const botones = document.querySelectorAll('.video-lang button');
+            const fuente = { es: "{{ url_for('static', filename='video/racvision-promo-es.mp4') }}",
+                             en: "{{ url_for('static', filename='video/racvision-promo-en.mp4') }}" };
+            function usar(lang) {
+                botones.forEach(b => b.classList.toggle('activo', b.dataset.lang === lang));
+                if (video.querySelector('source').src.endsWith(fuente[lang])) return;
+                video.querySelector('source').src = fuente[lang];
+                video.load();
+                video.play().catch(() => {});
+            }
+            botones.forEach(b => b.addEventListener('click', () => usar(b.dataset.lang)));
+            if (!(navigator.language || 'es').toLowerCase().startsWith('es')) usar('en');
+        })();
+    </script>
+</div>
+
 <!-- ═══════════════════════════════════════ SOLUCIÓN ═══════════════════════════════════════ -->
 <div class="pillars-section" id="solucion">
     <section>
