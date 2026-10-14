@@ -146,3 +146,8 @@ def test_predict_usa_rgb_128_y_preprocess_mobilenet(flask_app, operator_client, 
 def test_predict_imagen_mal_formada_devuelve_400(operator_client, fake_model):
     assert operator_client.post("/predict", json={"image": 123}).status_code == 400
     assert operator_client.post("/predict", data="no-json", content_type="application/json").status_code == 400
+
+
+def test_favicon_publico(client):
+    r = client.get("/favicon.ico")
+    assert r.status_code == 200 and len(r.data) > 0

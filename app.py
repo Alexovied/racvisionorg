@@ -129,6 +129,11 @@ def crop_head(img):
     return results
 
 
+@app.route("/favicon.ico")
+def favicon():
+    # Los navegadores lo piden siempre en la raíz, aunque la página no lo enlace
+    return app.send_static_file("favicon.ico")
+
 @app.route("/")
 def landing():
     return render_template("landing.html")
