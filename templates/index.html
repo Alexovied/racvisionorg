@@ -25,11 +25,7 @@
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <a href="/admin" style="display: flex; align-items: center; gap: 0.4rem; background: rgba(232,117,26,0.12); color: #E8751A; padding: 0.4rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(232,117,26,0.2); transition: background 0.2s;" onmouseover="this.style.background='rgba(232,117,26,0.2)'" onmouseout="this.style.background='rgba(232,117,26,0.12)'">
                     <i class="fa-solid fa-gear"></i> Admin
-                </a>
-                <a href="/app/multi" target="_top" id="link-multi" style="display: flex; align-items: center; gap: 0.4rem; background: rgba(232,117,26,0.12); color: #E8751A; padding: 0.4rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(232,117,26,0.2);">
-                    <i class="fa-solid fa-table-cells-large"></i> 2 cámaras
-                </a>
-                <div class="status-indicator">
+                </a>                <div class="status-indicator">
                     <span class="pulse-dot idle" id="system-pulse"></span>
                     <span id="system-status-text">Listo</span>
                 </div>
@@ -149,22 +145,17 @@
         const logList = document.getElementById('log-list');
         const logPlaceholder = document.getElementById('log-placeholder');
 
-        // Varias cámaras: cada instancia de esta página es una cámara (/app?cam=2).
-        // /app/multi las muestra juntas; cada una recuerda qué dispositivo usa.
-        const CAM = new URLSearchParams(location.search).get('cam') || '1';
-        const CAMERA_NAME = CAM === '1' ? 'webcam' : `webcam-${CAM}`;
+        // Selector de dispositivo: recuerda qué cámara se usó la última vez
+        const CAMERA_NAME = 'webcam';
         const cameraSelect = document.getElementById('camera-select');
-        document.getElementById('camera-fps').innerText = `Cámara ${CAM}`;
-        if (window.self !== window.top) document.getElementById('link-multi').style.display = 'none';
 
         async function listarCamaras(elegida) {
             const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
             let guardada = null;
-            try { guardada = localStorage.getItem(`rac-cam-${CAM}`); } catch (e) {}
+            try { guardada = localStorage.getItem('rac-cam'); } catch (e) {}
             cameraSelect.replaceChildren(...devs.map((d, i) => new Option(d.label || `Cámara ${i + 1}`, d.deviceId)));
-            const porDefecto = devs[Math.min(Number(CAM) - 1, devs.length - 1)];
             const ids = devs.map(d => d.deviceId);
-            cameraSelect.value = [elegida, guardada].find(id => ids.includes(id)) || (porDefecto ? porDefecto.deviceId : '');
+            cameraSelect.value = [elegida, guardada].find(id => ids.includes(id)) || (ids[0] || '');
         }
         listarCamaras().catch(() => {});
 
@@ -231,7 +222,7 @@
                 });
                 // Con el permiso ya dado, los dispositivos tienen nombre: se rearma la lista
                 const enUso = localStream.getVideoTracks()[0].getSettings().deviceId || elegida;
-                try { localStorage.setItem(`rac-cam-${CAM}`, enUso); } catch (e) {}
+                try { localStorage.setItem('rac-cam', enUso); } catch (e) {}
                 await listarCamaras(enUso);
 
                 video.srcObject = localStream;

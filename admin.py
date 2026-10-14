@@ -218,6 +218,13 @@ def delete_user(user_id):
 #  CAMERAS MANAGEMENT
 # ═══════════════════════════════════════
 
+@admin_bp.route("/monitor")
+@roles_required("operator", "admin")
+def monitor():
+    # Las cámaras activas se monitorean juntas; el video se toma en el navegador
+    activas = [c for c in data_store.load_cameras() if c.get("active")]
+    return render_template("admin/monitor.html", cameras=activas)
+
 @admin_bp.route("/cameras", methods=["GET", "POST"])
 @login_required
 def cameras():
@@ -399,8 +406,7 @@ def validate_event_payload(data):
     if not isinstance(camera, str) or not camera.strip():
         return None, None, None, "'camera' debe ser un texto"
     camera = camera.strip()
-    # webcam-2, webcam-3...: las cámaras extra de /app/multi (/app?cam=N)
-    if camera != DEFAULT_CAMERA and not (camera.startswith("webcam-") and camera[7:].isdigit()):
+    if camera != DEFAULT_CAMERA:
         known = set()
         for c in data_store.load_cameras():
             known.add(c.get("id"))

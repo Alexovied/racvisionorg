@@ -142,13 +142,6 @@ def too_large(e):
 @roles_required("operator", "admin")
 def detector():
     return render_template("index.html")
-
-@app.route("/app/multi")
-@roles_required("operator", "admin")
-def detector_multi():
-    # Cada cámara es una instancia de /app?cam=N en su propio iframe (estado independiente)
-    return render_template("multi.html", camaras=[1, 2])
-
 @app.route("/predict", methods=["POST"])
 @login_required
 def predict():

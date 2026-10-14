@@ -1,0 +1,224 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Monitoreo{% endblock %}
+{% block page_title %}Monitoreo en vivo{% endblock %}
+
+{% block head %}
+<style>
+    .monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.25rem; }
+    .mon-card { padding: 0; overflow: hidden; }
+    .mon-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.9rem 1.1rem; }
+    .mon-name { font-weight: 600; color: var(--text); }
+    .mon-loc { font-size: 0.78rem; color: var(--text-dim); }
+    .mon-state { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.5px; padding: 0.3rem 0.7rem; border-radius: 999px;
+                 background: rgba(255,255,255,0.05); color: var(--text-muted); white-space: nowrap; }
+    .mon-state.ok { background: rgba(16,185,129,0.12); color: var(--green); }
+    .mon-state.alerta { background: rgba(239,68,68,0.15); color: var(--red); }
+    .mon-video { position: relative; aspect-ratio: 4 / 3; background: #05080e; }
+    .mon-video video, .mon-video canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+    .mon-video .mon-idle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                           color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 1rem; }
+    .mon-card.alerta .mon-video { box-shadow: inset 0 0 0 3px var(--red); }
+    .mon-foot { display: flex; gap: 0.5rem; padding: 0.8rem 1.1rem; }
+    .mon-foot select { flex: 1; min-width: 0; background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border);
+                       border-radius: var(--radius-sm); padding: 0.5rem 0.6rem; font-family: var(--font); font-size: 0.82rem; }
+    .mon-foot .btn-action { padding: 0.5rem 0.9rem; font-size: 0.82rem; }
+    @media (max-width: 480px) { .monitor-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Cada cámara activa se analiza en vivo. Elegí qué dispositivo usa cada una y tocá Iniciar.</p>
+    {% if cameras %}
+    <button class="btn-action btn-create" id="btn-todas"><i class="fa-solid fa-play"></i> Iniciar todas</button>
+    {% endif %}
+</div>
+
+{% if cameras %}
+<div class="monitor-grid">
+    {% for cam in cameras %}
+    <div class="admin-card mon-card" data-cam-id="{{ cam.id }}" data-cam-type="{{ cam.type }}">
+        <div class="mon-head">
+            <div>
+                <div class="mon-name">{{ cam.name }}</div>
+                <div class="mon-loc"><i class="fa-solid fa-location-dot"></i> {{ cam.location or 'Sin ubicación' }}</div>
+            </div>
+            <span class="mon-state">DETENIDA</span>
+        </div>
+        <div class="mon-video">
+            <video autoplay playsinline muted></video>
+            <canvas></canvas>
+            <div class="mon-idle">
+                {% if cam.type == 'webcam' %}Cámara detenida{% else %}Las cámaras IP todavía no se pueden ver desde el navegador{% endif %}
+            </div>
+        </div>
+        {% if cam.type == 'webcam' %}
+        <div class="mon-foot">
+            <select aria-label="Dispositivo de {{ cam.name }}"></select>
+            <button class="btn-action btn-create mon-start"><i class="fa-solid fa-play"></i> Iniciar</button>
+            <button class="btn-action btn-cancel mon-stop" disabled><i class="fa-solid fa-stop"></i></button>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="admin-card">
+    <div class="empty-state">
+        <i class="fa-solid fa-video-slash"></i>
+        <p>No hay cámaras activas</p>
+        <span>Registrá o activá cámaras en <a href="{{ url_for('admin.cameras') }}">Cámaras</a> para monitorearlas acá.</span>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Mismas reglas que el detector de /app: ventana de 8 frames, alerta con 60% de votos
+    // "sin casco", verde con 70% "con casco" y ventana llena; el verde se apaga sin personas.
+    const WINDOW_SIZE = 8, THRESH_SIN = 0.60, THRESH_CON = 0.70, FRAMES_VACIO_RESET = 15;
+    let MIN_CONFIDENCE = 51, scanRateMs = 100;
+    fetch('/admin/api/config').then(r => r.json()).then(cfg => {
+        if (cfg.min_confidence) MIN_CONFIDENCE = cfg.min_confidence;
+        if (cfg.scan_rate_ms) scanRateMs = cfg.scan_rate_ms;
+    }).catch(() => {});
+
+    let dispositivos = [];
+    async function cargarDispositivos() {
+        dispositivos = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    }
+
+    function crearMonitor(card, indice) {
+        const camId = card.dataset.camId;
+        const video = card.querySelector('video'), canvas = card.querySelector('canvas'), ctx = canvas.getContext('2d');
+        const idle = card.querySelector('.mon-idle'), chip = card.querySelector('.mon-state');
+        const select = card.querySelector('select'), btnStart = card.querySelector('.mon-start'), btnStop = card.querySelector('.mon-stop');
+        const captura = document.createElement('canvas'), capCtx = captura.getContext('2d');
+        const claveDisp = `rac-monitor-${camId}`;
+        let stream = null, activo = false, ventana = [], estado = null, vacios = 0;
+
+        function poblarSelect() {
+            let guardado = null;
+            try { guardado = localStorage.getItem(claveDisp); } catch (e) {}
+            const actual = select.value;
+            select.replaceChildren(...dispositivos.map((d, i) => new Option(d.label || `Dispositivo ${i + 1}`, d.deviceId)));
+            const ids = dispositivos.map(d => d.deviceId);
+            const porDefecto = ids[Math.min(indice, ids.length - 1)];
+            select.value = [actual, guardado].find(id => ids.includes(id)) || porDefecto || '';
+        }
+
+        function ponerEstado(nuevo, texto) {
+            chip.className = 'mon-state' + (nuevo === 'CON_CASCO' ? ' ok' : nuevo === 'SIN_CASCO' ? ' alerta' : '');
+            chip.textContent = texto;
+            card.classList.toggle('alerta', nuevo === 'SIN_CASCO');
+        }
+
+        function registrar(nuevo, confianza) {
+            const tipo = nuevo === 'CON_CASCO' ? 'con_casco' : 'sin_casco';
+            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: tipo, confidence: Math.min(100, confianza), camera: camId }) }).catch(() => {});
+            fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: tipo }) }).catch(() => {});
+        }
+
+        function dibujar(caras) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 3; ctx.font = '600 15px Outfit, sans-serif';
+            for (const c of caras) {
+                const [x, y, w, h] = c.bbox, sin = c.sin_casco > c.con_casco;
+                ctx.strokeStyle = ctx.fillStyle = sin ? '#EF4444' : '#10B981';
+                ctx.strokeRect(x, y, w, h);
+                const texto = (c.nombre ? c.nombre + ' · ' : '') + (sin ? 'SIN CASCO' : 'CON CASCO');
+                ctx.fillText(texto, x + 4, Math.max(y - 8, 16));
+            }
+        }
+
+        function procesar(data) {
+            const caras = (data.faces || []).filter(c => Math.max(c.con_casco, c.sin_casco) >= MIN_CONFIDENCE);
+            dibujar(caras);
+            if (!caras.length) {
+                vacios++;
+                if (estado === 'CON_CASCO' && vacios >= FRAMES_VACIO_RESET) { ventana = []; estado = null; }
+                if (estado === null) ponerEstado(null, 'SIN PERSONAS');
+                return;
+            }
+            vacios = 0;
+            const peor = caras.reduce((a, c) => (c.sin_casco > a.sin_casco ? c : a));
+            const voto = peor.sin_casco > peor.con_casco ? 'SIN_CASCO' : 'CON_CASCO';
+            ventana.push(voto); if (ventana.length > WINDOW_SIZE) ventana.shift();
+            const ratioSin = ventana.filter(v => v === 'SIN_CASCO').length / ventana.length;
+            const ratioCon = ventana.filter(v => v === 'CON_CASCO').length / ventana.length;
+            const decidido = ratioSin >= THRESH_SIN ? 'SIN_CASCO'
+                           : (ratioCon >= THRESH_CON && ventana.length >= WINDOW_SIZE) ? 'CON_CASCO' : null;
+            if (decidido && decidido !== estado) {
+                estado = decidido;
+                ponerEstado(estado, estado === 'CON_CASCO' ? 'TODOS CON CASCO' : 'ALERTA: SIN CASCO');
+                registrar(estado, estado === 'CON_CASCO' ? peor.con_casco : peor.sin_casco);
+            }
+        }
+
+        async function ciclo() {
+            while (activo) {
+                if (video.videoWidth) {
+                    capCtx.drawImage(video, 0, 0, captura.width, captura.height);
+                    try {
+                        const r = await fetch('/predict', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ image: captura.toDataURL('image/jpeg', 0.75) }) });
+                        if (r.status === 401) { location.href = '/admin/login?next=/admin/monitor'; return; }
+                        if (activo && r.ok) procesar(await r.json());
+                    } catch (e) { console.error(e); }
+                }
+                await new Promise(res => setTimeout(res, scanRateMs));
+            }
+        }
+
+        async function iniciar() {
+            if (activo) return;
+            idle.textContent = 'Conectando…';
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, ...(select.value ? { deviceId: { exact: select.value } } : {}) } });
+            } catch (e) {
+                idle.textContent = 'No se pudo abrir la cámara: revisá permisos o si otra pestaña la está usando.';
+                return;
+            }
+            const enUso = stream.getVideoTracks()[0].getSettings().deviceId;
+            try { localStorage.setItem(claveDisp, enUso); } catch (e) {}
+            video.srcObject = stream;
+            await video.play();
+            canvas.width = captura.width = video.videoWidth || 640;
+            canvas.height = captura.height = video.videoHeight || 480;
+            idle.style.display = 'none';
+            btnStart.disabled = true; btnStop.disabled = false; select.disabled = true;
+            ventana = []; estado = null; vacios = 0; ponerEstado(null, 'ANALIZANDO');
+            activo = true; ciclo();
+            // Con el permiso dado, el navegador recién muestra todos los dispositivos con nombre:
+            // se rearman las listas de las demás cámaras (cada una toma otro dispositivo por defecto)
+            await cargarDispositivos(); monitores.forEach(m => m.poblarSelect()); select.value = enUso;
+        }
+
+        function detener() {
+            activo = false;
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            stream = null; video.srcObject = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            idle.textContent = 'Cámara detenida'; idle.style.display = '';
+            btnStart.disabled = false; btnStop.disabled = true; select.disabled = false;
+            ponerEstado(null, 'DETENIDA');
+        }
+
+        btnStart.addEventListener('click', iniciar);
+        btnStop.addEventListener('click', detener);
+        return { iniciar, poblarSelect };
+    }
+
+    const monitores = [...document.querySelectorAll('.mon-card[data-cam-type="webcam"]')].map(crearMonitor);
+    cargarDispositivos().then(() => monitores.forEach(m => m.poblarSelect())).catch(() => {});
+    const btnTodas = document.getElementById('btn-todas');
+    if (btnTodas) btnTodas.addEventListener('click', async () => {
+        for (const m of monitores) await m.iniciar();  // de a una: el permiso de cámara se pide una sola vez
+    });
+</script>
+{% endblock %}

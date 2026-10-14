@@ -30,6 +30,12 @@
                 <i class="fa-solid fa-chart-pie"></i>
                 <span>Dashboard</span>
             </a>
+            {% if current_user.role in ('admin', 'operator') %}
+            <a href="{{ url_for('admin.monitor') }}" class="nav-item {% if request.endpoint == 'admin.monitor' %}active{% endif %}">
+                <i class="fa-solid fa-display"></i>
+                <span>Monitoreo</span>
+            </a>
+            {% endif %}
             {% if current_user.role == 'admin' %}
             <a href="{{ url_for('admin.users') }}" class="nav-item {% if request.endpoint == 'admin.users' %}active{% endif %}">
                 <i class="fa-solid fa-users-gear"></i>
