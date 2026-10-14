@@ -45,26 +45,23 @@ def _letterbox(img):
     return canvas, r, pad_x, pad_y
 
 
-def detectar(img):
-    """Devuelve una lista de cabezas detectadas:
-    {"bbox": [x, y, w, h], "clase": "casco"|"sin_casco", "conf": float,
-     "p_casco": float, "p_sin": float}  (p_casco + p_sin = 1)
-    """
-    if _net is None or img is None:
-        return []
+def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=False):
+    """Corre un YOLOv8 exportado a ONNX y devuelve [(bbox [x, y, w, h], puntajes por clase)].
+    por_clase=False: NMS sin distinguir clase (una cabeza es "casco" o "sin_casco").
+    por_clase=True: cada clase aparte (una persona y su chaleco se superponen)."""
     h_img, w_img = img.shape[:2]
     canvas, r, pad_x, pad_y = _letterbox(img)
     blob = cv2.dnn.blobFromImage(canvas, 1 / 255.0, (INPUT_SIZE, INPUT_SIZE), swapRB=True)
 
-    with _lock:
-        _net.setInput(blob)
-        out = _net.forward()
+    with lock:
+        net.setInput(blob)
+        out = net.forward()
 
     # YOLOv8: (1, 4 + clases, N) → (N, 4 + clases); cajas en cx, cy, w, h del canvas
     preds = out[0].T
-    scores = preds[:, 4:4 + len(CLASES)]
+    scores = preds[:, 4:4 + n_clases]
     conf = scores.max(axis=1)
-    keep = conf >= CONF_THRESHOLD
+    keep = conf >= conf_th
     preds, scores, conf = preds[keep], scores[keep], conf[keep]
     if len(preds) == 0:
         return []
@@ -74,21 +71,36 @@ def detectar(img):
     y = (cy - bh / 2 - pad_y) / r
     boxes = np.stack([x, y, bw / r, bh / r], axis=1)
 
-    # NMS sin distinguir clase: una cabeza es "casco" o "sin_casco", nunca las dos
-    idx = cv2.dnn.NMSBoxes(boxes.tolist(), conf.tolist(), CONF_THRESHOLD, NMS_THRESHOLD)
+    if por_clase:
+        idx = cv2.dnn.NMSBoxesBatched(boxes.tolist(), conf.tolist(), scores.argmax(axis=1).tolist(),
+                                      conf_th, NMS_THRESHOLD)
+    else:
+        idx = cv2.dnn.NMSBoxes(boxes.tolist(), conf.tolist(), conf_th, NMS_THRESHOLD)
     resultados = []
     for i in np.array(idx).flatten():
         bx, by, bw_i, bh_i = boxes[i]
         x0, y0 = max(0, int(bx)), max(0, int(by))
         x1, y1 = min(w_img, int(bx + bw_i)), min(h_img, int(by + bh_i))
-        if x1 <= x0 or y1 <= y0:
-            continue
-        s_casco, s_sin = float(scores[i][0]), float(scores[i][1])
+        if x1 > x0 and y1 > y0:
+            resultados.append(([x0, y0, x1 - x0, y1 - y0], scores[i]))
+    return resultados
+
+
+def detectar(img):
+    """Devuelve una lista de cabezas detectadas:
+    {"bbox": [x, y, w, h], "clase": "casco"|"sin_casco", "conf": float,
+     "p_casco": float, "p_sin": float}  (p_casco + p_sin = 1)
+    """
+    if _net is None or img is None:
+        return []
+    resultados = []
+    for bbox, sc in correr_yolo(_net, _lock, img, len(CLASES)):
+        s_casco, s_sin = float(sc[0]), float(sc[1])
         total = s_casco + s_sin
         resultados.append({
-            "bbox": [x0, y0, x1 - x0, y1 - y0],
-            "clase": CLASES[int(scores[i].argmax())],
-            "conf": float(conf[i]),
+            "bbox": bbox,
+            "clase": CLASES[int(sc.argmax())],
+            "conf": float(sc.max()),
             "p_casco": s_casco / total,
             "p_sin": s_sin / total,
         })

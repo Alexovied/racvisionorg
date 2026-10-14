@@ -188,6 +188,7 @@ def predict():
         # has_face/faces para que el frontend no cambie.
         if helmet_detector.disponible():
             cabezas = helmet_detector.detectar(img)
+            chalecos = epp.chalecos_por_cabeza(img, [c["bbox"] for c in cabezas])
             return jsonify({
                 "has_face": len(cabezas) > 0,
                 "faces": [{"con_casco": c["p_casco"] * 100,
@@ -196,7 +197,7 @@ def predict():
                            # None = no se ve la cara; "Desconocido" = cara que no está dada de alta
                            "nombre": face_id.identificar(img, c["bbox"]),
                            # True / False, o None si el torso no está a la vista
-                           "chaleco": epp.tiene_chaleco(img, c["bbox"])} for c in cabezas]
+                           "chaleco": ch} for c, ch in zip(cabezas, chalecos)]
             })
 
         # Respaldo sin detector_casco.onnx: cara (YuNet) + clasificador Keras

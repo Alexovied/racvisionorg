@@ -29,6 +29,17 @@ def test_sin_torso_a_la_vista_no_se_juzga():
     assert epp.tiene_chaleco(_imagen(AMARILLO_FLUOR), [100, 400, 60, 60]) is None
 
 
+def test_con_modelo_la_persona_de_cada_cabeza_lleva_o_no_chaleco(monkeypatch):
+    persona_a, chaleco_a = [80, 30, 120, 300], [95, 120, 90, 100]
+    persona_b = [300, 30, 120, 300]
+    dets = [(persona_a, np.array([0.9, 0.1])), (chaleco_a, np.array([0.1, 0.8])), (persona_b, np.array([0.9, 0.1]))]
+    monkeypatch.setattr(epp, "_net", object())
+    monkeypatch.setattr(epp.helmet_detector, "correr_yolo", lambda *a, **k: dets)
+    cabezas = [[110, 40, 60, 60], [330, 40, 60, 60], [520, 40, 60, 60]]
+    # A con chaleco, B sin chaleco, la tercera sin persona detectada → regla de color (torso gris)
+    assert epp.chalecos_por_cabeza(_imagen(), cabezas) == [True, False, False]
+
+
 def test_evento_sin_chaleco_es_alerta_con_persona(operator_client, tmp_data):
     r = operator_client.post("/admin/api/events", json={"type": "sin_chaleco", "confidence": 88, "persona": "luciano"})
     assert r.status_code == 200
