@@ -405,7 +405,11 @@
                         const estadoText = faceState === "SIN_CASCO" ? "SIN CASCO" : faceState === "SIN_CHALECO" ? "SIN CHALECO"
                                          : face.chaleco ? "CASCO Y CHALECO" : "CON CASCO";
                         const labelText = face.nombre ? `${face.nombre} · ${estadoText}` : estadoText;
-                        overlayCtx.fillText(labelText, x + 5, Math.max(y - 10, 20));
+                        // Etiqueta sobre una franja del color del recuadro: se lee sobre cualquier fondo
+                        const ty = Math.max(y - 28, 0), tw = overlayCtx.measureText(labelText).width + 14;
+                        overlayCtx.fillRect(x - 2, ty, tw, 26);
+                        overlayCtx.fillStyle = "#FFFFFF";
+                        overlayCtx.fillText(labelText, x + 5, ty + 19);
                     }
                 });
                 

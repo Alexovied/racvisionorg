@@ -12,8 +12,8 @@
     .mon-loc { font-size: 0.78rem; color: var(--text-dim); }
     .mon-state { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.5px; padding: 0.3rem 0.7rem; border-radius: 999px;
                  background: rgba(255,255,255,0.05); color: var(--text-muted); white-space: nowrap; }
-    .mon-state.ok { background: rgba(16,185,129,0.12); color: var(--green); }
-    .mon-state.alerta { background: rgba(239,68,68,0.15); color: var(--red); }
+    .mon-state.ok { background: var(--green); color: #fff; }
+    .mon-state.alerta { background: var(--red); color: #fff; }
     .mon-video { position: relative; aspect-ratio: 4 / 3; background: #05080e; }
     .mon-video video, .mon-video canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
     .mon-video .mon-idle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -157,7 +157,12 @@
                 ctx.strokeRect(x, y, w, h);
                 const estadoTxt = v === 'SIN_CASCO' ? 'SIN CASCO' : v === 'SIN_CHALECO' ? 'SIN CHALECO'
                                 : c.chaleco ? 'CASCO Y CHALECO' : 'CON CASCO';
-                ctx.fillText((c.nombre ? c.nombre + ' · ' : '') + estadoTxt, x + 4, Math.max(y - 8, 16));
+                // Etiqueta sobre una franja del color del recuadro: se lee sobre cualquier fondo
+                const texto = (c.nombre ? c.nombre + ' · ' : '') + estadoTxt;
+                const ty = Math.max(y - 26, 0), tw = ctx.measureText(texto).width + 12;
+                ctx.fillRect(x - 1.5, ty, tw, 24);
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillText(texto, x + 5, ty + 17);
             }
         }
 
