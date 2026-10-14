@@ -34,7 +34,7 @@
                     {% for cam in cameras %}
                     <option value="{{ cam.name }}" {% if filters.camera == cam.name %}selected{% endif %}>{{ cam.name }}</option>
                     {% endfor %}
-                    <option value="webcam" {% if filters.camera == 'webcam' %}selected{% endif %}>Webcam (default)</option>
+                    <option value="Detector web" {% if filters.camera == 'Detector web' %}selected{% endif %}>Detector web</option>
                 </select>
                 <i class="fa-solid fa-chevron-down"></i>
             </div>
@@ -71,7 +71,9 @@
                     <th>Fecha / Hora</th>
                     <th>Tipo</th>
                     <th>Confianza</th>
-                    <th>Cámara</th>
+                    <th>Cámara / Ubicación</th>
+                    <th>Persona</th>
+                    <th>Foto</th>
                 </tr>
             </thead>
             <tbody>
@@ -97,7 +99,19 @@
                             <span>{{ event.confidence }}%</span>
                         </div>
                     </td>
-                    <td class="text-muted">{{ event.camera }}</td>
+                    <td class="text-muted">
+                        {{ event.camera }}
+                        {% if event.ubicacion %}<br><small><i class="fa-solid fa-location-dot"></i> {{ event.ubicacion }}</small>{% endif %}
+                    </td>
+                    <td>{{ event.persona or '—' }}</td>
+                    <td>
+                        {% if event.foto %}
+                        <a href="{{ url_for('admin.foto_alerta', event_id=event.id) }}" target="_blank" rel="noopener">
+                            <img src="{{ url_for('admin.foto_alerta', event_id=event.id) }}" alt="Captura de la alerta" loading="lazy"
+                                 style="width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border);">
+                        </a>
+                        {% else %}—{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

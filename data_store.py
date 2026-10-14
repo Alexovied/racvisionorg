@@ -199,18 +199,35 @@ def reset_config():
 def load_events():
     return _load_json("events.json", [])
 
-def append_event(event_type, confidence, camera="webcam"):
+def alert_photo_path(event_id):
+    """Ruta de la foto de una alerta: data/alertas/<id>.jpg"""
+    return os.path.join(DATA_DIR, "alertas", f"{event_id}.jpg")
+
+def append_event(event_type, confidence, camera="webcam", foto_jpg=None, **extra):
+    """extra: persona, ubicacion... foto_jpg: bytes JPEG ya validados (se guarda aparte)."""
     events = load_events()
     event = {
         "id": str(uuid.uuid4()),
         "type": event_type,
         "confidence": round(confidence, 1),
         "camera": camera,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        **extra,
     }
+    if foto_jpg:
+        os.makedirs(os.path.dirname(alert_photo_path(event["id"])), exist_ok=True)
+        with open(alert_photo_path(event["id"]), "wb") as f:
+            f.write(foto_jpg)
+        event["foto"] = True
     events.insert(0, event)
-    # Keep max 5000 events
+    # Keep max 5000 events (y se borran las fotos de los que salen)
     if len(events) > 5000:
+        for viejo in events[5000:]:
+            if viejo.get("foto"):
+                try:
+                    os.remove(alert_photo_path(viejo["id"]))
+                except OSError:
+                    pass
         events = events[:5000]
     _save_json("events.json", events)
     return event

@@ -8,8 +8,12 @@ from functools import wraps
 from urllib.parse import urlsplit
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash,
-    jsonify, Response
+    jsonify, Response, send_file, abort
 )
+import base64
+import binascii
+import cv2
+import numpy as np
 from werkzeug.exceptions import HTTPException
 from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
@@ -361,13 +365,15 @@ def audit_export():
     
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Fecha/Hora", "Tipo", "Confianza (%)", "Cámara"])
+    writer.writerow(["Fecha/Hora", "Tipo", "Confianza (%)", "Cámara", "Ubicación", "Persona"])
     for e in events:
         writer.writerow([
             e.get("timestamp", ""),
             e.get("type", ""),
             e.get("confidence", ""),
-            e.get("camera", "")
+            e.get("camera", ""),
+            e.get("ubicacion", ""),
+            e.get("persona", "")
         ])
     
     return Response(
@@ -417,6 +423,44 @@ def validate_event_payload(data):
     return event_type, confidence, camera, None
 
 
+def foto_de_alerta(data):
+    """JPEG validado de la captura que manda el detector ("data:image/jpeg;base64,..."),
+    o None si no vino o no es una imagen. Se vuelve a codificar: nunca se guardan
+    bytes tal cual los manda el cliente."""
+    foto = data.get("foto")
+    if not isinstance(foto, str) or "," not in foto:
+        return None
+    try:
+        crudo = base64.b64decode(foto.split(",", 1)[1], validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    img = cv2.imdecode(np.frombuffer(crudo, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return jpg.tobytes() if ok else None
+
+
+def datos_de_camara(camera):
+    """(nombre para mostrar, ubicación) de una cámara registrada por id o nombre."""
+    for c in data_store.load_cameras():
+        if camera in (c.get("id"), c.get("name")):
+            return c.get("name", camera), c.get("location", "")
+    return ("Detector web" if camera == DEFAULT_CAMERA else camera), ""
+
+
+@admin_bp.route("/alertas/<event_id>.jpg")
+@login_required
+def foto_alerta(event_id):
+    # El id es un uuid generado por el servidor; cualquier otra cosa se rechaza
+    if not all(ch in "0123456789abcdef-" for ch in event_id) or len(event_id) != 36:
+        abort(404)
+    ruta = data_store.alert_photo_path(event_id)
+    if not os.path.exists(ruta):
+        abort(404)
+    return send_file(ruta, mimetype="image/jpeg")
+
+
 @admin_bp.route("/api/events", methods=["POST"])
 @login_required
 def api_add_event():
@@ -426,8 +470,16 @@ def api_add_event():
         if error:
             return jsonify({"error": error}), 400
 
-        # Registrar en base de datos de auditoría
-        event = data_store.append_event(event_type, confidence, camera)
+        # Registrar en base de datos de auditoría. Las alertas (sin casco) guardan
+        # además quién era, dónde fue y una foto del momento.
+        camera, ubicacion = datos_de_camara(camera)
+        extra = {"ubicacion": ubicacion} if ubicacion else {}
+        foto = None
+        if event_type == "sin_casco":
+            persona = data.get("persona")
+            extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
+            foto = foto_de_alerta(data)
+        event = data_store.append_event(event_type, confidence, camera, foto_jpg=foto, **extra)
 
         # Despachar comando al hardware según el tipo de evento
         # Esto desacopla el hardware del ciclo de /predict (sin micro-interrupciones)
@@ -453,6 +505,7 @@ def api_add_event():
 
             n8n_payload = {
                 "sensor":        camera,
+                "persona":       event.get("persona", "Sin identificar"),
                 "alerta":        round(confidence),
                 "ubicacion":     ubicacion,
                 "mensaje":       f"Trabajador sin casco (confianza: {confidence:.1f}%)",

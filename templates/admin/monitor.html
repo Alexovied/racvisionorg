@@ -118,10 +118,25 @@
             card.classList.toggle('alerta', nuevo === 'SIN_CASCO');
         }
 
-        function registrar(nuevo, confianza) {
+        // Foto de la alerta: el frame con los recuadros dibujados encima
+        function fotoConRecuadros() {
+            const f = document.createElement('canvas');
+            f.width = captura.width; f.height = captura.height;
+            const fctx = f.getContext('2d');
+            fctx.drawImage(captura, 0, 0); fctx.drawImage(canvas, 0, 0);
+            return f.toDataURL('image/jpeg', 0.8);
+        }
+
+        function registrar(nuevo, confianza, caras) {
             const tipo = nuevo === 'CON_CASCO' ? 'con_casco' : 'sin_casco';
+            const evento = { type: tipo, confidence: Math.min(100, confianza), camera: camId };
+            if (tipo === 'sin_casco') {
+                const nombres = caras.filter(c => c.sin_casco > c.con_casco).map(c => c.nombre || 'Sin identificar');
+                evento.persona = [...new Set(nombres)].join(', ');
+                evento.foto = fotoConRecuadros();
+            }
             fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: tipo, confidence: Math.min(100, confianza), camera: camId }) }).catch(() => {});
+                body: JSON.stringify(evento) }).catch(() => {});
             fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ state: tipo }) }).catch(() => {});
         }
@@ -158,7 +173,7 @@
             if (decidido && decidido !== estado) {
                 estado = decidido;
                 ponerEstado(estado, estado === 'CON_CASCO' ? 'TODOS CON CASCO' : 'ALERTA: SIN CASCO');
-                registrar(estado, estado === 'CON_CASCO' ? peor.con_casco : peor.sin_casco);
+                registrar(estado, estado === 'CON_CASCO' ? peor.con_casco : peor.sin_casco, caras);
             }
         }
 

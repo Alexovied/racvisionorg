@@ -159,6 +159,8 @@
         }
         listarCamaras().catch(() => {});
 
+        let ultimasCaras = [];   // caras del último frame: la alerta guarda quiénes eran
+
         let localStream = null;
         let activeInterval = null;
         let isDetecting = false;   // flag para cancelar ciclos async en vuelo
@@ -343,6 +345,7 @@
 
             const hasFace = data.has_face;
             const faces = data.faces || [];
+            ultimasCaras = faces;
             
             let globalState = "NO_FACE";
             let maxRiskConf = 0;
@@ -513,6 +516,17 @@
             }
 
             const eventType = label === 'Con Casco' ? 'con_casco' : 'sin_casco';
+            const evento = { type: eventType, confidence: confidence, camera: CAMERA_NAME };
+            if (eventType === 'sin_casco') {
+                // Quiénes estaban sin casco y una foto del frame con los recuadros
+                const nombres = ultimasCaras.filter(c => c.sin_casco > c.con_casco).map(c => c.nombre || 'Sin identificar');
+                evento.persona = [...new Set(nombres)].join(', ');
+                const f = document.createElement('canvas');
+                f.width = captureCanvas.width; f.height = captureCanvas.height;
+                const fctx = f.getContext('2d');
+                fctx.drawImage(captureCanvas, 0, 0); fctx.drawImage(overlay, 0, 0);
+                evento.foto = f.toDataURL('image/jpeg', 0.8);
+            }
 
             // Disparar auditoría y alarma física simultáneamente.
             // La alarma se activa en admin.py (vía /admin/api/events → enviar_comando_esp32)
@@ -523,11 +537,7 @@
                 fetch('/admin/api/events', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: eventType,
-                        confidence: confidence,
-                        camera: CAMERA_NAME
-                    })
+                    body: JSON.stringify(evento)
                 }),
                 // 2) Alarma física directa (redundancia y control granular)
                 fetch('/api/alarm', {
