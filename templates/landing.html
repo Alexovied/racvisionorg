@@ -3,10 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAC — Visión Inteligente. Seguridad Real.</title>
+    <title>RAC Vision — Detección de cascos con IA | Seguridad industrial</title>
+    <link rel="canonical" href="https://racvision.org/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="RAC Vision">
+    <meta property="og:title" content="RAC Vision — Detección de cascos con IA">
+    <meta property="og:description" content="Sistema de visión con inteligencia artificial que detecta en tiempo real a personas sin casco y avisa al instante. Hecho en Buenos Aires.">
+    <meta property="og:url" content="https://racvision.org/">
+    <meta property="og:image" content="https://racvision.org/static/og-image.png">
+    <meta property="og:locale" content="es_AR">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://racvision.org/static/og-image.png">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "RAC Vision",
+      "alternateName": ["RAC", "racvision"],
+      "url": "https://racvision.org/",
+      "logo": "https://racvision.org/static/apple-touch-icon.png",
+      "email": "alex@racvision.org",
+      "telephone": "+54 11 2658-5564",
+      "address": {"@type": "PostalAddress", "addressLocality": "Buenos Aires", "addressCountry": "AR"},
+      "founder": [{"@type": "Person", "name": "Alex Oviedo"}, {"@type": "Person", "name": "Mateo Silvero"}, {"@type": "Person", "name": "Luciano Campanelli"}],
+      "description": "Sistema de visión con inteligencia artificial para detectar el uso de casco de seguridad en tiempo real."
+    }
+    </script>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <meta name="description" content="RAC es un sistema de visión computarizada con IA diseñado para detectar comportamientos y condiciones de riesgo en tiempo real, permitiendo tomar decisiones oportunas y salvar vidas.">
+    <meta name="description" content="RAC Vision (racvision.org) es un sistema de visión con inteligencia artificial que detecta en tiempo real a personas sin casco de seguridad, identifica a cada trabajador y avisa al instante. Hecho en Buenos Aires, Argentina.">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
@@ -571,7 +596,7 @@
 <!-- ═══════════════════════════════════════ NAV ═══════════════════════════════════════ -->
 <nav id="navbar">
     <a href="/" class="nav-logo">
-        <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC">
+        <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision">
         <div class="nav-logo-divider"></div>
         <span class="nav-logo-tagline">Seguridad Industrial</span>
     </a>
@@ -843,7 +868,7 @@
 <footer>
     <div class="footer-inner">
         <div class="footer-logo">
-            <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC">
+            <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision">
             <span>Seguridad Industrial</span>
         </div>
         <div class="footer-tagline">

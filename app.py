@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from flask_login import login_required
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from hardware import init_esp32, enviar_comando_esp32
@@ -128,6 +128,22 @@ def crop_head(img):
         results.append((crop_rgb, [x_start, y_start, x_end - x_start, y_end - y_start]))
     return results
 
+
+@app.route("/robots.txt")
+def robots():
+    # Solo la página pública se indexa; el panel y el detector piden login
+    texto = ("User-agent: *\nAllow: /$\nAllow: /static/\n"
+             "Disallow: /admin\nDisallow: /app\nDisallow: /predict\nDisallow: /api/\n"
+             "Sitemap: https://racvision.org/sitemap.xml\n")
+    return Response(texto, mimetype="text/plain")
+
+@app.route("/sitemap.xml")
+def sitemap():
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+           '<url><loc>https://racvision.org/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>'
+           '</urlset>\n')
+    return Response(xml, mimetype="application/xml")
 
 @app.route("/favicon.ico")
 def favicon():

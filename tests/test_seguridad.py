@@ -151,3 +151,11 @@ def test_predict_imagen_mal_formada_devuelve_400(operator_client, fake_model):
 def test_favicon_publico(client):
     r = client.get("/favicon.ico")
     assert r.status_code == 200 and len(r.data) > 0
+
+
+def test_robots_y_sitemap_para_buscadores(client):
+    robots = client.get("/robots.txt").get_data(as_text=True)
+    assert "Disallow: /admin" in robots and "Sitemap: https://racvision.org/sitemap.xml" in robots
+    assert "<loc>https://racvision.org/</loc>" in client.get("/sitemap.xml").get_data(as_text=True)
+    landing = client.get("/").get_data(as_text=True)
+    assert '<link rel="canonical" href="https://racvision.org/">' in landing and '"name": "RAC Vision"' in landing
