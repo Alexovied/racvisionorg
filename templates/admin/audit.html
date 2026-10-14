@@ -21,6 +21,7 @@
                     <option value="all" {% if filters.type == 'all' %}selected{% endif %}>Todos</option>
                     <option value="con_casco" {% if filters.type == 'con_casco' %}selected{% endif %}>Con Casco</option>
                     <option value="sin_casco" {% if filters.type == 'sin_casco' %}selected{% endif %}>Sin Casco</option>
+                    <option value="sin_chaleco" {% if filters.type == 'sin_chaleco' %}selected{% endif %}>Sin Chaleco</option>
                 </select>
                 <i class="fa-solid fa-chevron-down"></i>
             </div>
@@ -86,15 +87,15 @@
                         </div>
                     </td>
                     <td>
-                        <span class="type-badge {{ 'type-danger' if event.type == 'sin_casco' else 'type-success' }}">
-                            <i class="fa-solid {{ 'fa-circle-exclamation' if event.type == 'sin_casco' else 'fa-circle-check' }}"></i>
-                            {{ 'Sin Casco' if event.type == 'sin_casco' else 'Con Casco' }}
+                        <span class="type-badge {{ 'type-danger' if event.type != 'con_casco' else 'type-success' }}">
+                            <i class="fa-solid {{ 'fa-circle-exclamation' if event.type != 'con_casco' else 'fa-circle-check' }}"></i>
+                            {{ {'sin_casco': 'Sin Casco', 'sin_chaleco': 'Sin Chaleco'}.get(event.type, 'Con Casco') }}
                         </span>
                     </td>
                     <td>
                         <div class="conf-cell">
                             <div class="conf-bar-bg">
-                                <div class="conf-bar {{ 'conf-bar-danger' if event.type == 'sin_casco' else 'conf-bar-success' }}" style="width: {{ event.confidence }}%"></div>
+                                <div class="conf-bar {{ 'conf-bar-danger' if event.type != 'con_casco' else 'conf-bar-success' }}" style="width: {{ event.confidence }}%"></div>
                             </div>
                             <span>{{ event.confidence }}%</span>
                         </div>

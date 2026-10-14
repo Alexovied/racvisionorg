@@ -112,10 +112,17 @@
             select.value = [actual, guardado].find(id => ids.includes(id)) || porDefecto || '';
         }
 
+        // Veredicto por persona: falta el casco, falta el chaleco o tiene el EPP.
+        // chaleco === null: el torso no está a la vista, no se juzga.
+        const veredicto = c => c.sin_casco > c.con_casco ? 'SIN_CASCO' : c.chaleco === false ? 'SIN_CHALECO' : 'CON_CASCO';
+        const TEXTOS = { CON_CASCO: 'TODOS CON EPP', SIN_CASCO: 'ALERTA: SIN CASCO', SIN_CHALECO: 'ALERTA: SIN CHALECO' };
+        const TIPOS = { CON_CASCO: 'con_casco', SIN_CASCO: 'sin_casco', SIN_CHALECO: 'sin_chaleco' };
+
         function ponerEstado(nuevo, texto) {
-            chip.className = 'mon-state' + (nuevo === 'CON_CASCO' ? ' ok' : nuevo === 'SIN_CASCO' ? ' alerta' : '');
+            const falta = nuevo === 'SIN_CASCO' || nuevo === 'SIN_CHALECO';
+            chip.className = 'mon-state' + (nuevo === 'CON_CASCO' ? ' ok' : falta ? ' alerta' : '');
             chip.textContent = texto;
-            card.classList.toggle('alerta', nuevo === 'SIN_CASCO');
+            card.classList.toggle('alerta', falta);
         }
 
         // Foto de la alerta: el frame con los recuadros dibujados encima
@@ -128,28 +135,29 @@
         }
 
         function registrar(nuevo, confianza, caras) {
-            const tipo = nuevo === 'CON_CASCO' ? 'con_casco' : 'sin_casco';
+            const tipo = TIPOS[nuevo];
             const evento = { type: tipo, confidence: Math.min(100, confianza), camera: camId };
-            if (tipo === 'sin_casco') {
-                const nombres = caras.filter(c => c.sin_casco > c.con_casco).map(c => c.nombre || 'Sin identificar');
+            if (tipo !== 'con_casco') {
+                const nombres = caras.filter(c => veredicto(c) === nuevo).map(c => c.nombre || 'Sin identificar');
                 evento.persona = [...new Set(nombres)].join(', ');
                 evento.foto = fotoConRecuadros();
             }
             fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(evento) }).catch(() => {});
             fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ state: tipo }) }).catch(() => {});
+                body: JSON.stringify({ state: tipo === 'con_casco' ? 'con_casco' : 'sin_casco' }) }).catch(() => {});
         }
 
         function dibujar(caras) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 3; ctx.font = '600 15px Outfit, sans-serif';
             for (const c of caras) {
-                const [x, y, w, h] = c.bbox, sin = c.sin_casco > c.con_casco;
-                ctx.strokeStyle = ctx.fillStyle = sin ? '#EF4444' : '#10B981';
+                const [x, y, w, h] = c.bbox, v = veredicto(c);
+                ctx.strokeStyle = ctx.fillStyle = v === 'CON_CASCO' ? '#10B981' : '#EF4444';
                 ctx.strokeRect(x, y, w, h);
-                const texto = (c.nombre ? c.nombre + ' · ' : '') + (sin ? 'SIN CASCO' : 'CON CASCO');
-                ctx.fillText(texto, x + 4, Math.max(y - 8, 16));
+                const estadoTxt = v === 'SIN_CASCO' ? 'SIN CASCO' : v === 'SIN_CHALECO' ? 'SIN CHALECO'
+                                : c.chaleco ? 'CASCO Y CHALECO' : 'CON CASCO';
+                ctx.fillText((c.nombre ? c.nombre + ' · ' : '') + estadoTxt, x + 4, Math.max(y - 8, 16));
             }
         }
 
@@ -163,17 +171,20 @@
                 return;
             }
             vacios = 0;
-            const peor = caras.reduce((a, c) => (c.sin_casco > a.sin_casco ? c : a));
-            const voto = peor.sin_casco > peor.con_casco ? 'SIN_CASCO' : 'CON_CASCO';
+            // Voto del frame: la peor situación entre las personas a la vista
+            const votos = caras.map(veredicto);
+            const voto = votos.includes('SIN_CASCO') ? 'SIN_CASCO' : votos.includes('SIN_CHALECO') ? 'SIN_CHALECO' : 'CON_CASCO';
             ventana.push(voto); if (ventana.length > WINDOW_SIZE) ventana.shift();
-            const ratioSin = ventana.filter(v => v === 'SIN_CASCO').length / ventana.length;
-            const ratioCon = ventana.filter(v => v === 'CON_CASCO').length / ventana.length;
-            const decidido = ratioSin >= THRESH_SIN ? 'SIN_CASCO'
+            const n = v => ventana.filter(x => x === v).length;
+            const ratioFalta = (n('SIN_CASCO') + n('SIN_CHALECO')) / ventana.length;
+            const ratioCon = n('CON_CASCO') / ventana.length;
+            const decidido = ratioFalta >= THRESH_SIN ? (n('SIN_CASCO') >= n('SIN_CHALECO') ? 'SIN_CASCO' : 'SIN_CHALECO')
                            : (ratioCon >= THRESH_CON && ventana.length >= WINDOW_SIZE) ? 'CON_CASCO' : null;
             if (decidido && decidido !== estado) {
                 estado = decidido;
-                ponerEstado(estado, estado === 'CON_CASCO' ? 'TODOS CON CASCO' : 'ALERTA: SIN CASCO');
-                registrar(estado, estado === 'CON_CASCO' ? peor.con_casco : peor.sin_casco, caras);
+                ponerEstado(estado, TEXTOS[estado]);
+                const ref = caras.find(c => veredicto(c) === estado) || caras[0];
+                registrar(estado, Math.max(ref.con_casco, ref.sin_casco), caras);
             }
         }
 

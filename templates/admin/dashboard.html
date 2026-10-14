@@ -137,11 +137,11 @@
         <div class="events-list" id="live-events-list">
             {% if stats.recent_events %}
                 {% for event in stats.recent_events %}
-                <div class="event-item {{ 'event-danger' if event.type == 'sin_casco' else 'event-success' }}">
+                <div class="event-item {{ 'event-danger' if event.type != 'con_casco' else 'event-success' }}">
                     <div class="event-left">
-                        <i class="fa-solid {{ 'fa-circle-exclamation' if event.type == 'sin_casco' else 'fa-circle-check' }}"></i>
+                        <i class="fa-solid {{ 'fa-circle-exclamation' if event.type != 'con_casco' else 'fa-circle-check' }}"></i>
                         <div>
-                            <span class="event-type">{{ 'Sin Casco' if event.type == 'sin_casco' else 'Con Casco' }}</span>
+                            <span class="event-type">{{ {'sin_casco': 'Sin Casco', 'sin_chaleco': 'Sin Chaleco'}.get(event.type, 'Con Casco') }}</span>
                             <span class="event-camera">{{ event.camera }}</span>
                         </div>
                     </div>
@@ -252,10 +252,10 @@
     }
 
     function buildEventHTML(event) {
-        const isDanger = event.type === 'sin_casco';
+        const isDanger = event.type !== 'con_casco';
         const cls   = isDanger ? 'event-danger' : 'event-success';
         const icon  = isDanger ? 'fa-circle-exclamation' : 'fa-circle-check';
-        const label = isDanger ? 'Sin Casco' : 'Con Casco';
+        const label = { sin_casco: 'Sin Casco', sin_chaleco: 'Sin Chaleco' }[event.type] || 'Con Casco';
         return `<div class="event-item ${cls} event-item-new">
             <div class="event-left">
                 <i class="fa-solid ${icon}"></i>

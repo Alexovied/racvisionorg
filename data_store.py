@@ -284,7 +284,7 @@ def get_stats():
         try:
             ts = datetime.fromisoformat(e["timestamp"])
             if ts >= last_24h:
-                if e.get("type") == "sin_casco":
+                if e.get("type") in ("sin_casco", "sin_chaleco"):
                     alerts_24h += 1
                 hour_key = ts.strftime("%H:00")
                 if hour_key not in detections_by_hour:

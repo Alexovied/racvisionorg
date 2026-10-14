@@ -369,9 +369,13 @@
                     const maxConf = Math.max(con, sin);
                     
                     if (maxConf >= MIN_CONFIDENCE) {
-                        faceState = con > sin ? "CON_CASCO" : "SIN_CASCO";
-                        
-                        if (faceState === "SIN_CASCO") {
+                        // chaleco === false: torso a la vista y sin chaleco (null = no se ve)
+                        faceState = con <= sin ? "SIN_CASCO" : face.chaleco === false ? "SIN_CHALECO" : "CON_CASCO";
+
+                        if (faceState === "SIN_CHALECO" && globalState === "CON_CASCO") {
+                            globalState = "SIN_CHALECO";
+                            maxRiskConf = con;
+                        } else if (faceState === "SIN_CASCO") {
                             if (globalState !== "SIN_CASCO") {
                                 globalState = "SIN_CASCO";
                                 maxRiskConf = sin;
@@ -398,7 +402,8 @@
                         
                         overlayCtx.fillStyle = color;
                         overlayCtx.font = "bold 16px Outfit, sans-serif";
-                        const estadoText = faceState === "CON_CASCO" ? "CON CASCO" : "SIN CASCO";
+                        const estadoText = faceState === "SIN_CASCO" ? "SIN CASCO" : faceState === "SIN_CHALECO" ? "SIN CHALECO"
+                                         : face.chaleco ? "CASCO Y CHALECO" : "CON CASCO";
                         const labelText = face.nombre ? `${face.nombre} · ${estadoText}` : estadoText;
                         overlayCtx.fillText(labelText, x + 5, Math.max(y - 10, 20));
                     }
@@ -446,7 +451,9 @@
 
             // Contar votos por tipo dentro de la ventana
             const totalVotos = stateWindow.length;
-            const votosSin = stateWindow.filter(s => s === "SIN_CASCO").length;
+            const votosCasco = stateWindow.filter(s => s === "SIN_CASCO").length;
+            const votosChaleco = stateWindow.filter(s => s === "SIN_CHALECO").length;
+            const votosSin = votosCasco + votosChaleco;   // cualquier falta de EPP
             const votosCon = stateWindow.filter(s => s === "CON_CASCO").length;
             const ratioSin = votosSin / totalVotos;
             const ratioCon = votosCon / totalVotos;
@@ -457,7 +464,7 @@
             let decidedState = null;
             if (ratioSin >= THRESH_SIN_CASCO) {
                 // Umbral bajo: detectar peligro rápido
-                decidedState = "SIN_CASCO";
+                decidedState = votosCasco >= votosChaleco ? "SIN_CASCO" : "SIN_CHALECO";
             } else if (ratioCon >= THRESH_CON_CASCO && llena) {
                 // Umbral alto: confirmar seguridad sólo con ventana llena
                 decidedState = "CON_CASCO";
@@ -475,8 +482,8 @@
 
                 if (decidedState === "CON_CASCO") {
                     statusPanel.className = "card status-card success-card";
-                    currentStateText.innerText = "TODOS CON CASCO";
-                    currentDescText.innerText = "Todas las personas a la vista tienen casco.";
+                    currentStateText.innerText = "TODOS CON EPP";
+                    currentDescText.innerText = "Todas las personas a la vista tienen su equipo de protección.";
                     statusIcon.className = "fa-solid fa-user-shield check-icon";
                     addLog(timestamp, "Con Casco", maxRiskConf, "log-success");
                 } else if (decidedState === "SIN_CASCO") {
@@ -485,6 +492,12 @@
                     currentDescText.innerText = "¡Peligro! Al menos un usuario no lleva casco.";
                     statusIcon.className = "fa-solid fa-triangle-exclamation alarm-icon";
                     addLog(timestamp, "Sin Casco", maxRiskConf, "log-danger");
+                } else if (decidedState === "SIN_CHALECO") {
+                    statusPanel.className = "card status-card danger-card";
+                    currentStateText.innerText = "ALERTA: SIN CHALECO";
+                    currentDescText.innerText = "¡Peligro! Al menos una persona no lleva chaleco reflectante.";
+                    statusIcon.className = "fa-solid fa-triangle-exclamation alarm-icon";
+                    addLog(timestamp, "Sin Chaleco", maxRiskConf, "log-danger");
                 }
             }
             // ────────────────────────────────────────────────────────────────────
@@ -517,11 +530,13 @@
                 logList.removeChild(logList.lastChild);
             }
 
-            const eventType = label === 'Con Casco' ? 'con_casco' : 'sin_casco';
+            const eventType = { 'Con Casco': 'con_casco', 'Sin Casco': 'sin_casco', 'Sin Chaleco': 'sin_chaleco' }[label];
             const evento = { type: eventType, confidence: confidence, camera: CAMERA_NAME };
-            if (eventType === 'sin_casco') {
-                // Quiénes estaban sin casco y una foto del frame con los recuadros
-                const nombres = ultimasCaras.filter(c => c.sin_casco > c.con_casco).map(c => c.nombre || 'Sin identificar');
+            if (eventType !== 'con_casco') {
+                // Quiénes estaban en falta y una foto del frame con los recuadros
+                const enFalta = c => eventType === 'sin_casco' ? c.sin_casco >= c.con_casco
+                                   : c.sin_casco < c.con_casco && c.chaleco === false;
+                const nombres = ultimasCaras.filter(enFalta).map(c => c.nombre || 'Sin identificar');
                 evento.persona = [...new Set(nombres)].join(', ');
                 const f = document.createElement('canvas');
                 f.width = captureCanvas.width; f.height = captureCanvas.height;

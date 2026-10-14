@@ -387,7 +387,9 @@ def audit_export():
 #  API — Receive events from detector
 # ═══════════════════════════════════════
 
-VALID_EVENT_TYPES = ("con_casco", "sin_casco")
+VALID_EVENT_TYPES = ("con_casco", "sin_casco", "sin_chaleco")
+# Infracciones de EPP: guardan persona y foto, y disparan la alarma
+ALERT_TYPES = ("sin_casco", "sin_chaleco")
 # Cámara implícita del detector web (index.html la envía siempre).
 DEFAULT_CAMERA = "webcam"
 
@@ -470,12 +472,12 @@ def api_add_event():
         if error:
             return jsonify({"error": error}), 400
 
-        # Registrar en base de datos de auditoría. Las alertas (sin casco) guardan
+        # Registrar en base de datos de auditoría. Las alertas (sin casco o sin chaleco) guardan
         # además quién era, dónde fue y una foto del momento.
         camera, ubicacion = datos_de_camara(camera)
         extra = {"ubicacion": ubicacion} if ubicacion else {}
         foto = None
-        if event_type == "sin_casco":
+        if event_type in ALERT_TYPES:
             persona = data.get("persona")
             extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
             foto = foto_de_alerta(data)
@@ -483,15 +485,15 @@ def api_add_event():
 
         # Despachar comando al hardware según el tipo de evento
         # Esto desacopla el hardware del ciclo de /predict (sin micro-interrupciones)
-        if event_type == "sin_casco":
+        if event_type in ALERT_TYPES:
             enviar_comando_esp32("R")   # LED Rojo + Buzzer ON
         elif event_type == "con_casco":
             enviar_comando_esp32("G")   # LED Verde + Buzzer OFF
 
         # ── Webhook n8n ───────────────────────────────────────────────────────
-        # Solo se dispara en detecciones de infracción (sin_casco).
+        # Solo se dispara en infracciones (sin casco o sin chaleco).
         # No bloquea el flujo principal: timeout=3s y excepción silenciosa.
-        if event_type == "sin_casco" and N8N_WEBHOOK_URL:
+        if event_type in ALERT_TYPES and N8N_WEBHOOK_URL:
             # Intentar obtener la ubicación registrada para esta cámara.
             # Si no está en data_store, se usa el nombre de la cámara como fallback.
             ubicacion = camera
@@ -508,8 +510,8 @@ def api_add_event():
                 "persona":       event.get("persona", "Sin identificar"),
                 "alerta":        round(confidence),
                 "ubicacion":     ubicacion,
-                "mensaje":       f"Trabajador sin casco (confianza: {confidence:.1f}%)",
-                "tipo_riesgo":   "sin_casco",
+                "mensaje":       f"Trabajador {event_type.replace('_', ' ')} (confianza: {confidence:.1f}%)",
+                "tipo_riesgo":   event_type,
                 "confianza_raw": confidence,
                 "timestamp":     event.get("timestamp", ""),
             }
