@@ -47,6 +47,10 @@
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     </noscript>
     <style>
+        /* Misma fuente de íconos que Font Awesome pero con swap: el texto no espera a que baje.
+           Va después del <link> en el documento, así que gana sobre su font-display:block */
+        @font-face { font-family: "Font Awesome 6 Free"; font-style: normal; font-weight: 900; font-display: swap;
+                     src: url(https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/fa-solid-900.woff2) format("woff2"); }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
