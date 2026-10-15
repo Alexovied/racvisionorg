@@ -78,10 +78,9 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='epp.js') }}"></script>
 <script>
-    // Mismas reglas que el detector de /app: ventana de 8 frames, alerta con 60% de votos
-    // "sin casco", verde con 70% "con casco" y ventana llena; el verde se apaga sin personas.
-    const WINDOW_SIZE = 8, THRESH_SIN = 0.60, THRESH_CON = 0.70, FRAMES_VACIO_RESET = 15;
+    // Mismas reglas que el detector de /app (static/epp.js): casco y chaleco con ventanas separadas.
     let MIN_CONFIDENCE = 51, scanRateMs = 100;
     fetch('/admin/api/config').then(r => r.json()).then(cfg => {
         if (cfg.min_confidence) MIN_CONFIDENCE = cfg.min_confidence;
@@ -100,7 +99,8 @@
         const select = card.querySelector('select'), btnStart = card.querySelector('.mon-start'), btnStop = card.querySelector('.mon-stop');
         const captura = document.createElement('canvas'), capCtx = captura.getContext('2d');
         const claveDisp = `rac-monitor-${camId}`;
-        let stream = null, activo = false, ventana = [], estado = null, vacios = 0;
+        let stream = null, activo = false, ultimaAlarma = null;
+        const seguimiento = EPP.seguimiento();
 
         function poblarSelect() {
             let guardado = null;
@@ -112,17 +112,11 @@
             select.value = [actual, guardado].find(id => ids.includes(id)) || porDefecto || '';
         }
 
-        // Veredicto por persona: falta el casco, falta el chaleco o tiene el EPP.
-        // chaleco === null: el torso no está a la vista, no se juzga.
-        const veredicto = c => c.sin_casco > c.con_casco ? 'SIN_CASCO' : c.chaleco === false ? 'SIN_CHALECO' : 'CON_CASCO';
-        const TEXTOS = { CON_CASCO: 'TODOS CON EPP', SIN_CASCO: 'ALERTA: SIN CASCO', SIN_CHALECO: 'ALERTA: SIN CHALECO' };
-        const TIPOS = { CON_CASCO: 'con_casco', SIN_CASCO: 'sin_casco', SIN_CHALECO: 'sin_chaleco' };
-
-        function ponerEstado(nuevo, texto) {
-            const falta = nuevo === 'SIN_CASCO' || nuevo === 'SIN_CHALECO';
-            chip.className = 'mon-state' + (nuevo === 'CON_CASCO' ? ' ok' : falta ? ' alerta' : '');
+        function ponerEstado(clase, texto, detalle) {
+            chip.className = 'mon-state' + (clase === 'ok' ? ' ok' : clase === 'alerta' ? ' alerta' : '');
             chip.textContent = texto;
-            card.classList.toggle('alerta', falta);
+            chip.title = detalle || '';
+            card.classList.toggle('alerta', clase === 'alerta');
         }
 
         // Foto de la alerta: el frame con los recuadros dibujados encima
@@ -134,63 +128,48 @@
             return f.toDataURL('image/jpeg', 0.8);
         }
 
-        function registrar(nuevo, confianza, caras) {
-            const tipo = TIPOS[nuevo];
-            const evento = { type: tipo, confidence: Math.min(100, confianza), camera: camId };
-            if (tipo !== 'con_casco') {
-                const nombres = caras.filter(c => veredicto(c) === nuevo).map(c => c.nombre || 'Sin identificar');
-                evento.persona = [...new Set(nombres)].join(', ');
-                evento.foto = fotoConRecuadros();
-            }
+        function enviarEvento(evento) {
             fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(evento) }).catch(() => {});
-            fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ state: tipo === 'con_casco' ? 'con_casco' : 'sin_casco' }) }).catch(() => {});
         }
 
         function dibujar(caras) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 3; ctx.font = '600 15px Outfit, sans-serif';
             for (const c of caras) {
-                const [x, y, w, h] = c.bbox, v = veredicto(c);
-                ctx.strokeStyle = ctx.fillStyle = v === 'CON_CASCO' ? '#10B981' : '#EF4444';
+                const et = EPP.etiqueta(c, MIN_CONFIDENCE);
+                if (!et) continue;
+                const [x, y, w, h] = c.bbox;
+                ctx.strokeStyle = ctx.fillStyle = et.color;
                 ctx.strokeRect(x, y, w, h);
-                const estadoTxt = v === 'SIN_CASCO' ? 'SIN CASCO' : v === 'SIN_CHALECO' ? 'SIN CHALECO'
-                                : c.chaleco ? 'CASCO Y CHALECO' : 'CON CASCO';
                 // Etiqueta sobre una franja del color del recuadro: se lee sobre cualquier fondo
-                const texto = (c.nombre ? c.nombre + ' · ' : '') + estadoTxt;
-                const ty = Math.max(y - 26, 0), tw = ctx.measureText(texto).width + 12;
+                const ty = Math.max(y - 26, 0), tw = ctx.measureText(et.texto).width + 12;
                 ctx.fillRect(x - 1.5, ty, tw, 24);
                 ctx.fillStyle = '#FFFFFF';
-                ctx.fillText(texto, x + 5, ty + 17);
+                ctx.fillText(et.texto, x + 5, ty + 17);
             }
         }
 
         function procesar(data) {
-            const caras = (data.faces || []).filter(c => Math.max(c.con_casco, c.sin_casco) >= MIN_CONFIDENCE);
+            const caras = data.faces || [];
             dibujar(caras);
-            if (!caras.length) {
-                vacios++;
-                if (estado === 'CON_CASCO' && vacios >= FRAMES_VACIO_RESET) { ventana = []; estado = null; }
-                if (estado === null) ponerEstado(null, 'SIN PERSONAS');
-                return;
+            for (const { elemento, estado } of seguimiento.procesar(data, MIN_CONFIDENCE)) {
+                if (estado !== 'falta') continue;
+                enviarEvento({ type: 'sin_' + elemento, camera: camId,
+                               confidence: Math.min(100, EPP.confianza(caras, elemento, 'falta', MIN_CONFIDENCE)),
+                               persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE), foto: fotoConRecuadros() });
             }
-            vacios = 0;
-            // Voto del frame: la peor situación entre las personas a la vista
-            const votos = caras.map(veredicto);
-            const voto = votos.includes('SIN_CASCO') ? 'SIN_CASCO' : votos.includes('SIN_CHALECO') ? 'SIN_CHALECO' : 'CON_CASCO';
-            ventana.push(voto); if (ventana.length > WINDOW_SIZE) ventana.shift();
-            const n = v => ventana.filter(x => x === v).length;
-            const ratioFalta = (n('SIN_CASCO') + n('SIN_CHALECO')) / ventana.length;
-            const ratioCon = n('CON_CASCO') / ventana.length;
-            const decidido = ratioFalta >= THRESH_SIN ? (n('SIN_CASCO') >= n('SIN_CHALECO') ? 'SIN_CASCO' : 'SIN_CHALECO')
-                           : (ratioCon >= THRESH_CON && ventana.length >= WINDOW_SIZE) ? 'CON_CASCO' : null;
-            if (decidido && decidido !== estado) {
-                estado = decidido;
-                ponerEstado(estado, TEXTOS[estado]);
-                const ref = caras.find(c => veredicto(c) === estado) || caras[0];
-                registrar(estado, Math.max(ref.con_casco, ref.sin_casco), caras);
+            // Alarma física y evento "todos con EPP": según el estado combinado de casco y chaleco
+            const alarma = seguimiento.alarma();
+            if (alarma && alarma !== ultimaAlarma) {
+                ultimaAlarma = alarma;
+                if (alarma === 'con_casco') enviarEvento({ type: 'con_casco', confidence: 100, camera: camId });
+                fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ state: alarma }) }).catch(() => {});
             }
+            const r = seguimiento.resumen();
+            if (r.titulo) ponerEstado(r.clase, r.clase === 'alerta' ? seguimiento.corto() : r.titulo, r.detalle);
+            else ponerEstado(null, caras.length ? 'ANALIZANDO' : 'SIN PERSONAS', r.detalle);
         }
 
         async function ciclo() {
@@ -226,7 +205,7 @@
             canvas.height = captura.height = video.videoHeight || 480;
             idle.style.display = 'none';
             btnStart.disabled = true; btnStop.disabled = false; select.disabled = true;
-            ventana = []; estado = null; vacios = 0; ponerEstado(null, 'ANALIZANDO');
+            seguimiento.reset(); ultimaAlarma = null; ponerEstado(null, 'ANALIZANDO');
             activo = true; ciclo();
             // Con el permiso dado, el navegador recién muestra todos los dispositivos con nombre:
             // se rearman las listas de las demás cámaras (cada una toma otro dispositivo por defecto)

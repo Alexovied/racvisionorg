@@ -94,6 +94,7 @@ from face_detector import detect_faces
 import helmet_detector
 import face_id
 import epp
+import data_store
 
 # (Suavizado temporal eliminado para manejar múltiples rostros independientemente en el frontend)
 
@@ -183,22 +184,34 @@ def predict():
         if img is None:
             return jsonify({"error": "No se pudo decodificar el frame"}), 400
 
+        # Casco y chaleco son dos detecciones independientes que se prenden desde
+        # Configuración. Cada persona trae solo las claves de lo que está activo:
+        # con_casco/sin_casco (casco) y chaleco (True / False / None si no se ve el torso).
+        cfg = data_store.load_config()
+        modos = {"casco": bool(cfg["detectar_casco"]), "chaleco": bool(cfg["detectar_chaleco"])}
+
+        if not modos["casco"] and modos["chaleco"] and epp.disponible():
+            # Solo chaleco: el modelo de chalecos encuentra a las personas por su cuenta
+            personas = epp.detectar_personas(img)
+            return jsonify({"has_face": len(personas) > 0, "modos": modos,
+                            "faces": [{"bbox": p["bbox"], "chaleco": p["chaleco"],
+                                       "nombre": face_id.identificar(img, p["bbox"])} for p in personas]})
+
         # Detector de cabezas (YOLO): ve el casco desde cualquier ángulo, aunque
-        # la persona esté de espaldas o se tape la cara. Se mantienen las claves
-        # has_face/faces para que el frontend no cambie.
+        # la persona esté de espaldas o se tape la cara.
         if helmet_detector.disponible():
             cabezas = helmet_detector.detectar(img)
-            chalecos = epp.chalecos_por_cabeza(img, [c["bbox"] for c in cabezas])
-            return jsonify({
-                "has_face": len(cabezas) > 0,
-                "faces": [{"con_casco": c["p_casco"] * 100,
-                           "sin_casco": c["p_sin"] * 100,
-                           "bbox": c["bbox"],
-                           # None = no se ve la cara; "Desconocido" = cara que no está dada de alta
-                           "nombre": face_id.identificar(img, c["bbox"]),
-                           # True / False, o None si el torso no está a la vista
-                           "chaleco": ch} for c, ch in zip(cabezas, chalecos)]
-            })
+            chalecos = epp.chalecos_por_cabeza(img, [c["bbox"] for c in cabezas]) if modos["chaleco"] else []
+            caras = []
+            for i, c in enumerate(cabezas):
+                # None = no se ve la cara; "Desconocido" = cara que no está dada de alta
+                cara = {"bbox": c["bbox"], "nombre": face_id.identificar(img, c["bbox"])}
+                if modos["casco"]:
+                    cara.update(con_casco=c["p_casco"] * 100, sin_casco=c["p_sin"] * 100)
+                if modos["chaleco"]:
+                    cara["chaleco"] = chalecos[i]
+                caras.append(cara)
+            return jsonify({"has_face": len(caras) > 0, "modos": modos, "faces": caras})
 
         # Respaldo sin detector_casco.onnx: cara (YuNet) + clasificador Keras
         faces_data = crop_head(img)
@@ -230,11 +243,13 @@ def predict():
 
             return jsonify({
                 "has_face": True,
+                "modos": {"casco": True, "chaleco": False},
                 "faces": response_faces
             })
         else:
             return jsonify({
                 "has_face": False,
+                "modos": {"casco": True, "chaleco": False},
                 "faces": []
             })
 

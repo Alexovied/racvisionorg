@@ -124,7 +124,7 @@ def _frame_b64():
 def test_predict_sin_cara(operator_client, fake_model):
     r = operator_client.post("/predict", json={"image": _frame_b64()})
     assert r.status_code == 200
-    assert r.get_json() == {"has_face": False, "faces": []}
+    assert r.get_json() == {"has_face": False, "modos": {"casco": True, "chaleco": False}, "faces": []}
 
 
 def test_predict_usa_rgb_128_y_preprocess_mobilenet(flask_app, operator_client, fake_model):

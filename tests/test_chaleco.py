@@ -46,3 +46,34 @@ def test_evento_sin_chaleco_es_alerta_con_persona(operator_client, tmp_data):
     ev = json.loads((tmp_data / "events.json").read_text())[0]
     assert (ev["type"], ev["persona"]) == ("sin_chaleco", "luciano")
     assert operator_client.post("/api/alarm", json={"state": "sin_chaleco"}).status_code == 200
+
+
+def test_detectar_personas_con_modelo_o_color(monkeypatch):
+    persona_a, chaleco_a = [80, 30, 120, 300], [95, 120, 90, 100]
+    persona_b = [300, 30, 120, 300]
+    dets = [(persona_a, np.array([0.9, 0.1])), (chaleco_a, np.array([0.1, 0.8])), (persona_b, np.array([0.9, 0.1]))]
+    monkeypatch.setattr(epp, "_net", object())
+    monkeypatch.setattr(epp.helmet_detector, "correr_yolo", lambda *a, **k: dets)
+    img = _imagen()
+    img[100:200, 320:400] = AMARILLO_FLUOR    # B: el modelo no ve chaleco pero la regla de color sí
+    assert [p["chaleco"] for p in epp.detectar_personas(img)] == [True, True]
+    assert [p["chaleco"] for p in epp.detectar_personas(_imagen())] == [True, False]
+
+
+def test_detectar_personas_sin_modelo_devuelve_vacio(monkeypatch):
+    monkeypatch.setattr(epp, "_net", None)
+    assert epp.detectar_personas(_imagen()) == []
+
+
+def test_config_no_deja_apagar_las_dos_detecciones(flask_app):
+    import data_store
+    data_store.create_user("admin_test", "clave-admin", role="admin")
+    c = flask_app.app.test_client()
+    c.post("/admin/login", data={"username": "admin_test", "password": "clave-admin"})
+    form = {"action": "save", "min_confidence": 51, "confirm_threshold": 3, "scan_rate_ms": 100}
+    c.post("/admin/config", data={**form, "detectar_chaleco": "on"})
+    cfg = data_store.load_config()
+    assert (cfg["detectar_casco"], cfg["detectar_chaleco"]) == (False, True)
+    c.post("/admin/config", data=form)     # las dos apagadas: se rechaza y queda lo anterior
+    cfg = data_store.load_config()
+    assert (cfg["detectar_casco"], cfg["detectar_chaleco"]) == (False, True)

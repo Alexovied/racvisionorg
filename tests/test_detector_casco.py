@@ -64,7 +64,46 @@ def test_predict_usa_detector_de_cabezas_si_esta_disponible(flask_app, operator_
          mock.patch.object(flask_app, "crop_head") as crop_head:
         r = operator_client.post("/predict", json={"image": _frame_b64()})
     assert r.status_code == 200
-    assert r.get_json() == {"has_face": True,
+    assert r.get_json() == {"has_face": True, "modos": {"casco": True, "chaleco": True},
                             "faces": [{"con_casco": 25.0, "sin_casco": 75.0, "bbox": [10, 20, 30, 40],
                                        "nombre": None, "chaleco": False}]}
     crop_head.assert_not_called()
+
+
+CABEZA = {"bbox": [10, 20, 30, 40], "clase": "casco", "conf": 0.9, "p_casco": 0.9, "p_sin": 0.1}
+
+
+def _predict_con_config(flask_app, operator_client, **cfg):
+    import data_store
+    data_store.save_config({**data_store.DEFAULT_CONFIG, **cfg})
+    with mock.patch.object(flask_app.helmet_detector, "disponible", return_value=True),          mock.patch.object(flask_app.helmet_detector, "detectar", return_value=[CABEZA]):
+        return operator_client.post("/predict", json={"image": _frame_b64()}).get_json()
+
+
+def test_solo_casco_no_evalua_chaleco(flask_app, operator_client):
+    with mock.patch.object(flask_app.epp, "chalecos_por_cabeza") as chalecos:
+        data = _predict_con_config(flask_app, operator_client, detectar_chaleco=False)
+    chalecos.assert_not_called()
+    assert data["modos"] == {"casco": True, "chaleco": False}
+    assert "chaleco" not in data["faces"][0] and data["faces"][0]["con_casco"] == 90.0
+
+
+def test_solo_chaleco_usa_el_modelo_de_chalecos_sin_cascos(flask_app, operator_client):
+    persona = {"bbox": [5, 5, 100, 300], "chaleco": False}
+    with mock.patch.object(flask_app.epp, "disponible", return_value=True),          mock.patch.object(flask_app.epp, "detectar_personas", return_value=[persona]):
+        data = _predict_con_config(flask_app, operator_client, detectar_casco=False)
+    assert data["modos"] == {"casco": False, "chaleco": True}
+    assert data["faces"] == [{"bbox": [5, 5, 100, 300], "chaleco": False, "nombre": None}]
+
+
+def test_solo_chaleco_sin_modelo_usa_las_cabezas_sin_informar_casco(flask_app, operator_client):
+    with mock.patch.object(flask_app.epp, "disponible", return_value=False),          mock.patch.object(flask_app.epp, "chalecos_por_cabeza", return_value=[True]):
+        data = _predict_con_config(flask_app, operator_client, detectar_casco=False)
+    assert data["faces"] == [{"bbox": [10, 20, 30, 40], "nombre": None, "chaleco": True}]
+
+
+def test_config_vieja_sin_claves_nuevas_activa_las_dos(tmp_data):
+    import data_store
+    data_store.save_config({"min_confidence": 60})
+    cfg = data_store.load_config()
+    assert (cfg["detectar_casco"], cfg["detectar_chaleco"], cfg["min_confidence"]) == (True, True, 60)

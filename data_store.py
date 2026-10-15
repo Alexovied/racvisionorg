@@ -174,7 +174,9 @@ DEFAULT_CONFIG = {
     "min_confidence": 51,
     "confirm_threshold": 3,
     "scan_rate_ms": 100,
-    "active_model": "modelo.keras"
+    "active_model": "modelo.keras",
+    "detectar_casco": True,
+    "detectar_chaleco": True,
 }
 
 def load_config():
@@ -182,7 +184,8 @@ def load_config():
     if not config or not isinstance(config, dict):
         config = DEFAULT_CONFIG.copy()
         _save_json("config.json", config)
-    return config
+    # Configs guardadas antes de que existieran claves nuevas (p. ej. detectar_chaleco)
+    return {**DEFAULT_CONFIG, **config}
 
 def save_config(config):
     _save_json("config.json", config)

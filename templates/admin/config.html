@@ -12,6 +12,21 @@
     <input type="hidden" name="action" value="save">
 
     <div class="config-grid">
+        <!-- DETECCIONES: casco y chaleco son independientes -->
+        <div class="admin-card config-card">
+            <div class="config-icon-box config-orange">
+                <i class="fa-solid fa-helmet-safety"></i>
+            </div>
+            <div class="config-info">
+                <h4>Detecciones activas</h4>
+                <p>Casco y chaleco funcionan por separado: se pueden usar juntos o uno solo. Al menos uno tiene que quedar activo.</p>
+            </div>
+            <div class="config-control" style="flex-direction: column; align-items: flex-start; gap: .5rem;">
+                <label><input type="checkbox" name="detectar_casco" {% if config.detectar_casco %}checked{% endif %}> Casco</label>
+                <label><input type="checkbox" name="detectar_chaleco" {% if config.detectar_chaleco %}checked{% endif %}> Chaleco reflectante</label>
+            </div>
+        </div>
+
         <!-- CONFIDENCE THRESHOLD -->
         <div class="admin-card config-card">
             <div class="config-icon-box config-blue">

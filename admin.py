@@ -290,6 +290,11 @@ def config():
                 cfg["confirm_threshold"] = int(request.form.get("confirm_threshold", 3))
                 cfg["scan_rate_ms"] = int(request.form.get("scan_rate_ms", 100))
                 cfg["active_model"] = request.form.get("active_model", "modelo.keras")
+                cfg["detectar_casco"] = request.form.get("detectar_casco") == "on"
+                cfg["detectar_chaleco"] = request.form.get("detectar_chaleco") == "on"
+                if not (cfg["detectar_casco"] or cfg["detectar_chaleco"]):
+                    flash("Tiene que quedar activa al menos una detección (casco o chaleco).", "error")
+                    return redirect(url_for("admin.config"))
                 
                 # Clamp values
                 cfg["min_confidence"] = max(50, min(99, cfg["min_confidence"]))

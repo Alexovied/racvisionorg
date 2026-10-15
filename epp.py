@@ -64,6 +64,29 @@ if os.path.exists(MODEL_PATH):
         print(f"[!] No se pudo cargar detector_chaleco.onnx ({e}); se usa la regla de color")
 
 
+def disponible():
+    return _net is not None
+
+
+def detectar_personas(img):
+    """Chaleco sin el detector de cascos: [{"bbox": persona, "chaleco": True/False}].
+    Lista vacía si no está el modelo (la regla de color sola necesita una cabeza)."""
+    if _net is None:
+        return []
+    dets = helmet_detector.correr_yolo(_net, _lock, img, 2, CONF_MODELO, por_clase=True)
+    personas = [b for b, sc in dets if sc.argmax() == 0]
+    chalecos = [b for b, sc in dets if sc.argmax() == 1]
+    resultado = []
+    for p in personas:
+        x, y, w, h = p
+        # Torso: franja media de la persona (debajo de la cabeza, arriba de la cintura)
+        torso = img[max(0, int(y + 0.15 * h)):int(y + 0.6 * h), max(0, int(x)):int(x + w)]
+        color = torso.size > 0 and proporcion_alta_visibilidad(torso) >= UMBRAL
+        resultado.append({"bbox": [int(v) for v in p],
+                          "chaleco": any(_dentro((c[0] + c[2] / 2, c[1] + c[3] / 2), p) for c in chalecos) or color})
+    return resultado
+
+
 def _dentro(punto, caja):
     x, y, w, h = caja
     return x <= punto[0] <= x + w and y <= punto[1] <= y + h
