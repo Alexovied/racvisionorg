@@ -58,8 +58,8 @@ CONF_MODELO = 0.35
 _net, _lock = None, threading.Lock()
 if os.path.exists(MODEL_PATH):
     try:
-        _net = cv2.dnn.readNetFromONNX(MODEL_PATH)
-        print("[+] Detector de chalecos: YOLO (detector_chaleco.onnx)")
+        _net, motor = helmet_detector.cargar_modelo(MODEL_PATH)
+        print(f"[+] Detector de chalecos: YOLO (detector_chaleco.onnx) con {motor}")
     except cv2.error as e:
         print(f"[!] No se pudo cargar detector_chaleco.onnx ({e}); se usa la regla de color")
 

@@ -1,8 +1,9 @@
 """Detector de cabezas con y sin casco (YOLOv8 exportado a ONNX).
 
 Encuentra cabezas desde cualquier ángulo (de frente, de costado, de espaldas
-o con la cara tapada) y dice si tienen casco. Corre con cv2.dnn, así que no
-hace falta PyTorch ni Ultralytics en el servidor.
+o con la cara tapada) y dice si tienen casco. Corre con OpenVINO (Intel) y,
+si no está instalado o falla, con cv2.dnn; no hace falta PyTorch ni
+Ultralytics en el servidor.
 
 El modelo se entrena con entrenamiento/detector_casco_colab.ipynb y se copia
 como detector_casco.onnx en la raíz del proyecto. Si el archivo no está,
@@ -20,12 +21,31 @@ CONF_THRESHOLD = 0.35   # mismo umbral con el que el notebook mide aciertos
 NMS_THRESHOLD  = 0.45
 CLASES = ("casco", "sin_casco")
 
+try:
+    import openvino
+    _core = openvino.Core()
+except Exception as e:  # sin OpenVINO se usa cv2.dnn
+    print(f"[!] OpenVINO no disponible ({e}); los YOLO corren con cv2.dnn")
+    _core = None
+
+
+def cargar_modelo(path):
+    """Compila el ONNX con OpenVINO en CPU; si no se puede, lo carga con cv2.dnn.
+    Devuelve (red, "OpenVINO" | "cv2.dnn"). cv2.dnn lanza cv2.error si el archivo no sirve."""
+    if _core is not None:
+        try:
+            return _core.compile_model(path, "CPU"), "OpenVINO"
+        except Exception as e:
+            print(f"[!] OpenVINO no pudo compilar {os.path.basename(path)} ({e}); se usa cv2.dnn")
+    return cv2.dnn.readNetFromONNX(path), "cv2.dnn"
+
+
 _net = None
-_lock = threading.Lock()  # cv2.dnn.Net no es seguro entre hilos
+_lock = threading.Lock()  # ni cv2.dnn.Net ni el CompiledModel de OpenVINO son seguros entre hilos
 if os.path.exists(MODEL_PATH):
     try:
-        _net = cv2.dnn.readNetFromONNX(MODEL_PATH)
-        print("[+] Detector de cascos: YOLO (detector_casco.onnx)")
+        _net, motor = cargar_modelo(MODEL_PATH)
+        print(f"[+] Detector de cascos: YOLO (detector_casco.onnx) con {motor}")
     except cv2.error as e:
         print(f"[!] No se pudo cargar detector_casco.onnx ({e})")
 
@@ -46,7 +66,7 @@ def _letterbox(img):
 
 
 def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=False):
-    """Corre un YOLOv8 exportado a ONNX y devuelve [(bbox [x, y, w, h], puntajes por clase)].
+    """Corre un YOLOv8 exportado a ONNX (red de cargar_modelo) y devuelve [(bbox [x, y, w, h], puntajes por clase)].
     por_clase=False: NMS sin distinguir clase (una cabeza es "casco" o "sin_casco").
     por_clase=True: cada clase aparte (una persona y su chaleco se superponen)."""
     h_img, w_img = img.shape[:2]
@@ -54,8 +74,11 @@ def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=Fals
     blob = cv2.dnn.blobFromImage(canvas, 1 / 255.0, (INPUT_SIZE, INPUT_SIZE), swapRB=True)
 
     with lock:
-        net.setInput(blob)
-        out = net.forward()
+        if hasattr(net, "setInput"):  # cv2.dnn.Net
+            net.setInput(blob)
+            out = net.forward()
+        else:                         # openvino.CompiledModel (copia la salida)
+            out = net(blob)[0]
 
     # YOLOv8: (1, 4 + clases, N) → (N, 4 + clases); cajas en cx, cy, w, h del canvas
     preds = out[0].T
