@@ -17,9 +17,12 @@ const EPP = (() => {
         return { casco: estadoCasco(c, minConf), chaleco: estadoChaleco(c) };
     }
 
-    // Texto y color del recuadro de una persona, o null si no hay nada que mostrar
-    function etiqueta(c, minConf) {
+    // Texto y color del recuadro de una persona, o null si no hay nada que mostrar.
+    // chalecoDecidido: estado de la ventana del chaleco, para cuando este frame no ve el torso
+    // (cara muy cerca de la cámara). Pasarlo solo con una persona a la vista.
+    function etiqueta(c, minConf, chalecoDecidido = null) {
         const e = evaluar(c, minConf);
+        if (!e.chaleco) e.chaleco = chalecoDecidido;
         if (!e.casco && !e.chaleco) return null;
         const partes = [];
         if (e.casco && e.chaleco === 'ok' && e.casco === 'ok') partes.push('CASCO Y CHALECO');

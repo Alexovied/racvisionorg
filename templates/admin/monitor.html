@@ -137,7 +137,7 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 3; ctx.font = '600 15px Outfit, sans-serif';
             for (const c of caras) {
-                const et = EPP.etiqueta(c, MIN_CONFIDENCE);
+                const et = EPP.etiqueta(c, MIN_CONFIDENCE, caras.length === 1 ? seguimiento.ventanas.chaleco.estado : null);
                 if (!et) continue;
                 const [x, y, w, h] = c.bbox;
                 ctx.strokeStyle = ctx.fillStyle = et.color;

@@ -336,7 +336,7 @@
             ultimasCaras = faces;
 
             faces.forEach(face => {
-                const et = EPP.etiqueta(face, MIN_CONFIDENCE);
+                const et = EPP.etiqueta(face, MIN_CONFIDENCE, faces.length === 1 ? seguimiento.ventanas.chaleco.estado : null);
                 if (!et || !face.bbox) return;
                 const [x, y, w, h] = face.bbox;
                 overlayCtx.strokeStyle = et.color;
