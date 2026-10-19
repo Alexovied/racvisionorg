@@ -196,7 +196,7 @@
                     text-shadow: 0 10px 60px rgba(0,0,0,.5); }
         .gran-num-txt { font-size: clamp(18px, 2.4vw, 32px); font-weight: 800; text-transform: uppercase; line-height: 1.2; max-width: 760px; margin-top: 18px; }
         .gran-num-txt span { color: var(--orange); }
-        .prob-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 50px; }
+        .prob-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px; margin-top: 50px; }
         .prob { background: rgba(20,20,20,.82); backdrop-filter: blur(8px); padding: 30px 26px; border-top: 2px solid var(--orange); }
         .prob .num { font-size: clamp(36px, 4vw, 56px); font-weight: 900; letter-spacing: -2px; color: var(--orange); font-variant-numeric: tabular-nums; }
         .prob .txt { font-size: 13px; color: #cfcfcf; line-height: 1.6; margin-top: 8px; }
@@ -234,10 +234,6 @@
         .panel .n { font-size: 12px; font-weight: 800; letter-spacing: 3px; color: var(--orange); margin-bottom: 12px; }
         .panel h3 { font-size: clamp(24px, 3vw, 44px); font-weight: 900; text-transform: uppercase; line-height: 1.02; letter-spacing: -1px; margin-bottom: 16px; }
         .panel p { font-size: 14.5px; color: #bdbdbd; line-height: 1.75; }
-        .panel .datos { display: flex; gap: 26px; margin-top: 24px; flex-wrap: wrap; }
-        .panel .datos div { border-top: 2px solid var(--orange); padding-top: 10px; min-width: 120px; }
-        .panel .datos strong { display: block; font-size: clamp(22px, 2.4vw, 32px); font-weight: 900; }
-        .panel .datos span { font-size: 10.5px; color: var(--gray); letter-spacing: 1px; text-transform: uppercase; line-height: 1.5; display: block; max-width: 180px; }
         .panel-num-fondo { position: absolute; right: -10px; bottom: -40px; font-size: 220px; font-weight: 900; color: rgba(255,255,255,.03); line-height: 1; pointer-events: none; }
 
         /* ═══════════ VIDEO ═══════════ */
@@ -254,16 +250,6 @@
         .video-transcripcion { margin-top: 14px; color: #cfcfcf; font-size: 14px; line-height: 1.7; }
         .video-transcripcion summary { cursor: pointer; font-weight: 700; color: var(--white); min-height: 44px; display: flex; align-items: center; }
         .video-transcripcion ol { padding-left: 22px; margin-top: 8px; }
-
-        /* ═══════════ PIPELINE ═══════════ */
-        .pipeline-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 22px; margin-top: 54px; position: relative; }
-        .pipe-linea { position: absolute; top: 24px; left: 24px; right: 24px; height: 2px; background: var(--border); }
-        .pipe-linea i { position: absolute; inset: 0; background: var(--orange); transform-origin: 0 50%; }
-        .pipe-num { width: 48px; height: 48px; border: 2px solid var(--orange); border-radius: 50%; display: flex; align-items: center; justify-content: center;
-                    font-size: 14px; font-weight: 900; color: var(--orange); background: var(--black); margin-bottom: 22px; position: relative; z-index: 1; }
-        .pipe-step-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px; }
-        .pipe-step-desc { font-size: 12.5px; color: var(--gray); line-height: 1.7; }
-        .pipe-step-desc b { color: #d5d5d5; font-weight: 700; }
 
         /* ═══════════ RESULTADOS ═══════════ */
         .resultados { background: var(--dark); }
@@ -295,20 +281,17 @@
 
         /* ═══════════ CONTACTO + FOOTER ═══════════ */
         .contact-section { background: var(--dark); }
-        .contact-inner { max-width: 1300px; margin: 0 auto; padding: clamp(50px, 7vw, 80px) var(--pad); display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(30px, 5vw, 60px); }
+        .contact-inner { max-width: 1300px; margin: 0 auto; padding: clamp(50px, 7vw, 80px) var(--pad); display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(30px, 5vw, 60px); }
         .contact-info-title { font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--orange); margin-bottom: 22px; }
         .contact-item { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 13px; color: var(--gray); }
         .contact-item i { color: var(--orange); width: 16px; font-size: 14px; flex-shrink: 0; }
         .contact-item a { color: var(--gray); text-decoration: none; transition: color .2s; word-break: break-word; }
         .contact-item a:hover { color: var(--white); }
-        .cv-item { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
-        .cv-item i { color: var(--orange); margin-top: 3px; font-size: 12px; }
-        .cv-item span { font-size: 13px; color: var(--gray); line-height: 1.55; }
         footer { background: var(--black); border-top: 1px solid var(--border); }
         .footer-inner { max-width: 1300px; margin: 0 auto; padding: 26px var(--pad); display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
         .footer-logo { display: flex; align-items: center; gap: 12px; }
         .footer-logo img { height: 24px; width: auto; }
-        .footer-logo span, .footer-copy { font-size: 11px; color: var(--gray2); letter-spacing: 1px; }
+        .footer-copy { font-size: 11px; color: var(--gray2); letter-spacing: 1px; }
         .footer-legal { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
         .footer-legal a { font-size: 11px; color: var(--gray); letter-spacing: 1px; text-decoration: none; }
         .footer-legal a:hover { color: var(--white); }
@@ -334,8 +317,6 @@
             .nav-links li.nav-ajustes { padding-top: 14px; }
             .nav-links li.nav-ajustes .nav-chip, .nav-links li.nav-ajustes a.nav-chip { flex: 1; display: flex; justify-content: center; border-bottom: 1px solid #3a3a3a; padding: 10px; }
             .nav-links a::after { display: none; }
-            .pipeline-grid { grid-template-columns: repeat(3, 1fr); row-gap: 40px; }
-            .pipe-linea { display: none; }
         }
         @media (max-width: 900px) {
             /* Escena: imagen entera arriba y los pasos abajo */
@@ -363,7 +344,7 @@
             .det .corto { display: inline; }
             .alerta-panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; border-left-width: 3px; padding: 6px 10px; }
             .alerta-panel small { display: none; }
-            .pipeline-grid, .contact-inner { grid-template-columns: 1fr; }
+            .contact-inner { grid-template-columns: 1fr; }
             th, td { padding: 10px 6px; font-size: 12px; }
             th { font-size: 9.5px; letter-spacing: 1px; }
             .footer-inner { flex-direction: column; text-align: center; }
@@ -478,7 +459,7 @@
             <div class="paso">
                 <div class="num">{% if en %}03 — Hard hat and vest, separately{% else %}03 — Casco y chaleco por separado{% endif %}</div>
                 {% if en %}<h2>One complies. Two don't.</h2>{% else %}<h2>Uno cumple. Dos no.</h2>{% endif %}
-                <p>{% if en %}One is missing a vest and another a hard hat. The system confirms over several frames before alerting, so a single doubtful frame does not trigger an alarm.{% else %}A uno le falta el chaleco y a otro el casco. El sistema confirma con varios frames antes de avisar, para no alertar por un frame dudoso.{% endif %}</p>
+                <p>{% if en %}One is missing a vest and another a hard hat. The system confirms over 8 frames before alerting, so a single doubtful frame does not trigger an alarm.{% else %}A uno le falta el chaleco y a otro el casco. El sistema confirma con 8 frames antes de avisar, para no alertar por un frame dudoso.{% endif %}</p>
             </div>
             <div class="paso">
                 <div class="num">{% if en %}04 — Alert with a record{% else %}04 — Alerta con registro{% endif %}</div>
@@ -509,10 +490,6 @@
             <div class="prob reveal">
                 <div class="num"><span data-contar="7.5" data-decimales="1">7,5</span>%</div>
                 <div class="txt">{% if en %}were hit or run over by vehicles, where high-visibility clothing is required.{% else %}murió atropellado o golpeado por vehículos, donde se exige ropa de alta visibilidad.{% endif %}</div>
-            </div>
-            <div class="prob reveal">
-                <div class="num"><span data-contar="58">58</span>%</div>
-                <div class="txt">{% if en %}happened in accidents whose main PPE is the hard hat or the vest (310 of 533).{% else %}ocurrió en accidentes cuyo EPP principal es el casco o el chaleco (310 de 533).{% endif %}</div>
             </div>
         </div>
         <p class="fuente reveal">{% if en %}Source: Osinergmin (Peru's mining regulator), <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, table 3.3 (medium and large-scale mining in Peru, 2007 to June 2025). Assigning one main PPE item to each accident type is our team's own calculation, based on Fundación UOCRA.{% else %}Fuente: Osinergmin, <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, cuadro 3.3 (mediana y gran minería del Perú, 2007 a junio de 2025). La asignación de un EPP principal por tipo de accidente es cálculo propio del equipo, según la Fundación UOCRA.{% endif %}</p>
@@ -571,10 +548,6 @@
                 <div class="n">{% if en %}01 — Hard hat{% else %}01 — Casco{% endif %}</div>
                 {% if en %}<h3>Sees the head from any angle.</h3>{% else %}<h3>Ve la cabeza desde cualquier ángulo.</h3>{% endif %}
                 <p>{% if en %}A YOLOv8n detector finds heads with and without hard hats from the front, the side or the back, even when the face is not visible. We trained it on 5,000 public photos and fine-tuned it with our own.{% else %}Un detector YOLOv8n encuentra cabezas con y sin casco de frente, de costado o de espaldas, aunque no se vea la cara. Lo entrenamos con 5000 fotos públicas y lo ajustamos con fotos del equipo.{% endif %}</p>
-                <div class="datos">
-                    <div><strong>63/63</strong>{% if en %}<span>photos the model never saw in training</span>{% else %}<span>fotos que el modelo no vio al entrenar</span>{% endif %}</div>
-                    <div><strong>48 ms</strong>{% if en %}<span>per frame on the server</span>{% else %}<span>por frame en el servidor</span>{% endif %}</div>
-                </div>
             </div>
             <div class="panel-num-fondo" aria-hidden="true">01</div>
         </article>
@@ -584,10 +557,6 @@
                 <div class="n">{% if en %}02 — High-visibility vest{% else %}02 — Chaleco reflectante{% endif %}</div>
                 {% if en %}<h3>Checks every person's torso.</h3>{% else %}<h3>Mira el torso de cada persona.</h3>{% endif %}
                 <p>{% if en %}A second YOLOv8n, trained on 1,416 construction-site photos, finds people and vests. It is combined with a high-visibility color rule that catches vests seen from the side, where the model alone fails.{% else %}Un segundo YOLOv8n, entrenado con 1416 fotos de obra, encuentra personas y chalecos. Se combina con una regla de color de alta visibilidad, que reconoce chalecos de costado donde el modelo solo falla.{% endif %}</p>
-                <div class="datos">
-                    <div><strong>85/85</strong>{% if en %}<span>photos classified correctly when the torso was visible</span>{% else %}<span>fotos bien clasificadas donde se veía el torso</span>{% endif %}</div>
-                    <div><strong>0</strong>{% if en %}<span>false vests among 77 people without one</span>{% else %}<span>chalecos inventados en 77 personas sin chaleco</span>{% endif %}</div>
-                </div>
             </div>
             <div class="panel-num-fondo" aria-hidden="true">02</div>
         </article>
@@ -597,10 +566,6 @@
                 <div class="n">03 — Intel OpenVINO</div>
                 {% if en %}<h3>Fast on an ordinary PC.</h3>{% else %}<h3>Rápido en una PC común.</h3>{% endif %}
                 <p>{% if en %}The models run with Intel OpenVINO on the CPU, with no graphics card. It can be installed on a computer at the site and work even offline, with a light-and-sound alarm connected over USB.{% else %}Los modelos corren con Intel OpenVINO en la CPU, sin placa de video. Así se puede instalar en una computadora de la planta y funcionar incluso sin internet, con una alarma de luz y sonido conectada por USB.{% endif %}</p>
-                <div class="datos">
-                    <div><strong>2x</strong>{% if en %}<span>faster than with OpenCV</span>{% else %}<span>más rápido que con OpenCV</span>{% endif %}</div>
-                    <div><strong>0</strong>{% if en %}<span>graphics cards needed</span>{% else %}<span>placas de video necesarias</span>{% endif %}</div>
-                </div>
             </div>
             <div class="panel-num-fondo" aria-hidden="true">03</div>
         </article>
@@ -672,27 +637,6 @@
     </script>
 </div>
 
-<!-- ═══════════ PIPELINE ═══════════ -->
-<div id="como-funciona">
-    <section>
-        <div class="section-label reveal"><div class="line"></div>{% if en %}<span>How it works</span>{% else %}<span>Cómo funciona</span>{% endif %}</div>
-        <h2 class="section-title reveal">{% if en %}From frame<br>to alert.{% else %}Del frame<br>a la alerta.{% endif %}</h2>
-        <div class="pipeline-grid">
-            <div class="pipe-linea" aria-hidden="true"><i></i></div>
-            <div class="pipe-step reveal"><div class="pipe-num">01</div>{% if en %}<div class="pipe-step-title">Capture</div>{% else %}<div class="pipe-step-title">Captura</div>{% endif %}
-                <div class="pipe-step-desc">{% if en %}The browser sends a frame, waits for the result and sends the next one, so delay never builds up.{% else %}El navegador envía un frame, espera el resultado y envía el siguiente. Así nunca se acumula atraso.{% endif %}</div></div>
-            <div class="pipe-step reveal"><div class="pipe-num">02</div>{% if en %}<div class="pipe-step-title">Heads</div>{% else %}<div class="pipe-step-title">Cabezas</div>{% endif %}
-                <div class="pipe-step-desc">{% if en %}<b>YOLOv8n</b> looks for heads with and without hard hats. It runs with <b>Intel OpenVINO</b> on the CPU.{% else %}<b>YOLOv8n</b> busca cabezas con y sin casco. Corre con <b>Intel OpenVINO</b> en la CPU.{% endif %}</div></div>
-            <div class="pipe-step reveal"><div class="pipe-num">03</div>{% if en %}<div class="pipe-step-title">Vest</div>{% else %}<div class="pipe-step-title">Chaleco</div>{% endif %}
-                <div class="pipe-step-desc">{% if en %}Another <b>YOLOv8n</b> finds people and vests, plus a color rule on the torso.{% else %}Otro <b>YOLOv8n</b> encuentra personas y chalecos, más una regla de color sobre el torso.{% endif %}</div></div>
-            <div class="pipe-step reveal"><div class="pipe-num">04</div>{% if en %}<div class="pipe-step-title">Who it is</div>{% else %}<div class="pipe-step-title">Quién es</div>{% endif %}
-                <div class="pipe-step-desc">{% if en %}<b>YuNet</b> finds the face and <b>SFace</b> matches it against registered workers. It is optional.{% else %}<b>YuNet</b> encuentra la cara y <b>SFace</b> la compara con los trabajadores registrados. Es opcional.{% endif %}</div></div>
-            <div class="pipe-step reveal"><div class="pipe-num">05</div>{% if en %}<div class="pipe-step-title">Confirmation</div>{% else %}<div class="pipe-step-title">Confirmación</div>{% endif %}
-                <div class="pipe-step-desc">{% if en %}An 8-frame window per item: alert at 60% "missing" votes and OK at 70% "wearing" votes.{% else %}Ventana de 8 frames por elemento: alerta con 60 % de votos "falta" y OK con 70 % de votos "tiene".{% endif %}</div></div>
-        </div>
-    </section>
-</div>
-
 <!-- ═══════════ RESULTADOS ═══════════ -->
 <div class="resultados" id="resultados">
     <section>
@@ -743,23 +687,14 @@
             {% if en %}<div class="contact-info-title">Contact</div>{% else %}<div class="contact-info-title">Contacto</div>{% endif %}
             <div class="contact-item"><i class="fa-solid fa-envelope"></i><a href="mailto:alex@racvision.org">alex@racvision.org</a></div>
             <div class="contact-item"><i class="fa-solid fa-phone"></i><a href="tel:+541126585564">11 2658-5564</a></div>
-            <div class="contact-item"><i class="fa-solid fa-globe"></i><a href="https://racvision.org">www.racvision.org</a></div>
             <div class="contact-item"><i class="fa-solid fa-location-dot"></i><span>Buenos Aires, Argentina</span></div>
             <div class="contact-item"><i class="fa-solid fa-users"></i>{% if en %}<span>Alex Oviedo, Mateo Silvero and Luciano Campanelli</span>{% else %}<span>Alex Oviedo, Mateo Silvero y Luciano Campanelli</span>{% endif %}</div>
         </div>
         <div class="reveal">
-            {% if en %}<div class="contact-info-title">Our commitment</div>{% else %}<div class="contact-info-title">Nuestro compromiso</div>{% endif %}
-            <div class="cv-item"><i class="fa-solid fa-scale-balanced"></i>{% if en %}<span>Measured, published data, including the system's limits.</span>{% else %}<span>Datos medidos y publicados, también los límites del sistema.</span>{% endif %}</div>
-            <div class="cv-item"><i class="fa-solid fa-user-shield"></i>{% if en %}<span>Privacy: PPE checks work without identifying anyone.</span>{% else %}<span>Privacidad: el control de EPP funciona sin identificar a nadie.</span>{% endif %}</div>
-            <div class="cv-item"><i class="fa-solid fa-microchip"></i>{% if en %}<span>Accessible: runs on an ordinary PC with an Intel CPU, no GPU.</span>{% else %}<span>Accesible: corre en una PC común con CPU Intel, sin GPU.</span>{% endif %}</div>
-            <div class="cv-item"><i class="fa-solid fa-route"></i>{% if en %}<span>Next step: a pilot at a real site.</span>{% else %}<span>Próximo paso: una prueba piloto en una obra real.</span>{% endif %}</div>
-        </div>
-        <div class="reveal">
             {% if en %}<div class="contact-info-title">Who we are</div>{% else %}<div class="contact-info-title">Quiénes somos</div>{% endif %}
-            <p style="font-size:13px; color:var(--gray); line-height:1.8; margin-bottom:20px">
+            <p style="font-size:13px; color:var(--gray); line-height:1.8">
                 {% if en %}A student project from Buenos Aires. We trained the models on public data and our own photos, and we measure everything we publish. The images on this page were generated with AI.{% else %}Proyecto de estudiantes de Buenos Aires. Entrenamos los modelos con datos públicos y fotos propias, y medimos todo lo que publicamos. Las imágenes de esta página fueron generadas con IA.{% endif %}
             </p>
-            <a href="/app" class="btn-primary-lg"><i class="fa-solid fa-play">{% if en %}</i> See demo</a>{% else %}</i> Ver demo</a>{% endif %}
         </div>
     </div>
 </div>
@@ -771,11 +706,8 @@
     <div class="footer-inner">
         <div class="footer-logo">
             <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision" width="72" height="24">
-{% if en %}            <span>Industrial Safety</span>
         </div>
-        <div class="footer-legal">{% else %}            <span>Seguridad Industrial</span>
-        </div>
-        <div class="footer-legal">{% endif %}
+        <div class="footer-legal">
             {% if en %}<a href="/privacidad">Privacy (ES)</a>{% else %}<a href="/privacidad">Privacidad</a>{% endif %}
             <a href="/cookies">Cookies</a>
             {% if en %}<a href="/terminos">Terms (ES)</a>{% else %}<a href="/terminos">Términos</a>{% endif %}
@@ -906,9 +838,6 @@
                     onUpdate: () => { el.textContent = obj.v.toFixed(dec).replace('.', ','); } });
             });
 
-            // Línea del pipeline
-            gsap.fromTo('.pipe-linea i', { scaleX: 0 }, { scaleX: 1, ease: 'none',
-                scrollTrigger: { trigger: '.pipeline-grid', start: 'top 80%', end: 'bottom 60%', scrub: true } });
 
             // Las imágenes lazy cambian alturas al cargar: se recalculan los puntos de inicio
             addEventListener('load', () => ScrollTrigger.refresh(), { once: true });
