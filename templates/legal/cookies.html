@@ -1,0 +1,37 @@
+{% extends "legal/base.html" %}
+{% block titulo %}Política de cookies{% endblock %}
+{% block contenido %}
+<h1>Política de cookies</h1>
+<p class="vigencia">Vigente desde el 19 de octubre de 2026.</p>
+
+<div class="resumen">
+    <p><strong>En pocas palabras:</strong> usamos una sola cookie, y solo para mantener tu sesión iniciada en la demo o en el panel. No usamos cookies de publicidad, de análisis ni de redes sociales.</p>
+</div>
+
+<h2>1. Qué es una cookie</h2>
+<p>Una cookie es un archivo pequeño que el sitio guarda en tu navegador. Algunos sitios también usan el almacenamiento local del navegador, que funciona de forma parecida pero no se envía al servidor.</p>
+
+<h2>2. Qué usamos</h2>
+<div class="tabla">
+<table>
+    <thead><tr><th>Nombre</th><th>Tipo</th><th>Para qué</th><th>Duración</th></tr></thead>
+    <tbody>
+        <tr><td><code>session</code></td><td>Cookie propia, necesaria</td><td>Mantener tu sesión iniciada en la demo o el panel. Está firmada y no se puede leer desde JavaScript.</td><td>Hasta que cerrás sesión o cerrás el navegador.</td></tr>
+        <tr><td><code>rac-cam</code></td><td>Almacenamiento local</td><td>Recordar qué cámara elegiste en la demo.</td><td>Hasta que lo borres desde el navegador.</td></tr>
+        <tr><td><code>rac-monitor-…</code></td><td>Almacenamiento local</td><td>Recordar qué dispositivo usa cada cámara en el panel de monitoreo.</td><td>Hasta que lo borres desde el navegador.</td></tr>
+        <tr><td><code>rac-aviso-cookies</code></td><td>Almacenamiento local</td><td>Recordar que ya cerraste el aviso de cookies.</td><td>Hasta que lo borres desde el navegador.</td></tr>
+    </tbody>
+</table>
+</div>
+<p>Todos son necesarios para que funcione lo que pediste y no se usan para seguirte en otros sitios.</p>
+
+<h2>3. Servicios de terceros</h2>
+<p>Para mostrar tipografías, íconos y animaciones, la página descarga archivos de Google Fonts, cdnjs (Cloudflare) y jsDelivr. Estos servicios reciben tu dirección IP para entregarte los archivos. Nosotros no les pedimos que guarden cookies ni que te sigan. Sus propias políticas explican qué hacen con esos datos.</p>
+
+<h2>4. Cómo controlarlas</h2>
+<p>Podés borrar o bloquear las cookies y el almacenamiento local desde la configuración de tu navegador. Si bloqueás la cookie <code>session</code>, no vas a poder iniciar sesión en la demo ni en el panel; el resto del sitio funciona igual.</p>
+
+<h2>5. Cambios</h2>
+<p>Si empezamos a usar otra cookie, la vamos a sumar a esta tabla. Si alguna vez usamos cookies que no sean necesarias, por ejemplo de análisis, primero te vamos a pedir permiso.</p>
+<p>Ver también: <a href="{{ url_for('privacidad') }}">Política de privacidad</a> · <a href="{{ url_for('terminos') }}">Términos y condiciones</a>.</p>
+{% endblock %}

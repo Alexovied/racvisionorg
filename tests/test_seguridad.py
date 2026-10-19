@@ -159,3 +159,11 @@ def test_robots_y_sitemap_para_buscadores(client):
     assert "<loc>https://racvision.org/</loc>" in client.get("/sitemap.xml").get_data(as_text=True)
     landing = client.get("/").get_data(as_text=True)
     assert '<link rel="canonical" href="https://racvision.org/">' in landing and '"name": "RAC Vision"' in landing
+
+
+def test_paginas_legales_publicas_y_enlazadas(client):
+    for ruta in ("/privacidad", "/cookies", "/terminos"):
+        r = client.get(ruta)
+        assert r.status_code == 200 and "alex@racvision.org" in r.get_data(as_text=True)
+    landing = client.get("/").get_data(as_text=True)
+    assert all(f'href="/{p}"' in landing for p in ("privacidad", "cookies", "terminos"))

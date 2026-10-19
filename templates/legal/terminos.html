@@ -1,0 +1,54 @@
+{% extends "legal/base.html" %}
+{% block titulo %}Términos y condiciones{% endblock %}
+{% block contenido %}
+<h1>Términos y condiciones de uso</h1>
+<p class="vigencia">Vigentes desde el 19 de octubre de 2026.</p>
+
+<div class="resumen">
+    <p><strong>En pocas palabras:</strong> RAC Vision es un prototipo que ayuda a controlar el uso de casco y chaleco. No reemplaza las obligaciones de seguridad e higiene de ninguna empresa ni el control de una persona responsable. Usalo de forma legal y sin filmar a nadie sin su conocimiento.</p>
+</div>
+
+<h2>1. Aceptación</h2>
+<p>Al usar racvision.org, la demo o el panel aceptás estos términos y la <a href="{{ url_for('privacidad') }}">Política de privacidad</a>. Si no estás de acuerdo, no uses el servicio.</p>
+
+<h2>2. Qué es RAC Vision</h2>
+<p>RAC Vision es un sistema de visión por computadora desarrollado por Alex Oviedo, Mateo Silvero y Luciano Campanelli. Detecta en imágenes de cámara si las personas llevan casco y chaleco reflectante, avisa cuando falta alguno y guarda un registro de las alertas. Hoy es un <strong>prototipo en desarrollo</strong> que se ofrece como demostración.</p>
+
+<h2>3. Una herramienta de apoyo, no un reemplazo</h2>
+<ul>
+    <li>El sistema puede equivocarse: no detectar a una persona, marcar una alerta que no corresponde o no funcionar por fallas de cámara, conexión, luz o servidor.</li>
+    <li>No reemplaza el cumplimiento de la Ley 19.587 de Higiene y Seguridad en el Trabajo, de la Ley 24.557 de Riesgos del Trabajo ni de ninguna otra norma. Tampoco reemplaza la entrega de EPP, la capacitación, el sostenimiento, la medición de gases ni la supervisión de una persona responsable.</li>
+    <li>Las decisiones sobre la seguridad de las personas, incluidas las sanciones, las tiene que tomar siempre una persona, nunca el sistema por sí solo.</li>
+</ul>
+
+<h2>4. Cuentas</h2>
+<p>El acceso a la demo y al panel requiere una cuenta. Sos responsable de mantener tu contraseña en secreto y de lo que se haga con tu cuenta. Avisanos enseguida si creés que alguien más la usó.</p>
+
+<h2>5. Uso permitido</h2>
+<p>Te comprometés a no:</p>
+<ul>
+    <li>Analizar imágenes de personas sin informarles o, en el caso del reconocimiento facial, sin su consentimiento escrito.</li>
+    <li>Usar el sistema para vigilar a personas fuera del ámbito de la seguridad laboral.</li>
+    <li>Intentar acceder sin permiso a cuentas, datos o partes del servidor, sobrecargarlo o interferir con su funcionamiento.</li>
+    <li>Copiar o redistribuir los modelos o el código sin autorización, salvo lo que permitan sus licencias.</li>
+</ul>
+
+<h2>6. Organizaciones que lo usan con su personal</h2>
+<p>Si una empresa o institución usa RAC Vision con sus trabajadores, es responsable de informarles, de poner carteles en las zonas con cámaras, de obtener los consentimientos necesarios y de cumplir con la Ley 25.326 de Protección de los Datos Personales y con las normas laborales que correspondan.</p>
+
+<h2>7. Propiedad intelectual</h2>
+<p>El código, el diseño, los textos y los modelos entrenados de RAC Vision pertenecen a sus autores. Los modelos se entrenaron con conjuntos de datos públicos que tienen sus propias licencias, por ejemplo Hard Hat Detection (CC0) y Construction-PPE de Ultralytics (AGPL-3.0). Las imágenes 3D de la página principal fueron generadas con inteligencia artificial.</p>
+
+<h2>8. Disponibilidad y garantías</h2>
+<p>Ofrecemos el servicio "tal como está" y según su disponibilidad. Podemos modificarlo, suspenderlo o darlo de baja en cualquier momento, por ejemplo para mantenimiento. No garantizamos que funcione sin interrupciones ni errores.</p>
+
+<h2>9. Limitación de responsabilidad</h2>
+<p>En la medida en que lo permita la ley, no respondemos por daños que resulten de usar o de no poder usar el servicio, de una detección equivocada o de decisiones tomadas en base a sus resultados. Esto no limita los derechos que te reconoce la Ley 24.240 de Defensa del Consumidor ni la responsabilidad que no se pueda excluir por ley.</p>
+
+<h2>10. Cambios</h2>
+<p>Podemos actualizar estos términos. La versión vigente siempre va a estar en esta página con su fecha. Si seguís usando el servicio después de un cambio, se entiende que lo aceptás.</p>
+
+<h2>11. Ley aplicable y contacto</h2>
+<p>Estos términos se rigen por las leyes de la República Argentina. Cualquier conflicto se resolverá ante los tribunales competentes de la Provincia de Buenos Aires, salvo que una norma de protección al consumidor indique otro lugar. Consultas: <a href="mailto:alex@racvision.org">alex@racvision.org</a>.</p>
+<p>Ver también: <a href="{{ url_for('privacidad') }}">Política de privacidad</a> · <a href="{{ url_for('cookies') }}">Política de cookies</a>.</p>
+{% endblock %}

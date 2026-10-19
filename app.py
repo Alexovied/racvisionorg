@@ -156,6 +156,18 @@ def favicon():
 def landing():
     return render_template("landing.html")
 
+@app.route("/privacidad")
+def privacidad():
+    return render_template("legal/privacidad.html", pagina="privacidad")
+
+@app.route("/cookies")
+def cookies():
+    return render_template("legal/cookies.html", pagina="cookies")
+
+@app.route("/terminos")
+def terminos():
+    return render_template("legal/terminos.html", pagina="terminos")
+
 @app.errorhandler(RequestEntityTooLarge)
 def too_large(e):
     return jsonify({"error": "El request supera el tamaño máximo (2 MB)"}), 413

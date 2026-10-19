@@ -1,0 +1,89 @@
+{% extends "legal/base.html" %}
+{% block titulo %}Política de privacidad{% endblock %}
+{% block contenido %}
+<h1>Política de privacidad</h1>
+<p class="vigencia">Vigente desde el 19 de octubre de 2026.</p>
+
+<div class="resumen">
+    <p><strong>En pocas palabras:</strong> si solo visitás esta página, no te pedimos datos ni usamos herramientas de seguimiento. La demo analiza las imágenes de la cámara en el momento y las descarta. Solo se guarda una foto cuando hay una alerta de EPP. El reconocimiento de personas es opcional y guarda números (embeddings), no fotos de la cara. Podés pedirnos ver, corregir o borrar tus datos escribiendo a <a href="mailto:alex@racvision.org">alex@racvision.org</a>.</p>
+</div>
+
+<h2>1. Quién es responsable</h2>
+<p>RAC Vision es un proyecto desarrollado por Alex Oviedo, Mateo Silvero y Luciano Campanelli, con domicilio en la Provincia de Buenos Aires, Argentina. Somos responsables de los datos que se tratan en <strong>racvision.org</strong>. Contacto: <a href="mailto:alex@racvision.org">alex@racvision.org</a>.</p>
+<p>Esta política se rige por la Ley 25.326 de Protección de los Datos Personales y sus normas complementarias.</p>
+
+<h2>2. Qué datos tratamos y para qué</h2>
+
+<h3>a) Si visitás el sitio</h3>
+<ul>
+    <li><strong>Registros técnicos del servidor:</strong> dirección IP, fecha y hora, página pedida y navegador. Se usan para que el sitio funcione y para detectar abusos o ataques.</li>
+    <li><strong>Proveedores de contenido:</strong> para mostrar tipografías, íconos y animaciones, tu navegador descarga archivos de Google Fonts, cdnjs (Cloudflare) y jsDelivr. Esos servicios reciben tu dirección IP como parte de la descarga. No los usamos para seguirte.</li>
+    <li>No usamos Google Analytics, píxeles de redes sociales ni publicidad.</li>
+</ul>
+
+<h3>b) Si usás la demo o el panel con una cuenta</h3>
+<ul>
+    <li><strong>Cuenta:</strong> nombre de usuario, rol (operador o administrador) y contraseña. La contraseña se guarda cifrada con un algoritmo de un solo sentido (hash) y nadie del equipo puede leerla.</li>
+    <li><strong>Imágenes de la cámara:</strong> el navegador envía cuadros de video al servidor para detectar si las personas llevan casco y chaleco. Esos cuadros se analizan en memoria y se descartan. <strong>No grabamos video.</strong></li>
+    <li><strong>Alertas:</strong> cuando el sistema confirma que falta un EPP, guarda un registro con el tipo de alerta, la cámara, la fecha y hora, la confianza, la persona identificada (si la hay) y una foto de ese momento. Sirve para que el responsable de seguridad pueda revisar lo que pasó.</li>
+    <li><strong>Preferencias del navegador:</strong> la demo recuerda qué cámara elegiste. Ese dato queda en tu propio navegador (almacenamiento local) y no se envía al servidor.</li>
+</ul>
+
+<h3>c) Reconocimiento de personas (opcional)</h3>
+<p>Si una organización lo activa, el sistema puede reconocer a trabajadores registrados previamente. Para registrarlos se usan entre 5 y 10 fotos de frente de cada persona. Con ellas se calcula un <strong>embedding</strong>: una lista de números que representa rasgos de la cara. En el servidor se guardan solo esos números y el nombre, no las fotos.</p>
+<p>Los embeddings son <strong>datos biométricos</strong> y los tratamos como datos sensibles. Solo se registra a una persona con su <strong>consentimiento expreso y por escrito</strong>, y puede retirarlo en cualquier momento. El control de casco y chaleco funciona igual sin identificar a nadie.</p>
+
+<h2>3. Base legal</h2>
+<p>Tratamos los datos con tu consentimiento (artículo 5 de la Ley 25.326), que das al crear una cuenta o al usar la demo. Para los datos biométricos pedimos además un consentimiento expreso y por escrito (artículo 7). Los registros técnicos se basan en la necesidad de prestar el servicio de forma segura.</p>
+
+<h2>4. Cuánto tiempo los guardamos</h2>
+<div class="tabla">
+<table>
+    <thead><tr><th>Dato</th><th>Plazo</th></tr></thead>
+    <tbody>
+        <tr><td>Cuadros de video</td><td>No se guardan: se descartan apenas se analizan.</td></tr>
+        <tr><td>Alertas y sus fotos</td><td>Se guardan las últimas 5000 alertas. Al superar ese número, las más antiguas se borran junto con su foto. Podés pedirnos que borremos antes una alerta en la que aparecés.</td></tr>
+        <tr><td>Embeddings</td><td>Hasta que la persona retire su consentimiento o deje de trabajar en la organización.</td></tr>
+        <tr><td>Cuentas</td><td>Hasta que se dé de baja la cuenta.</td></tr>
+        <tr><td>Registros técnicos</td><td>Solo el tiempo necesario por razones de seguridad.</td></tr>
+    </tbody>
+</table>
+</div>
+
+<h2>5. Con quién los compartimos</h2>
+<ul>
+    <li><strong>Hosting:</strong> el sitio funciona en un servidor contratado a OVH, ubicado en los <strong>Estados Unidos</strong>. Eso implica una transferencia internacional de datos (artículo 12 de la Ley 25.326), que se hace con tu consentimiento y con medidas de seguridad.</li>
+    <li><strong>Notificaciones (opcional):</strong> si una organización conecta el sistema a su propia herramienta de mensajería, cada alerta envía el nombre de la cámara, la ubicación, la persona (si fue identificada), el tipo de alerta y la hora. Hoy esta función está desactivada en racvision.org.</li>
+    <li>No vendemos ni cedemos datos a terceros con fines comerciales.</li>
+    <li>Podemos entregar datos si una autoridad competente lo exige por ley.</li>
+</ul>
+
+<h2>6. Si una organización instala RAC Vision</h2>
+<p>Si una empresa usa RAC Vision para controlar el EPP de su personal, esa empresa es <strong>responsable del tratamiento</strong> de los datos de sus trabajadores. Le corresponde informarles que hay cámaras con análisis automático, por ejemplo con carteles en las zonas vigiladas, y obtener el consentimiento escrito para el reconocimiento facial. El sistema está pensado para la seguridad, no para medir el rendimiento de las personas ni para sancionarlas de forma automática.</p>
+
+<h2>7. Seguridad</h2>
+<ul>
+    <li>Conexión cifrada (HTTPS) en todo el sitio.</li>
+    <li>Contraseñas guardadas con hash. Acceso al panel por roles y con sesión iniciada.</li>
+    <li>Las fotos de alertas solo las ven usuarios con sesión iniciada.</li>
+    <li>Revisamos la seguridad del código con pruebas automáticas.</li>
+</ul>
+<p>Ningún sistema es infalible. Si detectamos un incidente que afecte tus datos, te vamos a avisar.</p>
+
+<h2>8. Tus derechos</h2>
+<p>Podés pedirnos en cualquier momento:</p>
+<ul>
+    <li><strong>Acceso:</strong> saber qué datos tuyos tenemos. Es gratuito si lo pedís con intervalos de al menos seis meses, salvo que acredites un interés legítimo (artículo 14 de la Ley 25.326). Respondemos dentro de los 10 días corridos.</li>
+    <li><strong>Rectificación, actualización o supresión:</strong> corregir o borrar tus datos, incluidas las fotos de alertas y tus embeddings. Lo hacemos dentro de los 5 días hábiles (artículo 16).</li>
+    <li><strong>Retirar tu consentimiento,</strong> en especial el del reconocimiento facial.</li>
+</ul>
+<p>Para pedirlo, escribí a <a href="mailto:alex@racvision.org">alex@racvision.org</a> desde el correo asociado a tu cuenta, o indicá cómo podemos verificar tu identidad.</p>
+<p>LA AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA, en su carácter de Órgano de Control de la Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales.</p>
+
+<h2>9. Menores de edad</h2>
+<p>RAC Vision está pensado para ambientes de trabajo. No está dirigido a menores de edad y no registramos a menores en el reconocimiento facial.</p>
+
+<h2>10. Cambios</h2>
+<p>Si cambiamos esta política, vamos a publicar la nueva versión en esta página con su fecha. Si el cambio es importante, también lo vamos a avisar en el sitio.</p>
+<p>Ver también: <a href="{{ url_for('cookies') }}">Política de cookies</a> · <a href="{{ url_for('terminos') }}">Términos y condiciones</a>.</p>
+{% endblock %}
