@@ -17,7 +17,7 @@
         <div class="filter-group">
             <label>Tipo</label>
             <div class="select-wrapper select-compact">
-                <select name="type">
+                <select name="type" aria-label="Tipo de evento">
                     <option value="all" {% if filters.type == 'all' %}selected{% endif %}>Todos</option>
                     <option value="con_casco" {% if filters.type == 'con_casco' %}selected{% endif %}>Con Casco</option>
                     <option value="sin_casco" {% if filters.type == 'sin_casco' %}selected{% endif %}>Sin Casco</option>
@@ -30,7 +30,7 @@
         <div class="filter-group">
             <label>Cámara</label>
             <div class="select-wrapper select-compact">
-                <select name="camera">
+                <select name="camera" aria-label="Cámara">
                     <option value="all" {% if filters.camera == 'all' %}selected{% endif %}>Todas</option>
                     {% for cam in cameras %}
                     <option value="{{ cam.name }}" {% if filters.camera == cam.name %}selected{% endif %}>{{ cam.name }}</option>
@@ -43,12 +43,12 @@
 
         <div class="filter-group">
             <label>Desde</label>
-            <input type="date" name="date_from" value="{{ filters.date_from }}" class="filter-date">
+            <input type="date" aria-label="Desde la fecha" name="date_from" value="{{ filters.date_from }}" class="filter-date">
         </div>
 
         <div class="filter-group">
             <label>Hasta</label>
-            <input type="date" name="date_to" value="{{ filters.date_to }}" class="filter-date">
+            <input type="date" aria-label="Hasta la fecha" name="date_to" value="{{ filters.date_to }}" class="filter-date">
         </div>
 
         <button type="submit" class="btn-action btn-filter">

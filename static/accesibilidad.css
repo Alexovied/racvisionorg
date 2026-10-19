@@ -1,0 +1,77 @@
+/* Accesibilidad compartida por todas las páginas (landing, detector, panel y legales).
+   Lo de arriba aplica siempre; las clases a11y-* las activa el panel (accesibilidad.js). */
+
+/* Foco siempre visible para quien navega con teclado */
+html :focus-visible { outline: 3px solid #FFB86B !important; outline-offset: 2px !important; border-radius: 2px; }
+
+/* "Saltar al contenido": invisible hasta que recibe foco con Tab */
+.a11y-saltar { position: fixed; left: 12px; top: -80px; z-index: 10000; background: #FFB86B; color: #111; font: 700 15px/1.2 system-ui, sans-serif;
+               padding: 12px 18px; border-radius: 4px; text-decoration: none; transition: top .15s; }
+.a11y-saltar:focus { top: 12px; }
+
+/* Solo para lectores de pantalla */
+.a11y-oculto { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ── Botón y panel ── */
+.a11y-boton { position: fixed; left: 16px; bottom: 16px; z-index: 9990; width: 52px; height: 52px; border-radius: 50%; border: 2px solid #fff;
+              background: #1d4ed8; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
+              box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+.a11y-boton svg { width: 30px; height: 30px; }
+.a11y-boton:hover { background: #1e40af; }
+.a11y-panel { position: fixed; left: 16px; bottom: 80px; z-index: 9991; width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - 110px); overflow-y: auto;
+              background: #111; color: #f3f3f3; border: 2px solid #fff; border-radius: 10px; padding: 18px; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+              box-shadow: 0 20px 60px rgba(0,0,0,.6); letter-spacing: normal; word-spacing: normal; }
+.a11y-panel[hidden] { display: none; }
+.a11y-panel h2 { font-size: 18px; margin: 0 0 4px; color: #fff; letter-spacing: normal; text-transform: none; }
+.a11y-panel p.a11y-ayuda { font-size: 13px; color: #d4d4d4; margin: 0 0 14px; }
+.a11y-panel fieldset { border: 0; padding: 0; margin: 0 0 14px; }
+.a11y-panel legend { font-weight: 700; font-size: 14px; margin-bottom: 8px; color: #fff; }
+.a11y-tamanos { display: flex; gap: 8px; }
+.a11y-tamanos label { flex: 1; }
+.a11y-tamanos input { position: absolute; opacity: 0; }
+.a11y-tamanos span { display: flex; align-items: center; justify-content: center; min-height: 44px; border: 2px solid #777; border-radius: 6px; cursor: pointer; font-weight: 800; color: #fff; }
+.a11y-tamanos label:nth-child(2) span { font-size: 18px; }
+.a11y-tamanos label:nth-child(3) span { font-size: 21px; }
+.a11y-tamanos input:checked + span { background: #FFB86B; color: #111; border-color: #FFB86B; }
+.a11y-tamanos input:focus-visible + span { outline: 3px solid #fff; outline-offset: 2px; }
+.a11y-opcion { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid #333; cursor: pointer; min-height: 44px; }
+.a11y-opcion input { width: 22px; height: 22px; accent-color: #FFB86B; flex-shrink: 0; cursor: pointer; }
+.a11y-opcion small { display: block; color: #cfcfcf; font-size: 12.5px; }
+.a11y-acciones { display: flex; gap: 8px; margin-top: 14px; }
+.a11y-acciones button { flex: 1; min-height: 44px; border-radius: 6px; font: 700 14px system-ui, sans-serif; cursor: pointer; border: 2px solid #fff; }
+.a11y-acciones .a11y-reset { background: transparent; color: #fff; }
+.a11y-acciones .a11y-cerrar { background: #fff; color: #111; }
+
+/* ── Preferencias ── */
+html.a11y-texto-1 body { zoom: 1.15; }
+html.a11y-texto-2 body { zoom: 1.3; }
+
+html.a11y-subrayado a { text-decoration: underline !important; text-underline-offset: 3px; }
+
+/* WCAG 1.4.12: más espacio entre líneas, letras y palabras (ayuda con dislexia y baja visión) */
+html.a11y-espaciado body *:not(svg):not(svg *) { line-height: 1.8 !important; letter-spacing: .06em !important; word-spacing: .16em !important; }
+html.a11y-espaciado p { margin-bottom: 1em; }
+
+html.a11y-quieto *, html.a11y-quieto *::before, html.a11y-quieto *::after {
+    animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+
+/* Alto contraste: textos secundarios casi blancos, bordes visibles, sin texto gris sobre imágenes */
+html.a11y-contraste {
+    --gray: #f0f0f0; --gray2: #e0e0e0; --border: #8a8a8a;              /* landing y legales */
+    --text-muted: #f3f4f6; --text-dim: #e5e7eb;                          /* panel */
+    --text-secondary: #f3f4f6; --card-border: rgba(255,255,255,.5);      /* detector */
+}
+html.a11y-contraste body * { text-shadow: none !important; }
+html.a11y-contraste body p, html.a11y-contraste body li, html.a11y-contraste body td, html.a11y-contraste body span:not([class*="accent"]) { color: #fff; }
+html.a11y-contraste .btn-primary-lg, html.a11y-contraste .nav-cta { background: #FFB86B !important; color: #111 !important; }
+html.a11y-contraste .intro-velo, html.a11y-contraste .problema-fondo::after, html.a11y-contraste .cta-fondo::after { background: rgba(0,0,0,.82) !important; }
+html.a11y-contraste .paso, html.a11y-contraste .prob, html.a11y-contraste .alerta-panel { background: #000 !important; }
+
+/* Con texto agrandado, las etiquetas de la escena de la landing usan su versión corta para no pisarse */
+html.a11y-texto-1 .det .largo, html.a11y-texto-2 .det .largo { display: none; }
+html.a11y-texto-1 .det .corto, html.a11y-texto-2 .det .corto { display: inline; }
+
+/* El zoom también agranda los 100vh: la barra lateral del panel se achica para entrar en pantalla y se puede desplazar */
+.sidebar { overflow-y: auto; }
+html.a11y-texto-1 .sidebar { height: calc(100vh / 1.15); }
+html.a11y-texto-2 .sidebar { height: calc(100vh / 1.3); }

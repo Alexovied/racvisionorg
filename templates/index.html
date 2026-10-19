@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Safety Helmet Detector - Dashboard</title>
+    <title>RAC Vision — Detector de casco y chaleco</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='accesibilidad.css') }}">
+    <script src="{{ url_for('static', filename='accesibilidad.js') }}"></script>
 </head>
 <body>
     <div class="glow-bg"></div>
@@ -17,10 +19,10 @@
         <!-- HEADER -->
         <header>
             <div class="logo">
-                <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Logo" class="logo-img">
+                <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision" class="logo-img">
                 <div class="logo-divider"></div>
                 <div>
-                    <h1>DETECTOR DE CASCOS DE SEGURIDAD AI</h1>
+                    <h1>DETECTOR DE CASCO Y CHALECO CON IA</h1>
                     <p>Monitoreo inteligente en tiempo real y seguridad industrial</p>
                 </div>
             </div>
@@ -35,7 +37,7 @@
         </header>
 
         <!-- DASHBOARD GRID -->
-        <div class="dashboard-grid">
+        <div class="dashboard-grid" role="main" id="contenido">
             <!-- COLUMNA IZQUIERDA: WEBCAM FEED -->
             <section class="card webcam-card">
                 <div class="card-header">
@@ -65,7 +67,7 @@
             <section class="right-column">
                 <!-- CARD DE ESTADO ACTUAL -->
                 <div class="card status-card info-card" id="status-panel">
-                    <div class="status-content">
+                    <div class="status-content" role="status" aria-live="polite" aria-atomic="true">
                         <h3 class="status-title">Estado de Seguridad</h3>
                         <div class="status-value" id="current-state-text">Buscando personas...</div>
                         <p class="status-desc" id="current-desc-text">Inicia la cámara para empezar a monitorear.</p>

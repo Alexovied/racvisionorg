@@ -173,7 +173,7 @@ header p {
 
 .badge {
     background: rgba(229, 91, 19, 0.15);
-    color: var(--accent-orange);
+    color: #FF8A4C;   /* contraste AA sobre el fondo de la tarjeta */
     padding: 0.3rem 0.75rem;
     border-radius: 0.5rem;
     font-size: 0.75rem;
@@ -510,7 +510,7 @@ header p {
     align-items: center;
     gap: 0.5rem;
     height: 100%;
-    color: rgba(255, 255, 255, 0.15);
+    color: #9CA3AF;
     font-size: 0.85rem;
     padding: 2rem 0;
 }
@@ -574,4 +574,23 @@ header p {
 }
 .log-danger i {
     color: var(--accent-red);
+}
+
+/* CELULAR: sin scroll lateral (WCAG 1.4.10) */
+body { overflow-x: clip; }
+.glow-bg { max-width: 100vw; }
+@media (max-width: 640px) { .glow-bg { left: 0; width: 100%; } }
+.dashboard-grid > * { min-width: 0; }
+@media (max-width: 640px) {
+    .container { padding: 1rem 0.9rem; }
+    header { flex-wrap: wrap; gap: 0.9rem; padding-bottom: 1.2rem; margin-bottom: 1.2rem; }
+    .logo { flex-wrap: wrap; }
+    .logo-img { height: 34px; }
+    .logo-divider { display: none; }
+    header h1 { font-size: 1.15rem; }
+    header p { font-size: 0.8rem; }
+    .dashboard-grid { gap: 1rem; }
+    .card { padding: 1rem; }
+    .controls { flex-wrap: wrap; gap: 0.6rem; }
+    .controls > * { flex: 1 1 100%; }
 }

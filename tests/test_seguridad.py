@@ -174,3 +174,9 @@ def test_landing_en_ingles_por_parametro_o_navegador(client):
     assert "Nadie entra" in client.get("/?lang=es", headers={"Accept-Language": "en"}).get_data(as_text=True)
     assert 'lang="en"' in client.get("/", headers={"Accept-Language": "en-US"}).get_data(as_text=True)
     assert 'lang="es"' in client.get("/?lang=xx").get_data(as_text=True)
+
+
+def test_panel_de_accesibilidad_en_todas_las_paginas(client, operator_client):
+    for ruta in ("/", "/?lang=en", "/privacidad", "/cookies", "/terminos", "/admin/login"):
+        assert "accesibilidad.js" in client.get(ruta).get_data(as_text=True), ruta
+    assert "accesibilidad.js" in operator_client.get("/app").get_data(as_text=True)

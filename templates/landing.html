@@ -51,6 +51,8 @@
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     </noscript>
+    <link rel="stylesheet" href="{{ url_for('static', filename='accesibilidad.css') }}">
+    <script src="{{ url_for('static', filename='accesibilidad.js') }}"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
     <style>
@@ -62,7 +64,7 @@
         :root {
             --black: #0d0d0d; --dark: #141414; --card: #1a1a1a; --card2: #222222; --border: #2a2a2a;
             --orange: #E8751A; --orange2: #FF8C35; --green: #34D399; --red: #EF4444;
-            --white: #ffffff; --gray: #9a9a9a; --gray2: #666666;
+            --white: #ffffff; --gray: #9a9a9a; --gray2: #8c8c8c;
             --font: 'Montserrat', 'Arial Black', sans-serif;
             --pad: clamp(16px, 5vw, 60px);
         }
@@ -73,13 +75,14 @@
         ::-webkit-scrollbar-track { background: var(--black); }
         ::-webkit-scrollbar-thumb { background: var(--orange); border-radius: 2px; }
         .progreso { position: fixed; top: 0; left: 0; height: 3px; width: 100%; background: var(--orange); transform-origin: 0 50%; transform: scaleX(0); z-index: 120; }
-        .ia-nota { font-size: 10.5px; letter-spacing: 1px; color: rgba(255,255,255,.55); text-transform: uppercase; }
+        .ia-nota { font-size: 10.5px; letter-spacing: 1px; color: rgba(255,255,255,.78); text-transform: uppercase; }
 
         /* ═══════════ NAV ═══════════ */
         nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between;
               padding: 0 var(--pad); height: 72px; background: linear-gradient(180deg, rgba(13,13,13,.85), rgba(13,13,13,0)); transition: background .3s; }
         nav { transition: background .3s, transform .4s ease, opacity .4s ease; }
         nav.arriba { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+        nav.arriba:focus-within { transform: none; opacity: 1; pointer-events: auto; }
         nav.solida { background: rgba(13,13,13,.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
         .nav-logo { display: flex; align-items: center; gap: 14px; text-decoration: none; }
         .nav-logo img { height: 32px; width: auto; }
@@ -95,7 +98,8 @@
                     background: transparent; border: 1px solid #3a3a3a; padding: 8px 12px; min-height: 36px; white-space: nowrap; border-radius: 2px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
         .nav-chip::after { display: none !important; }
         .nav-chip:hover { border-color: var(--white); color: var(--white); }
-        .nav-cta { background: var(--orange); color: var(--white) !important; padding: 10px 22px; border-radius: 2px; }
+        .nav-chip:disabled { opacity: .5; cursor: not-allowed; }
+        .nav-cta { background: var(--orange); color: #111 !important; padding: 10px 22px; border-radius: 2px; }
         .nav-cta::after { display: none; }
         .nav-cta:hover { background: var(--orange2); }
         .nav-toggle { display: none; flex-direction: column; gap: 5px; background: rgba(13,13,13,.6); border: 1px solid #3a3a3a; width: 44px; height: 44px; cursor: pointer; border-radius: 2px; }
@@ -105,7 +109,7 @@
         .nav-toggle[aria-expanded="true"] span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
         /* ═══════════ BOTONES ═══════════ */
-        .btn-primary-lg { display: inline-flex; align-items: center; justify-content: center; gap: 10px; background: var(--orange); color: var(--white); text-decoration: none;
+        .btn-primary-lg { display: inline-flex; align-items: center; justify-content: center; gap: 10px; background: var(--orange); color: #111; text-decoration: none;
                           font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 16px 32px; border-radius: 2px; min-height: 48px;
                           transition: background .2s, transform .15s, box-shadow .2s; }
         .btn-primary-lg:hover { background: var(--orange2); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(232,117,26,0.35); }
@@ -153,11 +157,11 @@
                  padding: 4px 7px; text-transform: uppercase; color: #fff; }
         .det .corto { display: none; }
         .det.ok { border-color: var(--green); box-shadow: 0 0 18px rgba(52,211,153,.35); }
-        .det.ok b { background: #0f9e6e; }
+        .det.ok b { background: #047857; }
         .det.medio { border-color: var(--orange); box-shadow: 0 0 18px rgba(232,117,26,.45); }
-        .det.medio b { background: var(--orange); }
+        .det.medio b { background: var(--orange); color: #111; }
         .det.mal { border-color: var(--red); box-shadow: 0 0 18px rgba(239,68,68,.45); }
-        .det.mal b { background: var(--red); }
+        .det.mal b { background: #B91C1C; }
         .det-1 { left: 26%; top: 23.5%; width: 13%; height: 62%; }
         .det-2 { left: 44%; top: 23.5%; width: 13%; height: 62%; }
         .det-3 { left: 63.5%; top: 23.5%; width: 13.5%; height: 62%; }
@@ -247,9 +251,12 @@
         .video-head h2 span { color: var(--orange); }
         .video-lang { display: flex; gap: 6px; }
         .video-lang button { background: transparent; color: #aaa; border: 1px solid var(--border); padding: 8px 16px; min-height: 40px; font-family: inherit; font-weight: 700; font-size: .8rem; letter-spacing: 1px; cursor: pointer; }
-        .video-lang button.activo { background: var(--orange); border-color: var(--orange); color: #fff; }
+        .video-lang button.activo { background: var(--orange); border-color: var(--orange); color: #111; }
         .video-frame { position: relative; border: 1px solid var(--border); background: #000; }
         .video-frame video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+        .video-transcripcion { margin-top: 14px; color: #cfcfcf; font-size: 14px; line-height: 1.7; }
+        .video-transcripcion summary { cursor: pointer; font-weight: 700; color: var(--white); min-height: 44px; display: flex; align-items: center; }
+        .video-transcripcion ol { padding-left: 22px; margin-top: 8px; }
 
         /* ═══════════ PIPELINE ═══════════ */
         .pipeline-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 22px; margin-top: 54px; position: relative; }
@@ -315,7 +322,7 @@
                          box-shadow: 0 20px 50px rgba(0,0,0,.5); }
         .aviso-cookies.visible { display: flex; }
         .aviso-cookies a { color: var(--orange2); }
-        .aviso-cookies button { flex-shrink: 0; background: var(--orange); color: #fff; border: none; padding: 10px 16px; min-height: 40px; font-family: inherit; font-weight: 700;
+        .aviso-cookies button { flex-shrink: 0; background: var(--orange); color: #111; border: none; padding: 10px 16px; min-height: 40px; font-family: inherit; font-weight: 700;
                                 font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; }
 
         /* ═══════════ RESPONSIVE ═══════════ */
@@ -364,7 +371,7 @@
             th, td { padding: 10px 6px; font-size: 12px; }
             th { font-size: 9.5px; letter-spacing: 1px; }
             .footer-inner { flex-direction: column; text-align: center; }
-            .aviso-cookies { flex-direction: column; align-items: stretch; }
+            .aviso-cookies { flex-direction: column; align-items: stretch; left: 80px; }  /* deja lugar al botón de accesibilidad */
         }
         /* Sin efectos: hero normal, pasos debajo de la escena y galería en columna */
         html:not(.js-anim) .intro-mascara { display: none; }
@@ -410,6 +417,7 @@
 </nav>
 <script>document.getElementById('navbar').classList.toggle('arriba', scrollY < 40);</script>
 
+<main id="contenido">
 <!-- ═══════════ 1. INTRO ═══════════ -->
 <header class="intro">
     <picture>
@@ -616,11 +624,35 @@
             </div>
         </div>
         <div class="video-frame">
-            <video id="video-rac" muted loop playsinline controls preload="none"
+            <video id="video-rac" aria-describedby="video-transcripcion" muted loop playsinline controls preload="none"
                    poster="{{ url_for('static', filename='video/racvision-promo-poster.jpg') }}">
                 <source src="{{ url_for('static', filename='video/racvision-promo-es.mp4') }}" type="video/mp4">
             </video>
         </div>
+        <details class="video-transcripcion" id="video-transcripcion">
+            <summary>{% if en %}Video description (no audio){% else %}Descripción del video (no tiene audio){% endif %}</summary>
+            {% if en %}
+            <ol>
+                <li>Smart vision. Real safety. Helmets, vests, people and alerts.</li>
+                <li>The problem: on site, no one can watch everything. One slip is enough for an accident.</li>
+                <li>Detection from any angle: helmet and vest in real time, on the entrance and workshop cameras, marking "helmet", "no helmet", "vest" and "no vest".</li>
+                <li>Identification: it knows who everyone is (person recognized, 92% match).</li>
+                <li>Instant alert with photo, name and place (Workshop, Sector B), and the alarm is triggered.</li>
+                <li>Monitoring: all your cameras in one dashboard, showing "all wearing PPE" or "alert: no helmet".</li>
+                <li>A project by RAC Vision.</li>
+            </ol>
+            {% else %}
+            <ol>
+                <li>Visión inteligente. Seguridad real. Cascos, chalecos, personas y alertas.</li>
+                <li>El problema: en la obra, nadie puede mirar todo. Alcanza con un descuido para que haya un accidente.</li>
+                <li>Detección desde cualquier ángulo: casco y chaleco en tiempo real, en las cámaras de entrada y del taller, con las marcas "casco", "sin casco", "chaleco" y "sin chaleco".</li>
+                <li>Identificación: sabe quién es cada persona (persona reconocida, coincidencia del 92 %).</li>
+                <li>Alerta al instante con foto, nombre y lugar (Taller, sector B), y se activa la alarma.</li>
+                <li>Monitoreo: todas las cámaras en un solo panel, con "todos con EPP" o "alerta: sin casco".</li>
+                <li>Un proyecto de RAC Vision.</li>
+            </ol>
+            {% endif %}
+        </details>
     </div>
     <script>
         // Video en inglés si el navegador no está en español; los botones permiten cambiarlo
@@ -737,6 +769,8 @@
         </div>
     </div>
 </div>
+
+</main>
 
 <!-- ═══════════ FOOTER ═══════════ -->
 <footer>
@@ -896,16 +930,24 @@
         const btn = document.querySelector('.efectos-btn');
         let activos = true;
         try { activos = localStorage.getItem('rac-efectos') !== '0'; } catch (e) {}
-        const pintar = () => { btn.textContent = activos ? btn.dataset.on : btn.dataset.off; btn.setAttribute('aria-pressed', String(activos)); };
-        if (activos) prenderEfectos();
-        pintar();
+        // Con "sin animaciones" o texto agrandado (zoom) desde Accesibilidad, los efectos quedan apagados
+        const frenados = () => { const p = window.racA11y || {}; return !!(p.quieto || p.texto > 0); };
+        const pintar = () => {
+            const on = activos && !frenados();
+            btn.textContent = on ? btn.dataset.on : btn.dataset.off;
+            btn.setAttribute('aria-pressed', String(on));
+            btn.disabled = frenados();
+        };
+        const aplicar = () => { if (activos && !frenados()) prenderEfectos(); else apagarEfectos(); pintar(); };
+        aplicar();
+        document.addEventListener('rac-a11y', aplicar);
         btn.addEventListener('click', () => {
             activos = !activos;
             try { localStorage.setItem('rac-efectos', activos ? '1' : '0'); } catch (e) {}
             // Se mantiene la sección que se está viendo al cambiar de modo
-            const actual = [...document.querySelectorAll('header, body > div[id], body > div.retrato, body > div.cta')]
+            const actual = [...document.querySelectorAll('main > *')]
                 .find(el => el.getBoundingClientRect().bottom > 80);
-            if (activos) { prenderEfectos(); } else { apagarEfectos(); }
+            if (activos && !frenados()) { prenderEfectos(); } else { apagarEfectos(); }
             if (actual) scrollTo({ top: actual.getBoundingClientRect().top + scrollY - (activos ? 0 : 72) });
             pintar();
         });

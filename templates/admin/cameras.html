@@ -26,7 +26,7 @@
             <div class="camera-icon-box">
                 <i class="fa-solid {{ 'fa-video' if cam.type == 'webcam' else 'fa-tower-broadcast' }}"></i>
             </div>
-            <h4 class="camera-name">{{ cam.name }}</h4>
+            <h2 class="camera-name">{{ cam.name }}</h2>
             <p class="camera-location"><i class="fa-solid fa-location-dot"></i> {{ cam.location or 'Sin ubicación' }}</p>
             {% if cam.url %}
             <p class="camera-url"><i class="fa-solid fa-link"></i> {{ cam.url[:40] }}{{ '...' if cam.url|length > 40 }}</p>
@@ -63,8 +63,8 @@
 <div class="modal-overlay" id="cam-modal">
     <div class="modal-card">
         <div class="modal-header">
-            <h3><i class="fa-solid fa-video"></i> Registrar Cámara</h3>
-            <button class="modal-close" onclick="document.getElementById('cam-modal').classList.remove('visible')"><i class="fa-solid fa-xmark"></i></button>
+            <h2><i class="fa-solid fa-video"></i> Registrar Cámara</h2>
+            <button class="modal-close" aria-label="Cerrar" onclick="document.getElementById('cam-modal').classList.remove('visible')"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <form method="POST" action="{{ url_for('admin.cameras') }}">
             <div class="form-group">

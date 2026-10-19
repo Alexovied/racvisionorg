@@ -267,16 +267,18 @@
             opacity: 0.8;
         }
     </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='accesibilidad.css') }}">
+    <script src="{{ url_for('static', filename='accesibilidad.js') }}"></script>
 </head>
 <body>
     <div class="bg-glow g1"></div>
     <div class="bg-glow g2"></div>
 
-    <div class="login-container">
+    <div class="login-container" role="main" id="contenido">
         <div class="login-card">
             <div class="login-header">
                 <div class="login-logo">
-                    <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC">
+                    <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision">
                     <div class="login-logo-divider"></div>
                     <span class="login-logo-text">Panel Admin</span>
                 </div>
