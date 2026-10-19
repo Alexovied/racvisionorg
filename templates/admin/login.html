@@ -296,6 +296,7 @@
             {% endwith %}
 
             <form method="POST" action="{{ url_for('admin.login') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="username">Usuario</label>
                     <div class="input-wrapper">

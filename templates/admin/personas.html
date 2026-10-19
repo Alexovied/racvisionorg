@@ -54,6 +54,7 @@
                     <td class="text-muted">{{ p.por or '—' }}</td>
                     <td>
                         <form method="POST" action="{{ url_for('admin.borrar_persona') }}" onsubmit="return confirm('¿Borrar los datos de reconocimiento de {{ p.nombre }}? No se puede deshacer.')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="nombre" value="{{ p.nombre }}">
                             <button type="submit" class="btn-icon btn-delete" title="Borrar" aria-label="Borrar a {{ p.nombre }}">
                                 <i class="fa-solid fa-trash"></i>
@@ -77,6 +78,7 @@
             <button class="modal-close" aria-label="Cerrar" onclick="cerrarRegistro()"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <form method="POST" action="{{ url_for('admin.personas') }}" enctype="multipart/form-data" id="registro-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label for="reg-nombre">Nombre y apellido</label>
                 <div class="input-wrapper">
@@ -171,6 +173,7 @@
         enviar.querySelector('span').textContent = 'Procesando…';
         try {
             const datos = new FormData();
+            datos.append('csrf_token', form.csrf_token.value);
             datos.append('nombre', form.nombre.value);
             datos.append('consentimiento', form.consentimiento.checked ? 'si' : '');
             for (const [i, f] of archivos.entries()) datos.append('fotos', await achicar(f), `foto${i + 1}.jpg`);

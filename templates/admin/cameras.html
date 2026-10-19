@@ -34,12 +34,14 @@
         </div>
         <div class="camera-actions">
             <form method="POST" action="{{ url_for('admin.toggle_camera', cam_id=cam.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn-icon {{ 'btn-toggle-off' if cam.active else 'btn-toggle-on' }}" title="{{ 'Desactivar' if cam.active else 'Activar' }}">
                     <i class="fa-solid {{ 'fa-toggle-on' if cam.active else 'fa-toggle-off' }}"></i>
                 </button>
             </form>
             {% if current_user.role == 'admin' %}
             <form method="POST" action="{{ url_for('admin.delete_camera', cam_id=cam.id) }}" onsubmit="return confirm('¿Eliminar la cámara {{ cam.name }}?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn-icon btn-delete" title="Eliminar">
                     <i class="fa-solid fa-trash"></i>
                 </button>
@@ -67,6 +69,7 @@
             <button class="modal-close" aria-label="Cerrar" onclick="document.getElementById('cam-modal').classList.remove('visible')"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <form method="POST" action="{{ url_for('admin.cameras') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label for="cam-name">Nombre</label>
                 <div class="input-wrapper">

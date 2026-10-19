@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, session, abort
 from flask_login import login_required
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from hardware import init_esp32, enviar_comando_esp32
@@ -66,6 +66,32 @@ else:
     app.secret_key = secrets.token_hex(32)
     with open(secret_key_path, "w") as f:
         f.write(app.secret_key)
+
+# Cookie de sesión: no viaja en POST de otros sitios (Lax) y, con gunicorn
+# (producción, detrás de HTTPS), solo por HTTPS. `python app.py` es desarrollo local por HTTP.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = __name__ != "__main__"
+
+
+# CSRF: todo POST debe traer el token de la sesión, en el campo csrf_token
+# (formularios) o en el header X-CSRFToken (fetch). Los tests lo apagan con WTF_CSRF_ENABLED.
+def csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
+
+
+app.jinja_env.globals["csrf_token"] = csrf_token
+
+
+@app.before_request
+def verificar_csrf():
+    if request.method != "POST" or not app.config.get("WTF_CSRF_ENABLED", True):
+        return
+    enviado = request.headers.get("X-CSRFToken") or request.form.get("csrf_token", "")
+    esperado = session.get("csrf_token")
+    if not esperado or not secrets.compare_digest(enviado, esperado):
+        abort(403, "Token CSRF inválido o ausente. Recargá la página e intentá de nuevo.")
 
 # Register admin Blueprint & Flask-Login
 from admin import admin_bp, init_login, roles_required

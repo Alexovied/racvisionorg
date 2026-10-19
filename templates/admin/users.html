@@ -47,6 +47,7 @@
                             </button>
                             {% if user.id != current_user.id %}
                             <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" onsubmit="return confirm('¿Eliminar el usuario {{ user.username }}?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn-icon btn-delete" title="Eliminar">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
@@ -69,6 +70,7 @@
             <button class="modal-close" aria-label="Cerrar" onclick="closeModal('create')"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <form method="POST" action="{{ url_for('admin.users') }}" id="user-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" id="form-action" value="create">
             <input type="hidden" name="user_id" id="form-user-id" value="">
             

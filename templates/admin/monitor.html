@@ -80,6 +80,7 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='epp.js') }}"></script>
 <script>
+    const CSRF = document.querySelector('meta[name="csrf-token"]').content;
     // Mismas reglas que el detector de /app (static/epp.js): casco y chaleco con ventanas separadas.
     let MIN_CONFIDENCE = 51, scanRateMs = 100;
     fetch('/admin/api/config').then(r => r.json()).then(cfg => {
@@ -129,7 +130,7 @@
         }
 
         function enviarEvento(evento) {
-            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                 body: JSON.stringify(evento) }).catch(() => {});
         }
 
@@ -164,7 +165,7 @@
             if (alarma && alarma !== ultimaAlarma) {
                 ultimaAlarma = alarma;
                 if (alarma === 'con_casco') enviarEvento({ type: 'con_casco', confidence: 100, camera: camId });
-                fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                     body: JSON.stringify({ state: alarma }) }).catch(() => {});
             }
             const r = seguimiento.resumen();
@@ -177,7 +178,7 @@
                 if (video.videoWidth) {
                     capCtx.drawImage(video, 0, 0, captura.width, captura.height);
                     try {
-                        const r = await fetch('/predict', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        const r = await fetch('/predict', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                             body: JSON.stringify({ image: captura.toDataURL('image/jpeg', 0.75) }) });
                         if (r.status === 401) { location.href = '/admin/login?next=/admin/monitor'; return; }
                         if (activo && r.ok) procesar(await r.json());

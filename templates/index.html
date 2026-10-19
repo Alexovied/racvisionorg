@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>RAC Vision — Detector de casco y chaleco</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -125,6 +126,7 @@
     <!-- Script de lógica -->
     <script src="{{ url_for('static', filename='epp.js') }}"></script>
     <script>
+        const CSRF = document.querySelector('meta[name="csrf-token"]').content;
         const video = document.getElementById('webcam');
         const overlay = document.getElementById('overlay');
         const captureCanvas = document.getElementById('capture-canvas');
@@ -207,7 +209,7 @@
         async function startWebcam() {
             try {
                 // Resetear buffer de suavizado del backend al iniciar
-                fetch('/reset_buffer', { method: 'POST' }).catch(() => {});
+                fetch('/reset_buffer', { method: 'POST', headers: { 'X-CSRFToken': CSRF } }).catch(() => {});
                 loadingOverlay.innerHTML = '<i class="fa-solid fa-spinner spinner"></i><p>Solicitando acceso a la cámara...</p>';
                 const elegida = cameraSelect.value;
                 localStream = await navigator.mediaDevices.getUserMedia({
@@ -256,7 +258,7 @@
             }
             video.srcObject = null;
             // Resetear buffer de suavizado del backend al detener
-            fetch('/reset_buffer', { method: 'POST' }).catch(() => {});
+            fetch('/reset_buffer', { method: 'POST', headers: { 'X-CSRFToken': CSRF } }).catch(() => {});
             
             overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
             loadingOverlay.style.display = 'flex';
@@ -318,7 +320,7 @@
             try {
                 const response = await fetch('/predict', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                     body: JSON.stringify({ image: base64Image })
                 });
 
@@ -379,7 +381,7 @@
             if (alarma && alarma !== ultimaAlarma) {
                 ultimaAlarma = alarma;
                 if (alarma === 'con_casco') enviarEvento({ type: 'con_casco', confidence: 100, camera: CAMERA_NAME });
-                fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                                       body: JSON.stringify({ state: alarma }) }).catch(() => {});
             }
 
@@ -404,7 +406,7 @@
 
         function enviarEvento(evento) {
             // La auditoría también despacha la alarma física en admin.py
-            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                                          body: JSON.stringify(evento) }).catch(() => {});
         }
 

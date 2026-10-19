@@ -9,6 +9,7 @@
 </div>
 
 <form method="POST" action="{{ url_for('admin.config') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="save">
 
     <div class="config-grid">
@@ -115,6 +116,7 @@
 
 <!-- RESET FORM (separate) -->
 <form method="POST" action="{{ url_for('admin.config') }}" class="config-reset-form" onsubmit="return confirm('¿Restaurar todos los valores por defecto?')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="reset">
     <button type="submit" class="btn-action btn-reset">
         <i class="fa-solid fa-rotate-left"></i> Restaurar Valores por Defecto
