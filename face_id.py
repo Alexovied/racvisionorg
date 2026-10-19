@@ -1,8 +1,9 @@
 """Reconocimiento de personas con SFace (OpenCV).
 
-Alta: cada persona tiene una carpeta personas/<nombre>/ con 5-10 fotos de
-frente. `python face_id.py enrolar` calcula un embedding por foto y los guarda
-en data/personas.json (solo números, no las fotos).
+Alta: desde el panel (Personas) o con `python face_id.py enrolar`, que lee
+personas/<nombre>/ con 5-10 fotos de frente. Se calcula un embedding por foto y
+se guarda en data/personas.json (solo números, nunca las fotos). Quién la
+registró y cuándo queda en data/personas_registro.json.
 
 En /predict, `identificar(img, bbox)` busca la cara dentro de la cabeza
 detectada y devuelve el nombre más parecido, "Desconocido" si nadie supera el
@@ -12,6 +13,7 @@ import glob
 import json
 import os
 import sys
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -26,6 +28,7 @@ MODEL_PATH = os.path.join(BASE, "face_recognition_sface_2021dec.onnx")
 # fotos del proyecto una misma persona dio 0.54-0.77 y personas distintas hasta
 # 0.37: con 0.45 se prefiere "Desconocido" antes que un nombre equivocado.
 UMBRAL = 0.45
+MIN_FOTOS = 3   # con menos fotos útiles el reconocimiento es poco confiable
 
 _sface = None
 if os.path.exists(MODEL_PATH):
@@ -39,6 +42,56 @@ _cache = {"mtime": None, "personas": []}
 
 def _ruta_db():
     return os.path.join(data_store.DATA_DIR, "personas.json")
+
+
+def _guardar(datos, registro):
+    data_store._save_json("personas.json", datos)
+    data_store._save_json("personas_registro.json", registro)
+    _cache["mtime"] = None  # recargar aunque el mtime no haya cambiado
+
+
+def _embeddings(imagenes):
+    """[embedding] de las fotos con una cara visible y cuántas no la tenían."""
+    embs, sin_cara = [], 0
+    for img in imagenes:
+        s = min(1.0, 1280 / max(img.shape[:2]))
+        emb = embedding(cv2.resize(img, None, fx=s, fy=s) if s < 1 else img)
+        if emb is None:
+            sin_cara += 1
+        else:
+            embs.append(emb.tolist())
+    return embs, sin_cara
+
+
+def listar():
+    """[{nombre, fotos, alta, por}] de las personas registradas."""
+    datos = data_store._load_json("personas.json", {})
+    registro = data_store._load_json("personas_registro.json", {})
+    return [{"nombre": n, "fotos": len(e), **registro.get(n, {})} for n, e in sorted(datos.items())]
+
+
+def registrar(nombre, imagenes, por):
+    """Agrega a una persona con sus fotos (ya decodificadas). Devuelve (útiles, sin cara);
+    solo guarda si hay al menos MIN_FOTOS útiles. Las fotos no se guardan."""
+    embs, sin_cara = _embeddings(imagenes)
+    if len(embs) >= MIN_FOTOS:
+        datos = data_store._load_json("personas.json", {})
+        registro = data_store._load_json("personas_registro.json", {})
+        datos[nombre] = embs
+        registro[nombre] = {"alta": datetime.now().isoformat(timespec="seconds"), "por": por, "consentimiento": True}
+        _guardar(datos, registro)
+    return len(embs), sin_cara
+
+
+def borrar(nombre):
+    """Quita los embeddings y el registro de una persona (derecho de supresión)."""
+    datos = data_store._load_json("personas.json", {})
+    registro = data_store._load_json("personas_registro.json", {})
+    if datos.pop(nombre, None) is None:
+        return False
+    registro.pop(nombre, None)
+    _guardar(datos, registro)
+    return True
 
 
 def _personas():
@@ -87,8 +140,9 @@ def identificar(img, bbox):
 
 
 def enrolar(carpeta=os.path.join(BASE, "personas")):
-    """Lee personas/<nombre>/*.jpg|png y guarda los embeddings en data/personas.json."""
-    datos, sin_cara = {}, []
+    """Lee personas/<nombre>/*.jpg|png y suma esas personas a data/personas.json
+    (no borra a las registradas desde el panel)."""
+    datos, sin_cara = data_store._load_json("personas.json", {}), []
     for dir_persona in sorted(glob.glob(os.path.join(carpeta, "*"))):
         if not os.path.isdir(dir_persona):
             continue

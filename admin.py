@@ -3,6 +3,7 @@ import csv
 import io
 import math
 import os
+import re
 import requests
 from functools import wraps
 from urllib.parse import urlsplit
@@ -20,6 +21,7 @@ from flask_login import (
     login_required, current_user
 )
 import data_store
+import face_id
 from hardware import enviar_comando_esp32
 
 # ── Integración n8n ──────────────────────────────────────────────────────────
@@ -216,6 +218,72 @@ def delete_user(user_id):
         data_store.delete_user(user_id)
         flash("Usuario eliminado.", "success")
     return redirect(url_for("admin.users"))
+
+
+# ═══════════════════════════════════════
+#  PERSONAS (reconocimiento facial)
+# ═══════════════════════════════════════
+
+MAX_FOTOS = 10
+
+
+def _nombre_valido(nombre):
+    # Solo letras (con tildes), espacios y . ' - como en "María José O'Neil"; empieza con letra, sin números
+    return 2 <= len(nombre) <= 60 and re.fullmatch(r"[^\W\d_](?:[^\W\d_]|[ .'-])*", nombre) is not None
+
+
+@admin_bp.route("/personas", methods=["GET", "POST"])
+@login_required
+@admin_required
+def personas():
+    if request.method == "POST":
+        nombre = " ".join(request.form.get("nombre", "").split())
+        fotos = request.files.getlist("fotos")
+        if not face_id.disponible():
+            flash("El reconocimiento facial no está disponible en este servidor.", "error")
+        elif not _nombre_valido(nombre):
+            flash("Ingresá un nombre válido (2 a 60 letras, sin números).", "error")
+        elif request.form.get("consentimiento") != "si":
+            flash("Falta confirmar el consentimiento escrito y firmado de la persona.", "error")
+        elif any(p["nombre"].lower() == nombre.lower() for p in face_id.listar()):
+            flash(f"'{nombre}' ya está registrada. Para cambiar sus fotos, borrala y registrala de nuevo.", "error")
+        elif not face_id.MIN_FOTOS <= len(fotos) <= MAX_FOTOS:
+            flash(f"Subí entre {face_id.MIN_FOTOS} y {MAX_FOTOS} fotos.", "error")
+        else:
+            # Las fotos se decodifican en memoria y se descartan: solo quedan los embeddings
+            imagenes = [cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR) for f in fotos]
+            if any(img is None for img in imagenes):
+                flash("Uno de los archivos no es una imagen válida (usá JPG o PNG).", "error")
+            else:
+                utiles, sin_cara = face_id.registrar(nombre, imagenes, current_user.username)
+                if utiles >= face_id.MIN_FOTOS:
+                    aviso = f" {sin_cara} foto(s) no se usaron porque no se veía la cara." if sin_cara else ""
+                    flash(f"'{nombre}' quedó registrada con {utiles} fotos.{aviso}", "success")
+                else:
+                    flash(f"Solo se encontró la cara en {utiles} de {len(imagenes)} fotos. Hacen falta al menos "
+                          f"{face_id.MIN_FOTOS}: usá fotos de frente, con buena luz y sin lentes oscuros.", "error")
+        return redirect(url_for("admin.personas"))
+    return render_template("admin/personas.html", personas=face_id.listar(),
+                           min_fotos=face_id.MIN_FOTOS, max_fotos=MAX_FOTOS, disponible=face_id.disponible())
+
+
+@admin_bp.route("/personas/borrar", methods=["POST"])
+@login_required
+@admin_required
+def borrar_persona():
+    nombre = request.form.get("nombre", "")
+    if face_id.borrar(nombre):
+        flash(f"Se borraron los datos de reconocimiento de '{nombre}'.", "success")
+    else:
+        flash("Esa persona no está registrada.", "error")
+    return redirect(url_for("admin.personas"))
+
+
+@admin_bp.route("/personas/consentimiento")
+@login_required
+@admin_required
+def consentimiento():
+    return render_template("admin/consentimiento.html")
 
 
 # ═══════════════════════════════════════

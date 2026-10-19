@@ -45,6 +45,10 @@
                 <i class="fa-solid fa-users-gear"></i>
                 <span>Usuarios</span>
             </a>
+            <a href="{{ url_for('admin.personas') }}" class="nav-item {% if request.endpoint in ('admin.personas', 'admin.consentimiento') %}active{% endif %}">
+                <i class="fa-solid fa-id-card"></i>
+                <span>Personas</span>
+            </a>
             {% endif %}
             <a href="{{ url_for('admin.cameras') }}" class="nav-item {% if request.endpoint == 'admin.cameras' %}active{% endif %}">
                 <i class="fa-solid fa-video"></i>

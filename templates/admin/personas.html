@@ -1,0 +1,187 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Personas{% endblock %}
+{% block page_title %}Personas registradas{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Personas que el sistema puede reconocer por su cara. Solo se guardan números calculados a partir de las fotos (embeddings), nunca las fotos.</p>
+    <button class="btn-action btn-create" onclick="abrirRegistro()" {% if not disponible %}disabled{% endif %}>
+        <i class="fa-solid fa-user-plus"></i> Registrar persona
+    </button>
+</div>
+
+{% if not disponible %}
+<div class="admin-card aviso-personas aviso-error">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    El reconocimiento facial no está disponible en este servidor: faltan los modelos YuNet o SFace.
+</div>
+{% endif %}
+
+<div class="admin-card aviso-personas">
+    <i class="fa-solid fa-file-signature"></i>
+    <div>
+        <strong>Antes de registrar a alguien hace falta su consentimiento escrito y firmado.</strong>
+        Los datos de la cara son datos biométricos (Ley 25.326). La persona puede negarse sin consecuencias: el control de casco y chaleco funciona igual sin identificarla.
+        <a href="{{ url_for('admin.consentimiento') }}" target="_blank">Abrir el formulario de consentimiento para imprimir</a>.
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="table-responsive">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Fotos útiles</th>
+                    <th>Fecha de alta</th>
+                    <th>Registrada por</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in personas %}
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            <div class="user-avatar-sm"><i class="fa-solid fa-user"></i></div>
+                            <span>{{ p.nombre }}</span>
+                        </div>
+                    </td>
+                    <td>{{ p.fotos }}</td>
+                    <td class="text-muted">{{ p.alta[:10] if p.alta else '—' }}</td>
+                    <td class="text-muted">{{ p.por or '—' }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin.borrar_persona') }}" onsubmit="return confirm('¿Borrar los datos de reconocimiento de {{ p.nombre }}? No se puede deshacer.')">
+                            <input type="hidden" name="nombre" value="{{ p.nombre }}">
+                            <button type="submit" class="btn-icon btn-delete" title="Borrar" aria-label="Borrar a {{ p.nombre }}">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-muted">Todavía no hay personas registradas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL: REGISTRAR PERSONA -->
+<div class="modal-overlay" id="registro-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2><i class="fa-solid fa-user-plus"></i> Registrar persona</h2>
+            <button class="modal-close" aria-label="Cerrar" onclick="cerrarRegistro()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form method="POST" action="{{ url_for('admin.personas') }}" enctype="multipart/form-data" id="registro-form">
+            <div class="form-group">
+                <label for="reg-nombre">Nombre y apellido</label>
+                <div class="input-wrapper">
+                    <input type="text" id="reg-nombre" name="nombre" placeholder="Ej: María Gómez" required minlength="2" maxlength="60" autocomplete="off">
+                    <i class="fa-solid fa-user"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="reg-fotos">Fotos de la cara ({{ min_fotos }} a {{ max_fotos }})</label>
+                <input type="file" id="reg-fotos" name="fotos" accept="image/jpeg,image/png,image/webp" multiple required aria-describedby="reg-ayuda">
+                <p class="form-ayuda" id="reg-ayuda">De frente y de a una persona por foto, con buena luz, sin lentes oscuros ni gorra. Conviene variar un poco el ángulo y la expresión. Las fotos se usan para calcular los datos y después se descartan.</p>
+                <div class="reg-previas" id="reg-previas" aria-live="polite"></div>
+            </div>
+
+            <label class="reg-consentimiento">
+                <input type="checkbox" name="consentimiento" value="si" required>
+                <span>Tengo el <strong>consentimiento escrito y firmado</strong> de esta persona para registrar su cara.</span>
+            </label>
+
+            <p class="form-error" id="reg-error" role="alert"></p>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-action btn-cancel" onclick="cerrarRegistro()">Cancelar</button>
+                <button type="submit" class="btn-action btn-create" id="reg-enviar">
+                    <i class="fa-solid fa-check"></i> <span>Registrar</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .aviso-personas { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; margin-bottom: 18px; font-size: 0.9rem; line-height: 1.6; color: var(--text-muted); }
+    .aviso-personas i { color: var(--orange); font-size: 1.2rem; margin-top: 2px; }
+    .aviso-personas strong { color: var(--text); display: block; }
+    .aviso-personas a { color: var(--orange2); }
+    .aviso-error i { color: #F87171; }
+    #reg-fotos { width: 100%; padding: 10px; border: 1px dashed var(--border-hover); border-radius: var(--radius-sm); background: rgba(255,255,255,.03); color: var(--text); }
+    .form-ayuda { font-size: 0.8rem; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+    .reg-previas { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 10px; }
+    .reg-previas img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
+    .reg-consentimiento { display: flex; gap: 10px; align-items: flex-start; font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin: 6px 0 12px; cursor: pointer; }
+    .reg-consentimiento input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--orange); flex-shrink: 0; }
+    .reg-consentimiento strong { color: var(--text); }
+    .form-error { color: #F87171; font-size: 0.85rem; min-height: 1.2em; }
+</style>
+<script>
+    const MIN = {{ min_fotos }}, MAX = {{ max_fotos }};
+    const form = document.getElementById('registro-form');
+    const input = document.getElementById('reg-fotos');
+    const previas = document.getElementById('reg-previas');
+    const error = document.getElementById('reg-error');
+    const enviar = document.getElementById('reg-enviar');
+
+    function abrirRegistro() {
+        form.reset(); previas.innerHTML = ''; error.textContent = '';
+        document.getElementById('registro-modal').classList.add('visible');
+        document.getElementById('reg-nombre').focus();
+    }
+    function cerrarRegistro() { document.getElementById('registro-modal').classList.remove('visible'); }
+    document.getElementById('registro-modal').addEventListener('click', function (e) { if (e.target === this) cerrarRegistro(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarRegistro(); });
+
+    input.addEventListener('change', () => {
+        previas.innerHTML = '';
+        [...input.files].slice(0, MAX).forEach(f => {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(f); img.alt = 'Foto ' + f.name;
+            previas.appendChild(img);
+        });
+        error.textContent = input.files.length > MAX ? `Elegiste ${input.files.length} fotos: el máximo es ${MAX}.` : '';
+    });
+
+    // Achica cada foto a 960 px en el navegador: el servidor acepta hasta 2 MB por envío
+    async function achicar(archivo) {
+        const bmp = await createImageBitmap(archivo, { imageOrientation: 'from-image' });
+        const s = Math.min(1, 960 / Math.max(bmp.width, bmp.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        return new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.85));
+    }
+
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const archivos = [...input.files];
+        if (archivos.length < MIN || archivos.length > MAX) { error.textContent = `Elegí entre ${MIN} y ${MAX} fotos.`; return; }
+        enviar.disabled = true; error.textContent = '';
+        enviar.querySelector('span').textContent = 'Procesando…';
+        try {
+            const datos = new FormData();
+            datos.append('nombre', form.nombre.value);
+            datos.append('consentimiento', form.consentimiento.checked ? 'si' : '');
+            for (const [i, f] of archivos.entries()) datos.append('fotos', await achicar(f), `foto${i + 1}.jpg`);
+            const r = await fetch(form.action, { method: 'POST', body: datos });
+            if (r.status === 413) throw new Error('Las fotos pesan demasiado. Probá con menos fotos.');
+            location.href = r.url;  // el servidor redirige a esta página con el resultado
+        } catch (err) {
+            error.textContent = err.message.includes('decode') || err.name === 'InvalidStateError'
+                ? 'No se pudo leer una de las fotos. Usá JPG o PNG (las fotos HEIC del iPhone no funcionan).'
+                : (err.message || 'No se pudo enviar. Revisá la conexión.');
+            enviar.disabled = false; enviar.querySelector('span').textContent = 'Registrar';
+        }
+    });
+</script>
+{% endblock %}
