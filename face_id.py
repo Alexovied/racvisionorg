@@ -13,6 +13,7 @@ import glob
 import json
 import os
 import sys
+import threading
 from datetime import datetime
 
 import cv2
@@ -20,6 +21,7 @@ import numpy as np
 
 import data_store
 import face_detector
+import helmet_detector  # Core y dispositivo de OpenVINO
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE, "face_recognition_sface_2021dec.onnx")
@@ -36,6 +38,23 @@ if os.path.exists(MODEL_PATH):
         _sface = cv2.FaceRecognizerSF.create(MODEL_PATH, "")
     except cv2.error as e:
         print(f"[!] No se pudo cargar SFace ({e})")
+
+# La red de SFace corre con OpenVINO; alignCrop (alinear la cara) sigue en OpenCV
+_sface_ov, _sface_lock = None, threading.Lock()
+if _sface is not None and helmet_detector._core is not None:
+    try:
+        _sface_ov = helmet_detector._core.compile_model(MODEL_PATH, helmet_detector.DEVICE)
+    except Exception as e:
+        print(f"[!] SFace sigue con cv2.dnn ({e})")
+
+
+def _feature(alineada):
+    if _sface_ov is None:
+        return _sface.feature(alineada)
+    # Mismo preprocesamiento que FaceRecognizerSF.feature: 112x112, RGB, sin escalar
+    blob = cv2.dnn.blobFromImage(alineada, 1, (112, 112), (0, 0, 0), swapRB=True)
+    with _sface_lock:
+        return _sface_ov(blob)[0].copy()
 
 _cache = {"mtime": None, "personas": []}
 
@@ -117,7 +136,7 @@ def embedding(img):
     if caras is None or len(caras) == 0:
         return None
     cara = max(caras, key=lambda f: f[2] * f[3])
-    feat = _sface.feature(_sface.alignCrop(img, cara)).flatten()
+    feat = _feature(_sface.alignCrop(img, cara)).flatten()
     return feat / np.linalg.norm(feat)
 
 

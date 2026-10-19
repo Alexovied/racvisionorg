@@ -75,7 +75,7 @@ def imprimir(titulo, tabla, t):
 
 
 def main():
-    motor = "OpenVINO" if helmet_detector._core is not None else "cv2.dnn"
+    motor = getattr(helmet_detector, "motor", "cv2.dnn")
     print(f"Motor: {motor}")
     if not helmet_detector.disponible():
         print("Falta detector_casco.onnx")

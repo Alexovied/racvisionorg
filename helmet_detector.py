@@ -29,14 +29,21 @@ except Exception as e:  # sin OpenVINO se usa cv2.dnn
     _core = None
 
 
-def cargar_modelo(path):
-    """Compila el ONNX con OpenVINO en CPU; si no se puede, lo carga con cv2.dnn.
-    Devuelve (red, "OpenVINO" | "cv2.dnn"). cv2.dnn lanza cv2.error si el archivo no sirve."""
+# Dispositivo de OpenVINO: CPU (servidor) o GPU (gráfica integrada Intel), ver benchmark_inferencia.py
+DEVICE = os.environ.get("OPENVINO_DEVICE", "CPU")
+
+
+def cargar_modelo(path, int8=True, device=None):
+    """Compila el modelo con OpenVINO (la versión INT8 de cuantizar.py si existe); si no se
+    puede, carga el ONNX con cv2.dnn. Devuelve (red, "OpenVINO INT8" | "OpenVINO" | "cv2.dnn").
+    cv2.dnn lanza cv2.error si el archivo no sirve."""
     if _core is not None:
+        ir = path.replace(".onnx", "_int8.xml")
+        usar = ir if int8 and os.path.exists(ir) else path
         try:
-            return _core.compile_model(path, "CPU"), "OpenVINO"
+            return _core.compile_model(usar, device or DEVICE), "OpenVINO INT8" if usar == ir else "OpenVINO"
         except Exception as e:
-            print(f"[!] OpenVINO no pudo compilar {os.path.basename(path)} ({e}); se usa cv2.dnn")
+            print(f"[!] OpenVINO no pudo compilar {os.path.basename(usar)} ({e}); se usa cv2.dnn")
     return cv2.dnn.readNetFromONNX(path), "cv2.dnn"
 
 

@@ -117,9 +117,14 @@ def test_openvino_y_cv2_dan_las_mismas_detecciones():
     img = img if img is not None else np.random.default_rng(0).integers(0, 255, (480, 640, 3), dtype=np.uint8)
     cv_net = cv2.dnn.readNetFromONNX(helmet_detector.MODEL_PATH)
     a = helmet_detector.correr_yolo(cv_net, helmet_detector._lock, img, 2)
-    b = helmet_detector.correr_yolo(helmet_detector._net, helmet_detector._lock, img, 2)
+    fp32, _ = helmet_detector.cargar_modelo(helmet_detector.MODEL_PATH, int8=False)
+    b = helmet_detector.correr_yolo(fp32, helmet_detector._lock, img, 2)
     assert len(a) == len(b)
     assert np.allclose([bb for bb, _ in a], [bb for bb, _ in b], atol=3)
+    # INT8 (cuantizar.py): mismas cabezas y clases, cajas a menos del 1 % del tamaño de la foto
+    c = helmet_detector.correr_yolo(helmet_detector._net, helmet_detector._lock, img, 2)
+    assert [s.argmax() for _, s in a] == [s.argmax() for _, s in c]
+    assert np.allclose([bb for bb, _ in a], [bb for bb, _ in c], atol=0.01 * max(img.shape[:2]))
 
 
 def test_cargar_modelo_vuelve_a_cv2_si_openvino_falla(monkeypatch):

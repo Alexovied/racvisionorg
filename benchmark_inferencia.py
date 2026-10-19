@@ -1,4 +1,4 @@
-"""Latencia media por frame de los YOLO de casco y chaleco: cv2.dnn vs OpenVINO.
+"""Latencia media por frame de los YOLO de casco y chaleco: cv2.dnn vs OpenVINO (FP32 e INT8, CPU y GPU Intel).
 
 Uso: python benchmark_inferencia.py [carpeta_de_imagenes] [n_imagenes]
 Mide correr_yolo completo (letterbox + inferencia + NMS), como en producción.
@@ -44,15 +44,19 @@ def main():
     imgs = imagenes(carpeta, n)
     cpu = helmet_detector._core.get_property("CPU", "FULL_DEVICE_NAME") if helmet_detector._core else platform.processor()
     print(f"CPU: {cpu} | {len(imgs)} imágenes x 3 vueltas | OpenCV {cv2.__version__}")
+    devices = [d for d in ("CPU", "GPU") if d in helmet_detector._core.available_devices]
+    for d in devices[1:]:
+        print(f"{d}: {helmet_detector._core.get_property(d, 'FULL_DEVICE_NAME')}")
     for nombre, ruta in MODELOS.items():
         por_clase = nombre == "chaleco"
-        cv_ms = medir(cv2.dnn.readNetFromONNX(ruta), imgs, por_clase)
-        ov_net, motor = helmet_detector.cargar_modelo(ruta)
-        assert motor == "OpenVINO", "OpenVINO no está disponible"
-        ov_ms = medir(ov_net, imgs, por_clase)
-        print(f"{nombre:8s} cv2.dnn {cv_ms[0]:6.1f} ms (mediana {cv_ms[1]:.1f}) | "
-              f"OpenVINO {ov_ms[0]:6.1f} ms (mediana {ov_ms[1]:.1f}) | {cv_ms[0] / ov_ms[0]:.2f}x")
-
+        base = medir(cv2.dnn.readNetFromONNX(ruta), imgs, por_clase)
+        print(f"{nombre:8s} cv2.dnn          {base[0]:6.1f} ms (mediana {base[1]:.1f})")
+        for device in devices:
+            for int8 in (False, True):
+                net, motor = helmet_detector.cargar_modelo(ruta, int8=int8, device=device)
+                assert motor.startswith("OpenVINO"), "OpenVINO no está disponible"
+                ms = medir(net, imgs, por_clase)
+                print(f"{nombre:8s} {motor:13s} {device} {ms[0]:6.1f} ms (mediana {ms[1]:.1f}) | {base[0] / ms[0]:.2f}x")
 
 if __name__ == "__main__":
     main()
