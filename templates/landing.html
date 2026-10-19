@@ -75,7 +75,6 @@
         ::-webkit-scrollbar-track { background: var(--black); }
         ::-webkit-scrollbar-thumb { background: var(--orange); border-radius: 2px; }
         .progreso { position: fixed; top: 0; left: 0; height: 3px; width: 100%; background: var(--orange); transform-origin: 0 50%; transform: scaleX(0); z-index: 120; }
-        .ia-nota { font-size: 10.5px; letter-spacing: 1px; color: rgba(255,255,255,.78); text-transform: uppercase; }
 
         /* ═══════════ NAV ═══════════ */
         nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between;
@@ -170,7 +169,6 @@
         .alerta-panel small { display: block; font-size: 10px; letter-spacing: 2px; color: #fca5a5; text-transform: uppercase; margin-bottom: 4px; }
         .alerta-panel strong { display: block; font-size: clamp(11px, 1.3vw, 16px); font-weight: 900; color: var(--red); text-transform: uppercase; line-height: 1.2; }
         .alerta-panel span { display: block; font-size: 11px; color: #d0d0d0; margin-top: 6px; }
-        .escena-nota { position: absolute; left: 3%; bottom: 4%; z-index: 4; }
         .pasos { position: absolute; left: var(--pad); top: 50%; transform: translateY(-50%); z-index: 5; width: min(360px, 30vw); }
         .paso { background: rgba(7,7,7,.74); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 20px 22px; border-left: 3px solid var(--orange); }
         .paso .num { font-size: 11px; font-weight: 800; letter-spacing: 3px; color: var(--orange); margin-bottom: 10px; }
@@ -220,7 +218,6 @@
         .retrato-inner { position: relative; z-index: 1; max-width: 1300px; margin: 0 auto; padding: 0 var(--pad); display: grid; grid-template-columns: .9fr 1.1fr; gap: clamp(30px, 6vw, 90px); align-items: center; }
         .retrato-foto { position: relative; max-width: 460px; width: 100%; justify-self: center; }
         .retrato-foto img { width: 100%; height: auto; }
-        .retrato-foto .ia-nota { position: absolute; left: 12px; bottom: 10px; }
         .retrato-texto h2 { font-size: clamp(32px, 5vw, 72px); font-weight: 900; text-transform: uppercase; line-height: .98; letter-spacing: -2px; margin-bottom: 22px; }
         .retrato-texto h2 span { color: var(--orange); }
         .retrato-texto p { font-size: 15px; color: #c4c4c4; line-height: 1.8; max-width: 520px; }
@@ -366,7 +363,6 @@
             .det .corto { display: inline; }
             .alerta-panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; border-left-width: 3px; padding: 6px 10px; }
             .alerta-panel small { display: none; }
-            .escena-nota { top: 3%; bottom: auto; }
             .pipeline-grid, .contact-inner { grid-template-columns: 1fr; }
             th, td { padding: 10px 6px; font-size: 12px; }
             th { font-size: 9.5px; letter-spacing: 1px; }
@@ -467,7 +463,6 @@
                 {% if en %}<strong>Alert: missing hard hat and vest</strong>{% else %}<strong>Alerta: sin casco ni chaleco</strong>{% endif %}
                 {% if en %}<span>2 people · photo saved to audit log</span>{% else %}<span>2 personas · foto guardada en auditoría</span>{% endif %}
             </div>
-            <span class="escena-nota ia-nota">{% if en %}Illustrative scene generated with AI{% else %}Escena ilustrativa generada con IA{% endif %}</span>
         </div>
         <div class="pasos">
             <div class="paso">
@@ -520,7 +515,7 @@
                 <div class="txt">{% if en %}happened in accidents whose main PPE is the hard hat or the vest (310 of 533).{% else %}ocurrió en accidentes cuyo EPP principal es el casco o el chaleco (310 de 533).{% endif %}</div>
             </div>
         </div>
-        <p class="fuente reveal">{% if en %}Source: Osinergmin (Peru's mining regulator), <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, table 3.3 (medium and large-scale mining in Peru, 2007 to June 2025). Assigning one main PPE item to each accident type is our team's own calculation, based on Fundación UOCRA. Background image generated with AI.{% else %}Fuente: Osinergmin, <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, cuadro 3.3 (mediana y gran minería del Perú, 2007 a junio de 2025). La asignación de un EPP principal por tipo de accidente es cálculo propio del equipo, según la Fundación UOCRA. Imagen de fondo generada con IA.{% endif %}</p>
+        <p class="fuente reveal">{% if en %}Source: Osinergmin (Peru's mining regulator), <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, table 3.3 (medium and large-scale mining in Peru, 2007 to June 2025). Assigning one main PPE item to each accident type is our team's own calculation, based on Fundación UOCRA.{% else %}Fuente: Osinergmin, <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, cuadro 3.3 (mediana y gran minería del Perú, 2007 a junio de 2025). La asignación de un EPP principal por tipo de accidente es cálculo propio del equipo, según la Fundación UOCRA.{% endif %}</p>
     </section>
 </div>
 
@@ -554,7 +549,6 @@
     <div class="retrato-inner">
         <div class="retrato-foto">
             <img src="{{ url_for('static', filename='img3d/retrato.webp') }}" {% if en %}alt="Portrait of a miner wearing a hard hat and a high-visibility vest"{% else %}alt="Retrato de un minero con casco y chaleco reflectante"{% endif %} width="720" height="964" loading="lazy">
-            {% if en %}<span class="ia-nota">Image generated with AI</span>{% else %}<span class="ia-nota">Imagen generada con IA</span>{% endif %}
         </div>
         <div class="retrato-texto">
             <div class="section-label reveal"><div class="line"></div>{% if en %}<span>Why we do it</span>{% else %}<span>Por qué lo hacemos</span>{% endif %}</div>
