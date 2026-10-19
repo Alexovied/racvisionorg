@@ -286,6 +286,13 @@ def consentimiento():
     return render_template("admin/consentimiento.html")
 
 
+@admin_bp.route("/personas/contrato")
+@login_required
+@admin_required
+def contrato():
+    return render_template("admin/contrato.html")
+
+
 # ═══════════════════════════════════════
 #  CAMERAS MANAGEMENT
 # ═══════════════════════════════════════
