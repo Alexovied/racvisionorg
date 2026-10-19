@@ -1,17 +1,20 @@
-<!DOCTYPE html>
-<html lang="es">
+{% set en = (lang == "en") %}<!DOCTYPE html>
+<html lang="{{ "en" if en else "es" }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAC Vision — Detección de casco y chaleco con IA | Seguridad industrial</title>
-    <link rel="canonical" href="https://racvision.org/">
+    <title>{% if en %}RAC Vision — AI hard hat and vest detection | Industrial safety{% else %}RAC Vision — Detección de casco y chaleco con IA | Seguridad industrial{% endif %}</title>
+    <link rel="canonical" href="https://racvision.org/{% if en %}?lang=en{% endif %}">
+    <link rel="alternate" hreflang="es" href="https://racvision.org/?lang=es">
+    <link rel="alternate" hreflang="en" href="https://racvision.org/?lang=en">
+    <link rel="alternate" hreflang="x-default" href="https://racvision.org/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="RAC Vision">
     <meta property="og:title" content="RAC Vision — Detección de casco y chaleco con IA">
     <meta property="og:description" content="Sistema de visión con inteligencia artificial que detecta en tiempo real a personas sin casco o sin chaleco reflectante y avisa al instante. Hecho en Buenos Aires.">
     <meta property="og:url" content="https://racvision.org/">
     <meta property="og:image" content="https://racvision.org/static/og-image.png">
-    <meta property="og:locale" content="es_AR">
+    <meta property="og:locale" content="{{ "en_US" if en else "es_AR" }}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content="https://racvision.org/static/og-image.png">
     <script type="application/ld+json">
@@ -36,7 +39,7 @@
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" type="image/png" sizes="96x96" href="/static/favicon-96.png">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <meta name="description" content="RAC Vision detecta con inteligencia artificial, en tiempo real, a trabajadores sin casco o sin chaleco reflectante, los identifica y alerta al instante con foto. Corre en CPU Intel con OpenVINO, sin GPU. Hecho en Buenos Aires.">
+    <meta name="description" content="{% if en %}RAC Vision uses AI to detect, in real time, workers without a hard hat or high-visibility vest, identifies them and alerts instantly with a photo. Runs on Intel CPUs with OpenVINO, no GPU. Made in Buenos Aires.{% else %}RAC Vision detecta con inteligencia artificial, en tiempo real, a trabajadores sin casco o sin chaleco reflectante, los identifica y alerta al instante con foto. Corre en CPU Intel con OpenVINO, sin GPU. Hecho en Buenos Aires.{% endif %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preload" as="image" href="{{ url_for('static', filename='img3d/tunel.webp') }}" media="(min-width: 721px)">
@@ -75,6 +78,8 @@
         /* ═══════════ NAV ═══════════ */
         nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between;
               padding: 0 var(--pad); height: 72px; background: linear-gradient(180deg, rgba(13,13,13,.85), rgba(13,13,13,0)); transition: background .3s; }
+        nav { transition: background .3s, transform .4s ease, opacity .4s ease; }
+        nav.arriba { transform: translateY(-100%); opacity: 0; pointer-events: none; }
         nav.solida { background: rgba(13,13,13,.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
         .nav-logo { display: flex; align-items: center; gap: 14px; text-decoration: none; }
         .nav-logo img { height: 32px; width: auto; }
@@ -85,6 +90,11 @@
         .nav-links a::after { content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 2px; background: var(--orange); transform: scaleX(0); transition: transform .2s; }
         .nav-links a:hover { color: var(--white); }
         .nav-links a:hover::after { transform: scaleX(1); }
+        .nav-ajustes { display: flex; gap: 8px; }
+        .nav-chip { font-family: inherit; font-size: 11px !important; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #cfcfcf;
+                    background: transparent; border: 1px solid #3a3a3a; padding: 8px 12px; min-height: 36px; white-space: nowrap; border-radius: 2px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+        .nav-chip::after { display: none !important; }
+        .nav-chip:hover { border-color: var(--white); color: var(--white); }
         .nav-cta { background: var(--orange); color: var(--white) !important; padding: 10px 22px; border-radius: 2px; }
         .nav-cta::after { display: none; }
         .nav-cta:hover { background: var(--orange2); }
@@ -120,8 +130,8 @@
         .intro-sub { font-size: clamp(14px, 1.4vw, 17px); line-height: 1.7; color: #d0d0d0; max-width: 560px; margin-bottom: 30px; }
         .intro-acciones { display: flex; gap: 14px; flex-wrap: wrap; }
         .js-anim .intro-texto { opacity: 0; }
-        .intro-lema { position: absolute; left: var(--pad); right: var(--pad); bottom: 16%; text-align: center; font-size: 11px; font-weight: 700;
-                      letter-spacing: 6px; text-transform: uppercase; color: #cfcfcf; display: none; }
+        .intro-lema { position: absolute; left: var(--pad); right: var(--pad); bottom: 16%; text-align: center; font-size: clamp(12px, 1.3vw, 16px); font-weight: 800;
+                      letter-spacing: 7px; text-transform: uppercase; color: #cfcfcf; display: none; }
         .js-anim .intro-lema { display: block; animation: aparecer 1s .5s both; }
         .js-anim .deslizar { animation: aparecer 1s .9s both; }
         @keyframes aparecer { from { opacity: 0; transform: translateY(14px); } }
@@ -309,6 +319,7 @@
                                 font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; }
 
         /* ═══════════ RESPONSIVE ═══════════ */
+        @media (max-width: 1300px) { .nav-logo-divider, .nav-logo-tagline { display: none; } }
         @media (max-width: 1100px) {
             .nav-toggle { display: inline-flex; align-items: center; justify-content: center; }
             .nav-links { position: fixed; top: 72px; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 0; background: rgba(13,13,13,.98);
@@ -316,6 +327,8 @@
             .nav-links.abierto { display: flex; }
             .nav-links li a { display: block; padding: 16px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
             .nav-links li:last-child a { border-bottom: none; margin-top: 14px; text-align: center; }
+            .nav-links li.nav-ajustes { padding-top: 14px; }
+            .nav-links li.nav-ajustes .nav-chip, .nav-links li.nav-ajustes a.nav-chip { flex: 1; display: flex; justify-content: center; border-bottom: 1px solid #3a3a3a; padding: 10px; }
             .nav-links a::after { display: none; }
             .pipeline-grid { grid-template-columns: repeat(3, 1fr); row-gap: 40px; }
             .pipe-linea { display: none; }
@@ -353,6 +366,17 @@
             .footer-inner { flex-direction: column; text-align: center; }
             .aviso-cookies { flex-direction: column; align-items: stretch; }
         }
+        /* Sin efectos: hero normal, pasos debajo de la escena y galería en columna */
+        html:not(.js-anim) .intro-mascara { display: none; }
+        html:not(.js-anim) .intro-lema { display: block; top: 96px; bottom: auto; }
+        html:not(.js-anim) .deslizar { display: none; }
+        html:not(.js-anim) .escena-pin { justify-content: flex-start; min-height: 0; }
+        html:not(.js-anim) .pasos { position: relative; left: auto; top: auto; transform: none; width: auto; max-width: 1300px; margin: 0 auto;
+                                    padding: 30px var(--pad) 70px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        html:not(.js-anim) .paso + .paso { margin-top: 0; }
+        html:not(.js-anim) .galeria-track { width: auto; flex-direction: column; }
+        html:not(.js-anim) .panel { width: 100%; height: auto; min-height: 0; }
+        @media (max-width: 900px) { html:not(.js-anim) .pasos { grid-template-columns: 1fr; } }
         @media (prefers-reduced-motion: reduce) {
             .dot-live { animation: none; }
         }
@@ -366,20 +390,25 @@
     <a href="/" class="nav-logo">
         <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision" width="96" height="32">
         <div class="nav-logo-divider"></div>
-        <span class="nav-logo-tagline">Seguridad Industrial</span>
+        {% if en %}<span class="nav-logo-tagline">Industrial Safety</span>{% else %}<span class="nav-logo-tagline">Seguridad Industrial</span>{% endif %}
     </a>
-    <button class="nav-toggle" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="menu">
+    <button class="nav-toggle" type="button" {% if en %}aria-label="Open menu"{% else %}aria-label="Abrir menú"{% endif %} aria-expanded="false" aria-controls="menu">
         <span></span><span></span><span></span>
     </button>
     <ul class="nav-links" id="menu">
-        <li><a href="#escena">Cómo actúa</a></li>
-        <li><a href="#problema">El problema</a></li>
-        <li><a href="#solucion">Solución</a></li>
-        <li><a href="#resultados">Resultados</a></li>
-        <li><a href="#contacto">Contacto</a></li>
-        <li><a href="/app" class="nav-cta"><i class="fa-solid fa-play"></i> &nbsp;Demo en vivo</a></li>
+        <li>{% if en %}<a href="#escena">How it works</a>{% else %}<a href="#escena">Cómo actúa</a>{% endif %}</li>
+        <li>{% if en %}<a href="#problema">The problem</a>{% else %}<a href="#problema">El problema</a>{% endif %}</li>
+        <li>{% if en %}<a href="#solucion">Solution</a>{% else %}<a href="#solucion">Solución</a>{% endif %}</li>
+        <li>{% if en %}<a href="#resultados">Results</a>{% else %}<a href="#resultados">Resultados</a>{% endif %}</li>
+        <li>{% if en %}<a href="#contacto">Contact</a>{% else %}<a href="#contacto">Contacto</a>{% endif %}</li>
+        <li class="nav-ajustes">
+            <a href="?lang={{ "es" if en else "en" }}" class="nav-chip" hreflang="{{ "es" if en else "en" }}" lang="{{ "es" if en else "en" }}">{{ "ES" if en else "EN" }}</a>
+            <button type="button" class="nav-chip efectos-btn" aria-pressed="true" data-on="{{ "Effects: on" if en else "Efectos: sí" }}" data-off="{{ "Effects: off" if en else "Efectos: no" }}">{{ "Effects: on" if en else "Efectos: sí" }}</button>
+        </li>
+        <li><a href="/app" class="nav-cta"><i class="fa-solid fa-play"></i> {% if en %}&nbsp;Live demo</a>{% else %}&nbsp;Demo en vivo</a>{% endif %}</li>
     </ul>
 </nav>
+<script>document.getElementById('navbar').classList.toggle('arriba', scrollY < 40);</script>
 
 <!-- ═══════════ 1. INTRO ═══════════ -->
 <header class="intro">
@@ -400,17 +429,17 @@
         <rect class="intro-tapa" width="1600" height="900" fill="#0d0d0d" mask="url(#mascara-rac)"/>
     </svg>
     <div class="intro-velo"></div>
-    <p class="intro-lema" aria-hidden="true">Visión artificial para que todos vuelvan a casa</p>
+    <p class="intro-lema">Prevention changes everything</p>
     <div class="intro-texto">
-        <div class="eyebrow"><div class="line"></div><span>IA · Seguridad industrial · Minería</span></div>
-        <h1>Nadie entra sin casco<br>ni <span class="accent">chaleco.</span></h1>
-        <p class="intro-sub">RAC Vision usa una cámara común y detecta en tiempo real a quien no lleva casco o chaleco reflectante. Avisa al instante y deja registro con foto. Corre en un procesador Intel común, sin placa de video.</p>
+        <div class="eyebrow"><div class="line"></div>{% if en %}<span>AI · Industrial safety · Mining</span>{% else %}<span>IA · Seguridad industrial · Minería</span>{% endif %}</div>
+        {% if en %}<h1>No one goes in<br>without <span class="accent">PPE.</span></h1>{% else %}<h1>Nadie entra sin casco<br>ni <span class="accent">chaleco.</span></h1>{% endif %}
+        <p class="intro-sub">{% if en %}RAC Vision uses an ordinary camera to detect, in real time, anyone without a hard hat or high-visibility vest. It alerts instantly and keeps a photo record. It runs on a standard Intel processor, no graphics card needed.{% else %}RAC Vision usa una cámara común y detecta en tiempo real a quien no lleva casco o chaleco reflectante. Avisa al instante y deja registro con foto. Corre en un procesador Intel común, sin placa de video.{% endif %}</p>
         <div class="intro-acciones">
-            <a href="/app" class="btn-primary-lg"><i class="fa-solid fa-circle-play"></i> Probar demo en vivo</a>
-            <a href="#escena" class="btn-outline-lg"><i class="fa-solid fa-arrow-down"></i> Ver cómo actúa</a>
+            <a href="/app" class="btn-primary-lg"><i class="fa-solid fa-circle-play">{% if en %}</i> Try the live demo</a>{% else %}</i> Probar demo en vivo</a>{% endif %}
+            <a href="#escena" class="btn-outline-lg"><i class="fa-solid fa-arrow-down">{% if en %}</i> See how it works</a>{% else %}</i> Ver cómo actúa</a>{% endif %}
         </div>
     </div>
-    <div class="deslizar" aria-hidden="true">Deslizá<i></i></div>
+    <div class="deslizar" aria-hidden="true">{% if en %}Scroll<i></i>{% else %}Deslizá<i></i>{% endif %}</div>
 </header>
 
 <!-- ═══════════ 2. ESCENA ═══════════ -->
@@ -419,39 +448,39 @@
         <div class="escena-frame">
             <picture>
                 <source media="(max-width: 720px)" srcset="{{ url_for('static', filename='img3d/escena-m.webp') }}">
-                <img class="escena-img" src="{{ url_for('static', filename='img3d/escena.webp') }}" alt="Tres mineros caminan por un túnel: uno con casco y chaleco, otro con casco y sin chaleco, y otro sin casco" width="1376" height="768" loading="lazy">
+                <img class="escena-img" src="{{ url_for('static', filename='img3d/escena.webp') }}" {% if en %}alt="Three miners walk through a tunnel: one with hard hat and vest, one with hard hat and no vest, and one without a hard hat"{% else %}alt="Tres mineros caminan por un túnel: uno con casco y chaleco, otro con casco y sin chaleco, y otro sin casco"{% endif %} width="1376" height="768" loading="lazy">
             </picture>
             <div class="scan" aria-hidden="true"></div>
-            <div class="det ok det-1" aria-hidden="true"><b><span class="largo">Casco OK · Chaleco OK</span><span class="corto">Todo OK</span></b></div>
-            <div class="det medio det-2" aria-hidden="true"><b>Sin chaleco</b></div>
-            <div class="det mal det-3" aria-hidden="true"><b>Sin casco</b></div>
+            <div class="det ok det-1" aria-hidden="true"><b>{% if en %}<span class="largo">Hard hat OK · Vest OK</span><span class="corto">All OK</span>{% else %}<span class="largo">Casco OK · Chaleco OK</span><span class="corto">Todo OK</span>{% endif %}</b></div>
+            <div class="det medio det-2" aria-hidden="true">{% if en %}<b>No vest</b>{% else %}<b>Sin chaleco</b>{% endif %}</div>
+            <div class="det mal det-3" aria-hidden="true">{% if en %}<b>No hard hat</b>{% else %}<b>Sin casco</b>{% endif %}</div>
             <div class="alerta-panel" aria-hidden="true">
-                <small>Estado de seguridad</small>
-                <strong>Alerta: sin casco ni chaleco</strong>
-                <span>2 personas · foto guardada en auditoría</span>
+                {% if en %}<small>Safety status</small>{% else %}<small>Estado de seguridad</small>{% endif %}
+                {% if en %}<strong>Alert: missing hard hat and vest</strong>{% else %}<strong>Alerta: sin casco ni chaleco</strong>{% endif %}
+                {% if en %}<span>2 people · photo saved to audit log</span>{% else %}<span>2 personas · foto guardada en auditoría</span>{% endif %}
             </div>
-            <span class="escena-nota ia-nota">Escena ilustrativa generada con IA</span>
+            <span class="escena-nota ia-nota">{% if en %}Illustrative scene generated with AI{% else %}Escena ilustrativa generada con IA{% endif %}</span>
         </div>
         <div class="pasos">
             <div class="paso">
-                <div class="num">01 — La cámara mira</div>
-                <h2>Un turno cualquiera.</h2>
-                <p>Tres trabajadores entran al túnel. Nadie controla a cada uno: el supervisor no puede estar en todos lados.</p>
+                <div class="num">{% if en %}01 — The camera watches{% else %}01 — La cámara mira{% endif %}</div>
+                {% if en %}<h2>An ordinary shift.</h2>{% else %}<h2>Un turno cualquiera.</h2>{% endif %}
+                <p>{% if en %}Three workers walk into the tunnel. No one checks each of them: a supervisor cannot be everywhere.{% else %}Tres trabajadores entran al túnel. Nadie controla a cada uno: el supervisor no puede estar en todos lados.{% endif %}</p>
             </div>
             <div class="paso">
-                <div class="num">02 — La IA analiza</div>
-                <h2>Cada frame, en 113 ms.</h2>
-                <p>RAC Vision encuentra cada cabeza y cada torso, aunque la persona esté de espaldas o no se le vea la cara.</p>
+                <div class="num">{% if en %}02 — The AI analyzes{% else %}02 — La IA analiza{% endif %}</div>
+                {% if en %}<h2>Every frame, in 113 ms.</h2>{% else %}<h2>Cada frame, en 113 ms.</h2>{% endif %}
+                <p>{% if en %}RAC Vision finds every head and every torso, even if the person faces away or their face is not visible.{% else %}RAC Vision encuentra cada cabeza y cada torso, aunque la persona esté de espaldas o no se le vea la cara.{% endif %}</p>
             </div>
             <div class="paso">
-                <div class="num">03 — Casco y chaleco por separado</div>
-                <h2>Uno cumple. Dos no.</h2>
-                <p>A uno le falta el chaleco y a otro el casco. El sistema confirma con varios frames antes de avisar, para no alertar por un frame dudoso.</p>
+                <div class="num">{% if en %}03 — Hard hat and vest, separately{% else %}03 — Casco y chaleco por separado{% endif %}</div>
+                {% if en %}<h2>One complies. Two don't.</h2>{% else %}<h2>Uno cumple. Dos no.</h2>{% endif %}
+                <p>{% if en %}One is missing a vest and another a hard hat. The system confirms over several frames before alerting, so a single doubtful frame does not trigger an alarm.{% else %}A uno le falta el chaleco y a otro el casco. El sistema confirma con varios frames antes de avisar, para no alertar por un frame dudoso.{% endif %}</p>
             </div>
             <div class="paso">
-                <div class="num">04 — Alerta con registro</div>
-                <h2>Aviso al instante.</h2>
-                <p>La alerta aparece en pantalla, puede encender una alarma física y queda guardada con foto, persona y hora.</p>
+                <div class="num">{% if en %}04 — Alert with a record{% else %}04 — Alerta con registro{% endif %}</div>
+                {% if en %}<h2>Instant alert.</h2>{% else %}<h2>Aviso al instante.</h2>{% endif %}
+                <p>{% if en %}The alert shows on screen, can trigger a physical alarm and is saved with a photo, the person and the time.{% else %}La alerta aparece en pantalla, puede encender una alarma física y queda guardada con foto, persona y hora.{% endif %}</p>
             </div>
         </div>
     </div>
@@ -466,63 +495,63 @@
         </picture>
     </div>
     <section>
-        <div class="section-label reveal"><div class="line"></div><span>El problema</span></div>
+        <div class="section-label reveal"><div class="line"></div>{% if en %}<span>The problem</span>{% else %}<span>El problema</span>{% endif %}</div>
         <div class="gran-num" data-contar="533">533</div>
-        <p class="gran-num-txt reveal">trabajadores murieron en la minería del Perú entre 2007 y 2025. <span>Casi 6 de cada 10</span>, en accidentes ligados al casco o al chaleco.</p>
+        <p class="gran-num-txt reveal">{% if en %}workers died in Peruvian mining between 2007 and 2025. <span>Almost 6 in 10</span> died in accidents linked to hard hats or vests.{% else %}trabajadores murieron en la minería del Perú entre 2007 y 2025. <span>Casi 6 de cada 10</span>, en accidentes ligados al casco o al chaleco.{% endif %}</p>
         <div class="prob-grid">
             <div class="prob reveal">
                 <div class="num"><span data-contar="28">28</span>%</div>
-                <div class="txt">murió por caída o desprendimiento de rocas: 149 personas, la primera causa.</div>
+                <div class="txt">{% if en %}died from falling rock: 149 people, the leading cause.{% else %}murió por caída o desprendimiento de rocas: 149 personas, la primera causa.{% endif %}</div>
             </div>
             <div class="prob reveal">
                 <div class="num"><span data-contar="7.5" data-decimales="1">7,5</span>%</div>
-                <div class="txt">murió atropellado o golpeado por vehículos, donde se exige ropa de alta visibilidad.</div>
+                <div class="txt">{% if en %}were hit or run over by vehicles, where high-visibility clothing is required.{% else %}murió atropellado o golpeado por vehículos, donde se exige ropa de alta visibilidad.{% endif %}</div>
             </div>
             <div class="prob reveal">
                 <div class="num"><span data-contar="58">58</span>%</div>
-                <div class="txt">ocurrió en accidentes cuyo EPP principal es el casco o el chaleco (310 de 533).</div>
+                <div class="txt">{% if en %}happened in accidents whose main PPE is the hard hat or the vest (310 of 533).{% else %}ocurrió en accidentes cuyo EPP principal es el casco o el chaleco (310 de 533).{% endif %}</div>
             </div>
         </div>
-        <p class="fuente reveal">Fuente: Osinergmin, <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, cuadro 3.3 (mediana y gran minería del Perú, 2007 a junio de 2025). La asignación de un EPP principal por tipo de accidente es cálculo propio del equipo, según la Fundación UOCRA. Imagen de fondo generada con IA.</p>
+        <p class="fuente reveal">{% if en %}Source: Osinergmin (Peru's mining regulator), <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, table 3.3 (medium and large-scale mining in Peru, 2007 to June 2025). Assigning one main PPE item to each accident type is our team's own calculation, based on Fundación UOCRA. Background image generated with AI.{% else %}Fuente: Osinergmin, <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, cuadro 3.3 (mediana y gran minería del Perú, 2007 a junio de 2025). La asignación de un EPP principal por tipo de accidente es cálculo propio del equipo, según la Fundación UOCRA. Imagen de fondo generada con IA.{% endif %}</p>
     </section>
 </div>
 
 <!-- ═══════════ 4. CASOS REALES ═══════════ -->
 <div id="casos">
     <section>
-        <div class="section-label reveal"><div class="line"></div><span>Casos reales de 2025</span></div>
-        <h2 class="section-title reveal">Detrás de cada<br>número, una persona.</h2>
+        <div class="section-label reveal"><div class="line"></div>{% if en %}<span>Real cases from 2025</span>{% else %}<span>Casos reales de 2025</span>{% endif %}</div>
+        <h2 class="section-title reveal">{% if en %}Behind every<br>number, a person.{% else %}Detrás de cada<br>número, una persona.{% endif %}</h2>
         <div class="casos-grid">
             <article class="caso reveal">
-                <div class="fecha">22 de abril de 2025 · Áncash, Perú</div>
-                <h3>Una camioneta en la rampa del tajo.</h3>
-                <p>Un gerente de operaciones de 46 años bajaba en camioneta por una rampa. En una curva, un camión minero invadió su carril y la aplastó. El operador del camión solo sintió "un bache".</p>
-                <p class="falto"><strong>Qué faltó:</strong> bermas de seguridad, ancho de vía suficiente, coordinación por radio y elementos de alta visibilidad en el vehículo.</p>
+                <div class="fecha">{% if en %}April 22, 2025 · Áncash, Peru{% else %}22 de abril de 2025 · Áncash, Perú{% endif %}</div>
+                {% if en %}<h3>A pickup on the pit ramp.</h3>{% else %}<h3>Una camioneta en la rampa del tajo.</h3>{% endif %}
+                <p>{% if en %}A 46-year-old operations manager was driving a pickup down a ramp. On a curve, a haul truck crossed into his lane and crushed it. The truck operator only felt "a bump".{% else %}Un gerente de operaciones de 46 años bajaba en camioneta por una rampa. En una curva, un camión minero invadió su carril y la aplastó. El operador del camión solo sintió "un bache".{% endif %}</p>
+                <p class="falto">{% if en %}<strong>What was missing:</strong> safety berms, enough road width, radio coordination and high-visibility elements on the vehicle.{% else %}<strong>Qué faltó:</strong> bermas de seguridad, ancho de vía suficiente, coordinación por radio y elementos de alta visibilidad en el vehículo.{% endif %}</p>
             </article>
             <article class="caso reveal">
-                <div class="fecha">28 de mayo de 2025 · Arequipa, Perú</div>
-                <h3>Una roca en una chimenea.</h3>
-                <p>Un ayudante perforista de 32 años colocaba una tabla en una zona sin guardacabeza. Una roca de unos 70 cm se desprendió del techo y lo golpeó en la cabeza.</p>
-                <p class="falto"><strong>Qué faltó:</strong> sostenimiento sobre su zona de trabajo y un estudio geomecánico previo. El casco solo no alcanzaba frente a una roca de ese tamaño.</p>
+                <div class="fecha">{% if en %}May 28, 2025 · Arequipa, Peru{% else %}28 de mayo de 2025 · Arequipa, Perú{% endif %}</div>
+                {% if en %}<h3>A rock in a raise.</h3>{% else %}<h3>Una roca en una chimenea.</h3>{% endif %}
+                <p>{% if en %}A 32-year-old driller's helper was placing a board in an area with no overhead protection. A rock about 70 cm long fell from the roof and hit him on the head.{% else %}Un ayudante perforista de 32 años colocaba una tabla en una zona sin guardacabeza. Una roca de unos 70 cm se desprendió del techo y lo golpeó en la cabeza.{% endif %}</p>
+                <p class="falto">{% if en %}<strong>What was missing:</strong> ground support over his work area and a prior geomechanical study. A hard hat alone was not enough against a rock that size.{% else %}<strong>Qué faltó:</strong> sostenimiento sobre su zona de trabajo y un estudio geomecánico previo. El casco solo no alcanzaba frente a una roca de ese tamaño.{% endif %}</p>
             </article>
         </div>
-        <div class="aviso reveal"><strong>Lo decimos con honestidad:</strong> RAC Vision controla que el casco y el chaleco se usen. No reemplaza el sostenimiento, la medición de gases ni los procedimientos, que fueron la causa de fondo en estos casos. Es una capa más de prevención, no la única.</div>
-        <p class="fuente reveal">Fuente: Osinergmin, <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, casos 03-2025 y 05-2025. Sin nombres, por respeto a las víctimas y sus familias.</p>
+        <div class="aviso reveal">{% if en %}<strong>To be honest:</strong> RAC Vision checks that hard hats and vests are worn. It does not replace ground support, gas monitoring or procedures, which were the root causes in these cases. It is one more layer of prevention, not the only one.{% else %}<strong>Lo decimos con honestidad:</strong> RAC Vision controla que el casco y el chaleco se usen. No reemplaza el sostenimiento, la medición de gases ni los procedimientos, que fueron la causa de fondo en estos casos. Es una capa más de prevención, no la única.{% endif %}</div>
+        <p class="fuente reveal">{% if en %}Source: Osinergmin, <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, cases 03-2025 and 05-2025. No names, out of respect for the victims and their families.{% else %}Fuente: Osinergmin, <em>Compendio Ilustrativo de Accidentes Mortales 2025-I</em>, casos 03-2025 y 05-2025. Sin nombres, por respeto a las víctimas y sus familias.{% endif %}</p>
     </section>
 </div>
 
 <!-- ═══════════ 5. RETRATO ═══════════ -->
 <div class="retrato">
-    <div class="marquesina" aria-hidden="true">Volver a casa · Volver a casa · Volver a casa ·</div>
+    <div class="marquesina" aria-hidden="true">{% if en %}Home safe · Home safe · Home safe · Home safe ·{% else %}Volver a casa · Volver a casa · Volver a casa ·{% endif %}</div>
     <div class="retrato-inner">
         <div class="retrato-foto">
-            <img src="{{ url_for('static', filename='img3d/retrato.webp') }}" alt="Retrato de un minero con casco y chaleco reflectante" width="720" height="964" loading="lazy">
-            <span class="ia-nota">Imagen generada con IA</span>
+            <img src="{{ url_for('static', filename='img3d/retrato.webp') }}" {% if en %}alt="Portrait of a miner wearing a hard hat and a high-visibility vest"{% else %}alt="Retrato de un minero con casco y chaleco reflectante"{% endif %} width="720" height="964" loading="lazy">
+            {% if en %}<span class="ia-nota">Image generated with AI</span>{% else %}<span class="ia-nota">Imagen generada con IA</span>{% endif %}
         </div>
         <div class="retrato-texto">
-            <div class="section-label reveal"><div class="line"></div><span>Por qué lo hacemos</span></div>
-            <h2 class="reveal">Que todos<br><span>vuelvan a casa.</span></h2>
-            <p class="reveal">El EPP funciona solo si se usa todo el tiempo. Un control a ojo es intermitente y no deja registro. RAC Vision mira sin cansarse, avisa en el momento y le da al responsable de seguridad la información para corregir antes de que haya un accidente.</p>
+            <div class="section-label reveal"><div class="line"></div>{% if en %}<span>Why we do it</span>{% else %}<span>Por qué lo hacemos</span>{% endif %}</div>
+            <h2 class="reveal">{% if en %}Everyone<br><span>gets home safe.</span>{% else %}Que todos<br><span>vuelvan a casa.</span>{% endif %}</h2>
+            <p class="reveal">{% if en %}PPE only works if it is worn all the time. Checking by eye is intermittent and leaves no record. RAC Vision watches without getting tired, alerts on the spot and gives the safety officer the information to correct things before an accident happens.{% else %}El EPP funciona solo si se usa todo el tiempo. Un control a ojo es intermitente y no deja registro. RAC Vision mira sin cansarse, avisa en el momento y le da al responsable de seguridad la información para corregir antes de que haya un accidente.{% endif %}</p>
         </div>
     </div>
 </div>
@@ -530,45 +559,45 @@
 <!-- ═══════════ 6. GALERÍA: SOLUCIÓN ═══════════ -->
 <div class="galeria" id="solucion">
     <div class="galeria-cabecera">
-        <div class="section-label reveal"><div class="line"></div><span>La solución</span></div>
-        <h2 class="section-title reveal">Tres piezas.<br>Un sistema.</h2>
+        <div class="section-label reveal"><div class="line"></div>{% if en %}<span>The solution</span>{% else %}<span>La solución</span>{% endif %}</div>
+        <h2 class="section-title reveal">{% if en %}Three pieces.<br>One system.{% else %}Tres piezas.<br>Un sistema.{% endif %}</h2>
     </div>
     <div class="galeria-track">
         <article class="panel">
-            <div class="panel-media"><img src="{{ url_for('static', filename='img3d/casco.webp') }}" alt="Render 3D de un casco de seguridad naranja" width="800" height="800" loading="lazy"></div>
+            <div class="panel-media"><img src="{{ url_for('static', filename='img3d/casco.webp') }}" {% if en %}alt="3D render of an orange hard hat"{% else %}alt="Render 3D de un casco de seguridad naranja"{% endif %} width="800" height="800" loading="lazy"></div>
             <div>
-                <div class="n">01 — Casco</div>
-                <h3>Ve la cabeza desde cualquier ángulo.</h3>
-                <p>Un detector YOLOv8n encuentra cabezas con y sin casco de frente, de costado o de espaldas, aunque no se vea la cara. Lo entrenamos con 5000 fotos públicas y lo ajustamos con fotos del equipo.</p>
+                <div class="n">{% if en %}01 — Hard hat{% else %}01 — Casco{% endif %}</div>
+                {% if en %}<h3>Sees the head from any angle.</h3>{% else %}<h3>Ve la cabeza desde cualquier ángulo.</h3>{% endif %}
+                <p>{% if en %}A YOLOv8n detector finds heads with and without hard hats from the front, the side or the back, even when the face is not visible. We trained it on 5,000 public photos and fine-tuned it with our own.{% else %}Un detector YOLOv8n encuentra cabezas con y sin casco de frente, de costado o de espaldas, aunque no se vea la cara. Lo entrenamos con 5000 fotos públicas y lo ajustamos con fotos del equipo.{% endif %}</p>
                 <div class="datos">
-                    <div><strong>63/63</strong><span>fotos que el modelo no vio al entrenar</span></div>
-                    <div><strong>48 ms</strong><span>por frame en el servidor</span></div>
+                    <div><strong>63/63</strong>{% if en %}<span>photos the model never saw in training</span>{% else %}<span>fotos que el modelo no vio al entrenar</span>{% endif %}</div>
+                    <div><strong>48 ms</strong>{% if en %}<span>per frame on the server</span>{% else %}<span>por frame en el servidor</span>{% endif %}</div>
                 </div>
             </div>
             <div class="panel-num-fondo" aria-hidden="true">01</div>
         </article>
         <article class="panel">
-            <div class="panel-media"><img src="{{ url_for('static', filename='img3d/chaleco.webp') }}" alt="Render 3D de un chaleco reflectante naranja" width="800" height="800" loading="lazy"></div>
+            <div class="panel-media"><img src="{{ url_for('static', filename='img3d/chaleco.webp') }}" {% if en %}alt="3D render of an orange high-visibility vest"{% else %}alt="Render 3D de un chaleco reflectante naranja"{% endif %} width="800" height="800" loading="lazy"></div>
             <div>
-                <div class="n">02 — Chaleco reflectante</div>
-                <h3>Mira el torso de cada persona.</h3>
-                <p>Un segundo YOLOv8n, entrenado con 1416 fotos de obra, encuentra personas y chalecos. Se combina con una regla de color de alta visibilidad, que reconoce chalecos de costado donde el modelo solo falla.</p>
+                <div class="n">{% if en %}02 — High-visibility vest{% else %}02 — Chaleco reflectante{% endif %}</div>
+                {% if en %}<h3>Checks every person's torso.</h3>{% else %}<h3>Mira el torso de cada persona.</h3>{% endif %}
+                <p>{% if en %}A second YOLOv8n, trained on 1,416 construction-site photos, finds people and vests. It is combined with a high-visibility color rule that catches vests seen from the side, where the model alone fails.{% else %}Un segundo YOLOv8n, entrenado con 1416 fotos de obra, encuentra personas y chalecos. Se combina con una regla de color de alta visibilidad, que reconoce chalecos de costado donde el modelo solo falla.{% endif %}</p>
                 <div class="datos">
-                    <div><strong>85/85</strong><span>fotos bien clasificadas donde se veía el torso</span></div>
-                    <div><strong>0</strong><span>chalecos inventados en 77 personas sin chaleco</span></div>
+                    <div><strong>85/85</strong>{% if en %}<span>photos classified correctly when the torso was visible</span>{% else %}<span>fotos bien clasificadas donde se veía el torso</span>{% endif %}</div>
+                    <div><strong>0</strong>{% if en %}<span>false vests among 77 people without one</span>{% else %}<span>chalecos inventados en 77 personas sin chaleco</span>{% endif %}</div>
                 </div>
             </div>
             <div class="panel-num-fondo" aria-hidden="true">02</div>
         </article>
         <article class="panel">
-            <div class="panel-media"><img src="{{ url_for('static', filename='img3d/camara.webp') }}" alt="Render 3D de una cámara de seguridad" width="800" height="800" loading="lazy"></div>
+            <div class="panel-media"><img src="{{ url_for('static', filename='img3d/camara.webp') }}" {% if en %}alt="3D render of a security camera"{% else %}alt="Render 3D de una cámara de seguridad"{% endif %} width="800" height="800" loading="lazy"></div>
             <div>
                 <div class="n">03 — Intel OpenVINO</div>
-                <h3>Rápido en una PC común.</h3>
-                <p>Los modelos corren con Intel OpenVINO en la CPU, sin placa de video. Así se puede instalar en una computadora de la planta y funcionar incluso sin internet, con una alarma de luz y sonido conectada por USB.</p>
+                {% if en %}<h3>Fast on an ordinary PC.</h3>{% else %}<h3>Rápido en una PC común.</h3>{% endif %}
+                <p>{% if en %}The models run with Intel OpenVINO on the CPU, with no graphics card. It can be installed on a computer at the site and work even offline, with a light-and-sound alarm connected over USB.{% else %}Los modelos corren con Intel OpenVINO en la CPU, sin placa de video. Así se puede instalar en una computadora de la planta y funcionar incluso sin internet, con una alarma de luz y sonido conectada por USB.{% endif %}</p>
                 <div class="datos">
-                    <div><strong>2x</strong><span>más rápido que con OpenCV</span></div>
-                    <div><strong>0</strong><span>placas de video necesarias</span></div>
+                    <div><strong>2x</strong>{% if en %}<span>faster than with OpenCV</span>{% else %}<span>más rápido que con OpenCV</span>{% endif %}</div>
+                    <div><strong>0</strong>{% if en %}<span>graphics cards needed</span>{% else %}<span>placas de video necesarias</span>{% endif %}</div>
                 </div>
             </div>
             <div class="panel-num-fondo" aria-hidden="true">03</div>
@@ -580,8 +609,8 @@
 <div class="video-section" id="video">
     <div class="video-inner reveal">
         <div class="video-head">
-            <h2>RAC Vision en <span>60 segundos</span></h2>
-            <div class="video-lang" role="group" aria-label="Idioma del video">
+            {% if en %}<h2>RAC Vision in <span>60 seconds</span></h2>{% else %}<h2>RAC Vision en <span>60 segundos</span></h2>{% endif %}
+            <div class="video-lang" role="group" {% if en %}aria-label="Video language"{% else %}aria-label="Idioma del video"{% endif %}>
                 <button type="button" data-lang="es" class="activo">ES</button>
                 <button type="button" data-lang="en">EN</button>
             </div>
@@ -608,7 +637,7 @@
                 if (reproducir) video.play().catch(() => {});
             }
             botones.forEach(b => b.addEventListener('click', () => usar(b.dataset.lang)));
-            if (!(navigator.language || 'es').toLowerCase().startsWith('es')) usar('en', false);
+            if (document.documentElement.lang === 'en') usar('en', false);
             // Arranca recién al verse: con autoplay el navegador bajaba el MP4 durante la carga inicial
             new IntersectionObserver((entradas, obs) => {
                 if (entradas[0].isIntersecting) { video.play().catch(() => {}); obs.disconnect(); }
@@ -620,20 +649,20 @@
 <!-- ═══════════ PIPELINE ═══════════ -->
 <div id="como-funciona">
     <section>
-        <div class="section-label reveal"><div class="line"></div><span>Cómo funciona</span></div>
-        <h2 class="section-title reveal">Del frame<br>a la alerta.</h2>
+        <div class="section-label reveal"><div class="line"></div>{% if en %}<span>How it works</span>{% else %}<span>Cómo funciona</span>{% endif %}</div>
+        <h2 class="section-title reveal">{% if en %}From frame<br>to alert.{% else %}Del frame<br>a la alerta.{% endif %}</h2>
         <div class="pipeline-grid">
             <div class="pipe-linea" aria-hidden="true"><i></i></div>
-            <div class="pipe-step reveal"><div class="pipe-num">01</div><div class="pipe-step-title">Captura</div>
-                <div class="pipe-step-desc">El navegador envía un frame, espera el resultado y envía el siguiente. Así nunca se acumula atraso.</div></div>
-            <div class="pipe-step reveal"><div class="pipe-num">02</div><div class="pipe-step-title">Cabezas</div>
-                <div class="pipe-step-desc"><b>YOLOv8n</b> busca cabezas con y sin casco. Corre con <b>Intel OpenVINO</b> en la CPU.</div></div>
-            <div class="pipe-step reveal"><div class="pipe-num">03</div><div class="pipe-step-title">Chaleco</div>
-                <div class="pipe-step-desc">Otro <b>YOLOv8n</b> encuentra personas y chalecos, más una regla de color sobre el torso.</div></div>
-            <div class="pipe-step reveal"><div class="pipe-num">04</div><div class="pipe-step-title">Quién es</div>
-                <div class="pipe-step-desc"><b>YuNet</b> encuentra la cara y <b>SFace</b> la compara con los trabajadores registrados. Es opcional.</div></div>
-            <div class="pipe-step reveal"><div class="pipe-num">05</div><div class="pipe-step-title">Confirmación</div>
-                <div class="pipe-step-desc">Ventana de 8 frames por elemento: alerta con 60 % de votos "falta" y OK con 70 % de votos "tiene".</div></div>
+            <div class="pipe-step reveal"><div class="pipe-num">01</div>{% if en %}<div class="pipe-step-title">Capture</div>{% else %}<div class="pipe-step-title">Captura</div>{% endif %}
+                <div class="pipe-step-desc">{% if en %}The browser sends a frame, waits for the result and sends the next one, so delay never builds up.{% else %}El navegador envía un frame, espera el resultado y envía el siguiente. Así nunca se acumula atraso.{% endif %}</div></div>
+            <div class="pipe-step reveal"><div class="pipe-num">02</div>{% if en %}<div class="pipe-step-title">Heads</div>{% else %}<div class="pipe-step-title">Cabezas</div>{% endif %}
+                <div class="pipe-step-desc">{% if en %}<b>YOLOv8n</b> looks for heads with and without hard hats. It runs with <b>Intel OpenVINO</b> on the CPU.{% else %}<b>YOLOv8n</b> busca cabezas con y sin casco. Corre con <b>Intel OpenVINO</b> en la CPU.{% endif %}</div></div>
+            <div class="pipe-step reveal"><div class="pipe-num">03</div>{% if en %}<div class="pipe-step-title">Vest</div>{% else %}<div class="pipe-step-title">Chaleco</div>{% endif %}
+                <div class="pipe-step-desc">{% if en %}Another <b>YOLOv8n</b> finds people and vests, plus a color rule on the torso.{% else %}Otro <b>YOLOv8n</b> encuentra personas y chalecos, más una regla de color sobre el torso.{% endif %}</div></div>
+            <div class="pipe-step reveal"><div class="pipe-num">04</div>{% if en %}<div class="pipe-step-title">Who it is</div>{% else %}<div class="pipe-step-title">Quién es</div>{% endif %}
+                <div class="pipe-step-desc">{% if en %}<b>YuNet</b> finds the face and <b>SFace</b> matches it against registered workers. It is optional.{% else %}<b>YuNet</b> encuentra la cara y <b>SFace</b> la compara con los trabajadores registrados. Es opcional.{% endif %}</div></div>
+            <div class="pipe-step reveal"><div class="pipe-num">05</div>{% if en %}<div class="pipe-step-title">Confirmation</div>{% else %}<div class="pipe-step-title">Confirmación</div>{% endif %}
+                <div class="pipe-step-desc">{% if en %}An 8-frame window per item: alert at 60% "missing" votes and OK at 70% "wearing" votes.{% else %}Ventana de 8 frames por elemento: alerta con 60 % de votos "falta" y OK con 70 % de votos "tiene".{% endif %}</div></div>
         </div>
     </section>
 </div>
@@ -641,30 +670,30 @@
 <!-- ═══════════ RESULTADOS ═══════════ -->
 <div class="resultados" id="resultados">
     <section>
-        <div class="section-label reveal"><div class="line"></div><span>Resultados medidos</span></div>
-        <h2 class="section-title reveal">Números,<br>no promesas.</h2>
-        <p class="section-desc reveal">Medimos todo con el mismo código que corre en producción. Cada número dice con qué y cómo se midió.</p>
+        <div class="section-label reveal"><div class="line"></div>{% if en %}<span>Measured results</span>{% else %}<span>Resultados medidos</span>{% endif %}</div>
+        <h2 class="section-title reveal">{% if en %}Numbers,<br>not promises.{% else %}Números,<br>no promesas.{% endif %}</h2>
+        <p class="section-desc reveal">{% if en %}We measured everything with the same code that runs in production. Each number says what it was measured with and how.{% else %}Medimos todo con el mismo código que corre en producción. Cada número dice con qué y cómo se midió.{% endif %}</p>
         <div class="res-grid">
             <div class="res-card reveal">
-                <h3>Latencia por frame: OpenCV vs Intel OpenVINO</h3>
+                {% if en %}<h3>Latency per frame: OpenCV vs Intel OpenVINO</h3>{% else %}<h3>Latencia por frame: OpenCV vs Intel OpenVINO</h3>{% endif %}
                 <table>
-                    <thead><tr><th>Equipo</th><th>Modelo</th><th>OpenCV</th><th>OpenVINO</th></tr></thead>
+                    <thead><tr>{% if en %}<th>Machine</th><th>Model</th>{% else %}<th>Equipo</th><th>Modelo</th>{% endif %}<th>OpenCV</th><th>OpenVINO</th></tr></thead>
                     <tbody>
-                        <tr><td>Servidor</td><td>Casco</td><td>109 ms</td><td class="mejor">48 ms</td></tr>
-                        <tr><td>Servidor</td><td>Chaleco</td><td>107 ms</td><td class="mejor">47 ms</td></tr>
-                        <tr><td>Notebook</td><td>Casco</td><td>273 ms</td><td class="mejor">117 ms</td></tr>
-                        <tr><td>Notebook</td><td>Chaleco</td><td>260 ms</td><td class="mejor">142 ms</td></tr>
+                        <tr>{% if en %}<td>Server</td>{% else %}<td>Servidor</td>{% endif %}{% if en %}<td>Hard hat</td>{% else %}<td>Casco</td>{% endif %}<td>109 ms</td><td class="mejor">48 ms</td></tr>
+                        <tr>{% if en %}<td>Server</td>{% else %}<td>Servidor</td>{% endif %}{% if en %}<td>Vest</td>{% else %}<td>Chaleco</td>{% endif %}<td>107 ms</td><td class="mejor">47 ms</td></tr>
+                        <tr>{% if en %}<td>Laptop</td>{% else %}<td>Notebook</td>{% endif %}{% if en %}<td>Hard hat</td>{% else %}<td>Casco</td>{% endif %}<td>273 ms</td><td class="mejor">117 ms</td></tr>
+                        <tr>{% if en %}<td>Laptop</td>{% else %}<td>Notebook</td>{% endif %}{% if en %}<td>Vest</td>{% else %}<td>Chaleco</td>{% endif %}<td>260 ms</td><td class="mejor">142 ms</td></tr>
                     </tbody>
                 </table>
-                <p class="nota">Servidor: CPU Intel de 4 núcleos (racvision.org). Notebook: Intel Core i7-10510U. Mediana de 60 mediciones (20 fotos, 3 vueltas), incluyendo el preprocesado y la supresión de cajas repetidas. Script: <code>benchmark_inferencia.py</code>.</p>
+                <p class="nota">{% if en %}Server: 4-core Intel CPU (racvision.org). Laptop: Intel Core i7-10510U. Median of 60 runs (20 photos, 3 rounds), including preprocessing and duplicate-box suppression. Script: <code>benchmark_inferencia.py</code>.{% else %}Servidor: CPU Intel de 4 núcleos (racvision.org). Notebook: Intel Core i7-10510U. Mediana de 60 mediciones (20 fotos, 3 vueltas), incluyendo el preprocesado y la supresión de cajas repetidas. Script: <code>benchmark_inferencia.py</code>.{% endif %}</p>
             </div>
             <div class="res-card reveal">
-                <h3>Precisión con fotos reales</h3>
+                {% if en %}<h3>Accuracy on real photos</h3>{% else %}<h3>Precisión con fotos reales</h3>{% endif %}
                 <div class="res-big">
-                    <div><strong>63/63</strong><span>Casco: fotos propias (32 con casco y 31 sin casco) que el modelo no vio al entrenar.</span></div>
-                    <div><strong>113 ms</strong><span>Análisis completo de un frame de 640×480 en el servidor: casco, chaleco e identificación (p95: 138 ms).</span></div>
+                    <div><strong>63/63</strong>{% if en %}<span>Hard hat: our own photos (32 with and 31 without a hard hat) that the model never saw in training.</span>{% else %}<span>Casco: fotos propias (32 con casco y 31 sin casco) que el modelo no vio al entrenar.</span>{% endif %}</div>
+                    <div><strong>113 ms</strong>{% if en %}<span>Full analysis of a 640×480 frame on the server: hard hat, vest and identification (p95: 138 ms).</span>{% else %}<span>Análisis completo de un frame de 640×480 en el servidor: casco, chaleco e identificación (p95: 138 ms).</span>{% endif %}</div>
                 </div>
-                <p class="nota">Chaleco: 8 de 8 con chaleco y 77 de 77 sin chaleco bien clasificados. En 52 primeros planos no se veía el torso y el sistema no juzgó. Son pocas fotos y de pocas personas: el próximo paso es medir en una obra real. Script: <code>evaluar_modelos.py</code>.</p>
+                <p class="nota">{% if en %}Vest: 8 of 8 with a vest and 77 of 77 without one classified correctly. In 52 close-ups the torso was not visible and the system made no call. These are few photos of few people: the next step is to measure at a real site. Script: <code>evaluar_modelos.py</code>.{% else %}Chaleco: 8 de 8 con chaleco y 77 de 77 sin chaleco bien clasificados. En 52 primeros planos no se veía el torso y el sistema no juzgó. Son pocas fotos y de pocas personas: el próximo paso es medir en una obra real. Script: <code>evaluar_modelos.py</code>.{% endif %}</p>
             </div>
         </div>
     </section>
@@ -674,10 +703,10 @@
 <div class="cta">
     <div class="cta-fondo" data-parallax="0.3"><img src="{{ url_for('static', filename='img3d/tunel.webp') }}" alt="" width="1376" height="768" loading="lazy"></div>
     <div class="cta-inner">
-        <p class="cta-vivo reveal"><span class="dot-live"></span>Sistema activo ahora</p>
-        <h2 class="reveal">Probalo con<br><span>tu cámara.</span></h2>
-        <p class="cta-sub reveal">Abrí el detector, activá la cámara y probalo con y sin casco o chaleco. Para entrar hace falta una cuenta de operador.</p>
-        <a href="/app" class="btn-primary-lg reveal"><i class="fa-solid fa-circle-play"></i> Abrir detector</a>
+        <p class="cta-vivo reveal">{% if en %}<span class="dot-live"></span>System live now{% else %}<span class="dot-live"></span>Sistema activo ahora{% endif %}</p>
+        <h2 class="reveal">{% if en %}Try it with<br><span>your camera.</span>{% else %}Probalo con<br><span>tu cámara.</span>{% endif %}</h2>
+        <p class="cta-sub reveal">{% if en %}Open the detector, turn on your camera and try it with and without a hard hat or vest. An operator account is required to sign in.{% else %}Abrí el detector, activá la cámara y probalo con y sin casco o chaleco. Para entrar hace falta una cuenta de operador.{% endif %}</p>
+        <a href="/app" class="btn-primary-lg reveal"><i class="fa-solid fa-circle-play">{% if en %}</i> Open detector</a>{% else %}</i> Abrir detector</a>{% endif %}
     </div>
 </div>
 
@@ -685,26 +714,26 @@
 <div class="contact-section" id="contacto">
     <div class="contact-inner">
         <div class="reveal">
-            <div class="contact-info-title">Contacto</div>
+            {% if en %}<div class="contact-info-title">Contact</div>{% else %}<div class="contact-info-title">Contacto</div>{% endif %}
             <div class="contact-item"><i class="fa-solid fa-envelope"></i><a href="mailto:alex@racvision.org">alex@racvision.org</a></div>
             <div class="contact-item"><i class="fa-solid fa-phone"></i><a href="tel:+541126585564">11 2658-5564</a></div>
             <div class="contact-item"><i class="fa-solid fa-globe"></i><a href="https://racvision.org">www.racvision.org</a></div>
             <div class="contact-item"><i class="fa-solid fa-location-dot"></i><span>Buenos Aires, Argentina</span></div>
-            <div class="contact-item"><i class="fa-solid fa-users"></i><span>Alex Oviedo, Mateo Silvero y Luciano Campanelli</span></div>
+            <div class="contact-item"><i class="fa-solid fa-users"></i>{% if en %}<span>Alex Oviedo, Mateo Silvero and Luciano Campanelli</span>{% else %}<span>Alex Oviedo, Mateo Silvero y Luciano Campanelli</span>{% endif %}</div>
         </div>
         <div class="reveal">
-            <div class="contact-info-title">Nuestro compromiso</div>
-            <div class="cv-item"><i class="fa-solid fa-scale-balanced"></i><span>Datos medidos y publicados, también los límites del sistema.</span></div>
-            <div class="cv-item"><i class="fa-solid fa-user-shield"></i><span>Privacidad: el control de EPP funciona sin identificar a nadie.</span></div>
-            <div class="cv-item"><i class="fa-solid fa-microchip"></i><span>Accesible: corre en una PC común con CPU Intel, sin GPU.</span></div>
-            <div class="cv-item"><i class="fa-solid fa-route"></i><span>Próximo paso: una prueba piloto en una obra real.</span></div>
+            {% if en %}<div class="contact-info-title">Our commitment</div>{% else %}<div class="contact-info-title">Nuestro compromiso</div>{% endif %}
+            <div class="cv-item"><i class="fa-solid fa-scale-balanced"></i>{% if en %}<span>Measured, published data, including the system's limits.</span>{% else %}<span>Datos medidos y publicados, también los límites del sistema.</span>{% endif %}</div>
+            <div class="cv-item"><i class="fa-solid fa-user-shield"></i>{% if en %}<span>Privacy: PPE checks work without identifying anyone.</span>{% else %}<span>Privacidad: el control de EPP funciona sin identificar a nadie.</span>{% endif %}</div>
+            <div class="cv-item"><i class="fa-solid fa-microchip"></i>{% if en %}<span>Accessible: runs on an ordinary PC with an Intel CPU, no GPU.</span>{% else %}<span>Accesible: corre en una PC común con CPU Intel, sin GPU.</span>{% endif %}</div>
+            <div class="cv-item"><i class="fa-solid fa-route"></i>{% if en %}<span>Next step: a pilot at a real site.</span>{% else %}<span>Próximo paso: una prueba piloto en una obra real.</span>{% endif %}</div>
         </div>
         <div class="reveal">
-            <div class="contact-info-title">Quiénes somos</div>
+            {% if en %}<div class="contact-info-title">Who we are</div>{% else %}<div class="contact-info-title">Quiénes somos</div>{% endif %}
             <p style="font-size:13px; color:var(--gray); line-height:1.8; margin-bottom:20px">
-                Proyecto de estudiantes de Buenos Aires. Entrenamos los modelos con datos públicos y fotos propias, y medimos todo lo que publicamos. Las imágenes de esta página fueron generadas con IA.
+                {% if en %}A student project from Buenos Aires. We trained the models on public data and our own photos, and we measure everything we publish. The images on this page were generated with AI.{% else %}Proyecto de estudiantes de Buenos Aires. Entrenamos los modelos con datos públicos y fotos propias, y medimos todo lo que publicamos. Las imágenes de esta página fueron generadas con IA.{% endif %}
             </p>
-            <a href="/app" class="btn-primary-lg"><i class="fa-solid fa-play"></i> Ver demo</a>
+            <a href="/app" class="btn-primary-lg"><i class="fa-solid fa-play">{% if en %}</i> See demo</a>{% else %}</i> Ver demo</a>{% endif %}
         </div>
     </div>
 </div>
@@ -714,20 +743,22 @@
     <div class="footer-inner">
         <div class="footer-logo">
             <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision" width="72" height="24">
-            <span>Seguridad Industrial</span>
+{% if en %}            <span>Industrial Safety</span>
         </div>
-        <div class="footer-legal">
-            <a href="/privacidad">Privacidad</a>
+        <div class="footer-legal">{% else %}            <span>Seguridad Industrial</span>
+        </div>
+        <div class="footer-legal">{% endif %}
+            {% if en %}<a href="/privacidad">Privacy (ES)</a>{% else %}<a href="/privacidad">Privacidad</a>{% endif %}
             <a href="/cookies">Cookies</a>
-            <a href="/terminos">Términos</a>
+            {% if en %}<a href="/terminos">Terms (ES)</a>{% else %}<a href="/terminos">Términos</a>{% endif %}
         </div>
         <div class="footer-copy">© 2026 RAC Vision. Buenos Aires, Argentina.</div>
     </div>
 </footer>
 
-<div class="aviso-cookies" role="region" aria-label="Aviso de cookies">
-    <span>Usamos solo una cookie necesaria para iniciar sesión en la demo. Nada de publicidad ni seguimiento. <a href="/cookies">Más información</a>.</span>
-    <button type="button">Entendido</button>
+<div class="aviso-cookies" role="region" {% if en %}aria-label="Cookie notice"{% else %}aria-label="Aviso de cookies"{% endif %}>
+    {% if en %}<span>We only use one essential cookie to sign in to the demo. No ads, no tracking. <a href="/cookies">Learn more (ES)</a>.</span>{% else %}<span>Usamos solo una cookie necesaria para iniciar sesión en la demo. Nada de publicidad ni seguimiento. <a href="/cookies">Más información</a>.</span>{% endif %}
+    {% if en %}<button type="button">Got it</button>{% else %}<button type="button">Entendido</button>{% endif %}
 </div>
 
 <script>
@@ -746,7 +777,7 @@
             scrollTo({ top: destino.getBoundingClientRect().top + scrollY - 60, behavior: quieto ? 'auto' : 'smooth' });
         }));
         const nav = document.getElementById('navbar');
-        const fondo = () => nav.classList.toggle('solida', scrollY > 40);
+        const fondo = () => { nav.classList.toggle('solida', scrollY > 40); nav.classList.toggle('arriba', scrollY < 40 && !menu.classList.contains('abierto')); };
         addEventListener('scroll', fondo, { passive: true }); fondo();
     })();
 
@@ -764,10 +795,11 @@
 
     // Animaciones con GSAP + ScrollTrigger. Sin GSAP (CDN caído) o con movimiento reducido,
     // la página queda completa y estática: los estados ocultos solo existen con la clase js-anim.
-    window.addEventListener('DOMContentLoaded', () => {
-        if (!window.gsap || !window.ScrollTrigger) return;
+    let mm = null;
+    function prenderEfectos() {
+        if (mm || !window.gsap || !window.ScrollTrigger) return;
         gsap.registerPlugin(ScrollTrigger);
-        const mm = gsap.matchMedia();
+        mm = gsap.matchMedia();
 
         mm.add({ anim: '(prefers-reduced-motion: no-preference)', ancho: '(min-width: 901px)' }, ctx => {
             const { anim, ancho } = ctx.conditions;
@@ -853,6 +885,29 @@
             // Las imágenes lazy cambian alturas al cargar: se recalculan los puntos de inicio
             addEventListener('load', () => ScrollTrigger.refresh(), { once: true });
             return () => document.documentElement.classList.remove('js-anim');
+        });
+    }
+    function apagarEfectos() {
+        if (mm) { mm.revert(); mm = null; }
+        document.documentElement.classList.remove('js-anim');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const btn = document.querySelector('.efectos-btn');
+        let activos = true;
+        try { activos = localStorage.getItem('rac-efectos') !== '0'; } catch (e) {}
+        const pintar = () => { btn.textContent = activos ? btn.dataset.on : btn.dataset.off; btn.setAttribute('aria-pressed', String(activos)); };
+        if (activos) prenderEfectos();
+        pintar();
+        btn.addEventListener('click', () => {
+            activos = !activos;
+            try { localStorage.setItem('rac-efectos', activos ? '1' : '0'); } catch (e) {}
+            // Se mantiene la sección que se está viendo al cambiar de modo
+            const actual = [...document.querySelectorAll('header, body > div[id], body > div.retrato, body > div.cta')]
+                .find(el => el.getBoundingClientRect().bottom > 80);
+            if (activos) { prenderEfectos(); } else { apagarEfectos(); }
+            if (actual) scrollTo({ top: actual.getBoundingClientRect().top + scrollY - (activos ? 0 : 72) });
+            pintar();
         });
     });
 </script>

@@ -154,7 +154,11 @@ def favicon():
 
 @app.route("/")
 def landing():
-    return render_template("landing.html")
+    # Idioma: ?lang=es|en; si no viene, el del navegador (español por defecto)
+    lang = request.args.get("lang")
+    if lang not in ("es", "en"):
+        lang = request.accept_languages.best_match(["es", "en"]) or "es"
+    return render_template("landing.html", lang=lang)
 
 @app.route("/privacidad")
 def privacidad():
