@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "author": "RAC Vision",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-led", "id": "led_verde", "top": -96, "left": 220, "attrs": { "color": "green", "label": "Seguro" } },
+    { "type": "wokwi-led", "id": "led_rojo", "top": -96, "left": 290, "attrs": { "color": "red", "label": "Alerta" } },
+    { "type": "wokwi-resistor", "id": "r_verde", "top": 14, "left": 182, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_rojo", "top": 14, "left": 252, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-buzzer", "id": "buzzer", "top": -110, "left": 370, "attrs": { "volume": "0.3" } },
+    { "type": "wokwi-pushbutton", "id": "boton", "top": 150, "left": 230, "attrs": { "color": "yellow", "label": "Silenciar" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:18", "r_verde:2", "green", [] ],
+    [ "r_verde:1", "led_verde:A", "green", [] ],
+    [ "led_verde:C", "esp:GND.2", "black", [] ],
+    [ "esp:19", "r_rojo:2", "red", [] ],
+    [ "r_rojo:1", "led_rojo:A", "red", [] ],
+    [ "led_rojo:C", "esp:GND.2", "black", [] ],
+    [ "esp:23", "buzzer:2", "orange", [] ],
+    [ "buzzer:1", "esp:GND.2", "black", [] ],
+    [ "esp:21", "boton:1.l", "blue", [] ],
+    [ "boton:2.l", "esp:GND.3", "black", [] ]
+  ],
+  "dependencies": {}
+}
