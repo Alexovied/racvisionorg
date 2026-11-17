@@ -695,6 +695,30 @@
     <span>Más seguridad · Más control · Mejores decisiones</span>
 </div>
 
+<!-- ═══════════════════════════════════════ SPOT 20 s ═══════════════════════════════════════ -->
+<div class="video-section spot-section" id="spot">
+    <div class="video-inner reveal">
+        <div class="video-head">
+            <h2>Prevention changes <span>everything</span></h2>
+        </div>
+        <div class="video-frame">
+            <video id="video-spot" muted playsinline controls preload="none"
+                   poster="{{ url_for('static', filename='video/racvision-spot-20s-poster.jpg') }}">
+                <source src="{{ url_for('static', filename='video/racvision-spot-20s.mp4') }}" type="video/mp4">
+            </video>
+        </div>
+    </div>
+    <script>
+        // Igual que el video de 60 s: arranca (en silencio) recién cuando se ve en pantalla
+        (function () {
+            const v = document.getElementById('video-spot');
+            new IntersectionObserver((e, obs) => {
+                if (e[0].isIntersecting) { v.play().catch(() => {}); obs.disconnect(); }
+            }, { threshold: 0.25 }).observe(v);
+        })();
+    </script>
+</div>
+
 <!-- ═══════════════════════════════════════ VIDEO ═══════════════════════════════════════ -->
 <div class="video-section" id="video">
     <style>
