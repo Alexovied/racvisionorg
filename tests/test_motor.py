@@ -198,7 +198,8 @@ def test_api_zonas_valida_y_guarda(operator_client):
 
 def test_frame_y_estado_sin_motor(operator_client):
     assert operator_client.get("/admin/api/cameras/x/frame.jpg").status_code == 404
-    assert operator_client.get("/admin/api/motor").get_json() == {}
+    estado = operator_client.get("/admin/api/motor").get_json()
+    assert set(estado) == {"_nodo"} and set(estado["_nodo"]) == {"cpu", "memoria", "temperatura"}
 
 
 def test_camara_usb_exige_numero_de_dispositivo(operator_client):

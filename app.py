@@ -227,7 +227,8 @@ def _conocidos():
     con sesión iniciada, las personas dadas de alta (un visitante no ve nombres del personal)."""
     demo = _demo.get(session.get("demo"))
     propias = [(demo[1], demo[2])] if demo and demo[0] > time.time() else []
-    return (face_id._personas() if current_user.is_authenticated else []) + propias
+    anonimo = data_store.load_config().get("modo_anonimo")
+    return (face_id._personas() if current_user.is_authenticated and not anonimo else []) + propias
 
 
 @app.route("/api/demo/cara", methods=["POST", "DELETE"])

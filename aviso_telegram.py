@@ -18,7 +18,9 @@ TITULOS = {"sin_casco": "⛑️ SIN CASCO", "sin_chaleco": "🦺 SIN CHALECO",
            "zona_prohibida": "🚫 ZONA PROHIBIDA", "hombre_caido": "🆘 HOMBRE CAÍDO",
            "boton_sos": "🚨 BOTÓN DE PÁNICO", "hombre_muerto": "🆘 HOMBRE MUERTO SIN RESPUESTA",
            "posible_desmayo": "🆘 POSIBLE DESMAYO", "ritmo_cardiaco": "❤️ RITMO CARDÍACO",
-           "wearable_sin_senal": "📡 WEARABLE SIN SEÑAL"}
+           "wearable_sin_senal": "📡 WEARABLE SIN SEÑAL",
+           "camara_sin_senal": "📵 CÁMARA SIN SEÑAL", "camara_tapada": "🙈 CÁMARA TAPADA",
+           "camara_desenfocada": "🌫️ CÁMARA DESENFOCADA"}
 _ultimo = {}
 _lock = threading.Lock()
 
@@ -46,7 +48,10 @@ def leyenda(evento):
         partes.append(f"ℹ️ {evento['detalle']}")
     if evento.get("confirmado_por"):
         partes.append(f"✅ Confirmado por {evento['confirmado_por']}")
-    partes.append(f"👤 {evento.get('persona') or 'Sin identificar'} · {float(evento.get('confidence') or 0):.0f}% · {t}")
+    if evento["type"].startswith("camara_"):
+        partes.append(f"Punto ciego desde las {t}: revisar la cámara")
+    else:
+        partes.append(f"👤 {evento.get('persona') or 'Sin identificar'} · {float(evento.get('confidence') or 0):.0f}% · {t}")
     return "\n".join(partes)
 
 

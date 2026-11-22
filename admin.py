@@ -24,11 +24,14 @@ from flask_login import (
     login_required, current_user
 )
 import aprendizaje
+import aviso_mqtt
 import aviso_telegram
 import data_store
+import face_detector
 import wearables
 import face_id
 import riesgo
+import salud
 import motor
 from hardware import enviar_comando_esp32
 
@@ -422,15 +425,25 @@ def _zonas_validas(zonas):
 @admin_bp.route("/api/cameras/<cam_id>/zonas", methods=["POST"])
 @roles_required("operator", "admin")
 def api_zonas(cam_id):
-    """Guarda las zonas de exclusión dibujadas en Monitoreo: {"zonas": [[[x, y], ...], ...]}."""
+    """Guarda lo dibujado en Monitoreo: {"zonas": [[[x, y], ...], ...], "exentas": [...] (opcional),
+    "horario": {"desde": "07:00", "hasta": "19:00"} o null (opcional: horario en que se exige EPP)}."""
     data = request.get_json(silent=True)
     zonas = data.get("zonas") if isinstance(data, dict) else None
-    if not _zonas_validas(zonas):
+    exentas = data.get("exentas") if isinstance(data, dict) else None
+    if not _zonas_validas(zonas) or (exentas is not None and not _zonas_validas(exentas)):
         return jsonify({"error": "Zonas inválidas: hasta 10 polígonos de 3 a 20 puntos con coordenadas de 0 a 1"}), 400
-    if not data_store.set_zonas(cam_id, zonas):
+    horario = data.get("horario", False)
+    hora = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+    if horario not in (False, None) and not (isinstance(horario, dict) and all(
+            isinstance(horario.get(k), str) and hora.match(horario[k]) for k in ("desde", "hasta"))):
+        return jsonify({"error": "Horario inválido: {desde, hasta} en HH:MM"}), 400
+    if horario:
+        horario = {"desde": horario["desde"], "hasta": horario["hasta"]}
+    cam = data_store.set_zonas(cam_id, zonas, exentas, horario)
+    if not cam:
         return jsonify({"error": "Cámara no encontrada"}), 404
     motor.sincronizar()
-    return jsonify({"ok": True, "zonas": zonas})
+    return jsonify({"ok": True, "zonas": zonas, "exentas": cam.get("exentas", []), "horario": cam.get("horario")})
 
 
 @admin_bp.route("/api/cameras/<cam_id>/frame.jpg")
@@ -462,7 +475,8 @@ def api_video(cam_id):
 @admin_bp.route("/api/motor")
 @roles_required("operator", "admin")
 def api_motor():
-    return jsonify(motor.estado())
+    # _nodo: CPU / RAM / temperatura del equipo (un nodo recalentado o saturado deja de analizar a tiempo)
+    return jsonify({**motor.estado(), "_nodo": salud.nodo()})
 
 
 # ═══════════════════════════════════════
@@ -491,6 +505,7 @@ def config():
                 cfg["detectar_casco"] = request.form.get("detectar_casco") == "on"
                 cfg["detectar_chaleco"] = request.form.get("detectar_chaleco") == "on"
                 cfg["detectar_caida"] = request.form.get("detectar_caida") == "on"
+                cfg["modo_anonimo"] = request.form.get("modo_anonimo") == "on"
                 cfg["caida_segundos"] = max(3, min(120, int(request.form.get("caida_segundos", 10))))
                 if not (cfg["detectar_casco"] or cfg["detectar_chaleco"]):
                     flash("Tiene que quedar activa al menos una detección (casco o chaleco).", "error")
@@ -604,7 +619,10 @@ ALERT_TYPES = data_store.ALERT_TYPES
 EVENT_LABELS = {"con_casco": "Con Casco", "sin_casco": "Sin Casco", "sin_chaleco": "Sin Chaleco",
                 "zona_prohibida": "Zona Prohibida", "hombre_caido": "Hombre Caído",
                 "boton_sos": "Botón de Pánico", "hombre_muerto": "Hombre Muerto", "posible_desmayo": "Posible Desmayo",
-                "ritmo_cardiaco": "Ritmo Cardíaco", "wearable_sin_senal": "Wearable sin Señal"}
+                "ritmo_cardiaco": "Ritmo Cardíaco", "wearable_sin_senal": "Wearable sin Señal",
+                "camara_sin_senal": "Cámara sin señal", "camara_tapada": "Cámara tapada",
+                "camara_desenfocada": "Cámara desenfocada"}
+SALUD_TYPES = data_store.SALUD_TYPES
 
 
 @admin_bp.app_context_processor
@@ -648,6 +666,24 @@ def validate_event_payload(data):
 
 # Las fotos de alertas se guardan en WebP: a igual calidad pesan bastante menos que JPEG
 CALIDAD_WEBP = 80
+
+
+def anonimizar(foto):
+    """JPEG de la foto con las caras pixeladas (modo anónimo), o None si no es una imagen.
+    Se agranda la caja de cada cara para tapar también pelo y orejas."""
+    img = cv2.imdecode(np.frombuffer(foto, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    H, W = img.shape[:2]
+    for x, y, w, h in face_detector.detect_faces(img):
+        x0, y0 = max(0, int(x - 0.3 * w)), max(0, int(y - 0.4 * h))
+        x1, y1 = min(W, int(x + 1.3 * w)), min(H, int(y + 1.3 * h))
+        if x1 - x0 < 2 or y1 - y0 < 2:
+            continue
+        chica = cv2.resize(img[y0:y1, x0:x1], (8, 8), interpolation=cv2.INTER_LINEAR)
+        img[y0:y1, x0:x1] = cv2.resize(chica, (x1 - x0, y1 - y0), interpolation=cv2.INTER_NEAREST)
+    ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    return jpg.tobytes() if ok else None
 
 
 def a_webp(imagen):
@@ -703,6 +739,9 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
     extra = {"ubicacion": ubicacion} if ubicacion else {}
     extra.update(extra_campos or {})
     ubicacion = extra.get("ubicacion", "")
+    if data_store.load_config().get("modo_anonimo"):   # nadie con nombre y caras pixeladas en la foto
+        persona = None
+        foto = anonimizar(foto) if foto else None
     if event_type in ALERT_TYPES:
         extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
         if _posicion(pos):
@@ -716,7 +755,7 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
             extra["confirmado_por"] = f"wearable {previo['camera']} ({previo.get('persona', '')})"
             extra["evento_relacionado"] = previo["id"]
     foto_webp = None
-    if foto and event_type in ALERT_TYPES:
+    if foto and (event_type in ALERT_TYPES or event_type in SALUD_TYPES):
         # La API ya la recodificó en foto_de_alerta(); el JPEG del motor se pasa a WebP acá
         foto_webp = foto if foto[:4] == b"RIFF" and foto[8:12] == b"WEBP" else a_webp(foto)
     event = data_store.append_event(event_type, confidence, camera, foto_webp=foto_webp, **extra)
@@ -745,8 +784,9 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
             n8n_headers["Authorization"] = f"Bearer {N8N_WEBHOOK_TOKEN}"
         # En segundo plano: un n8n lento no frena ni la respuesta ni el análisis de la cámara
         threading.Thread(target=_avisar_n8n, args=(n8n_payload, n8n_headers), daemon=True).start()
-    if event_type in ALERT_TYPES:
+    if event_type in ALERT_TYPES or event_type in SALUD_TYPES:
         aviso_telegram.avisar(event, foto_webp)   # sin TELEGRAM_BOT_TOKEN no hace nada
+    aviso_mqtt.publicar(event)   # todos los eventos, también "con_casco": sin MQTT_HOST no hace nada
     return event
 
 

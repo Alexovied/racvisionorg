@@ -191,13 +191,19 @@ def delete_camera(cam_id):
     save_cameras(quedan)
     return len(quedan) < len(cameras)
 
-def set_zonas(cam_id, zonas):
-    """Zonas de exclusión de una cámara: polígonos [[x, y], ...] con coordenadas de 0 a 1."""
+def set_zonas(cam_id, zonas, exentas=None, horario=False):
+    """Zonas de exclusión de una cámara: polígonos [[x, y], ...] con coordenadas de 0 a 1.
+    exentas: polígonos donde no se exige EPP (None = no cambian). horario: {"desde", "hasta"} en que
+    se exige EPP, None = siempre (False = no cambia)."""
     with _lock:
         cameras = load_cameras()
         for c in cameras:
             if c["id"] == cam_id:
                 c["zonas"] = zonas
+                if exentas is not None:
+                    c["exentas"] = exentas
+                if horario is not False:
+                    c["horario"] = horario
                 save_cameras(cameras)
                 return c
     return None
@@ -217,6 +223,8 @@ DEFAULT_CONFIG = {
     # Solo para cámaras que analiza el servidor (motor.py)
     "detectar_caida": True,
     "caida_segundos": 10,
+    # Modo anónimo: sin reconocimiento facial y con las caras pixeladas en las fotos de las alertas
+    "modo_anonimo": False,
 }
 
 def load_config():
@@ -243,6 +251,8 @@ def reset_config():
 ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido",
                # de los wearables (wearables.py)
                "boton_sos", "hombre_muerto", "posible_desmayo", "ritmo_cardiaco", "wearable_sin_senal")
+# Salud de las cámaras (motor.py + salud.py): avisan y guardan foto, pero no hacen sonar la alarma
+SALUD_TYPES = ("camara_sin_senal", "camara_tapada", "camara_desenfocada")
 
 def load_events():
     return _load_json("events.json", [])

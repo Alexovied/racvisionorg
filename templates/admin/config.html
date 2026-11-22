@@ -26,6 +26,7 @@
                 <label><input type="checkbox" name="detectar_casco" {% if config.detectar_casco %}checked{% endif %}> Casco</label>
                 <label><input type="checkbox" name="detectar_chaleco" {% if config.detectar_chaleco %}checked{% endif %}> Chaleco reflectante</label>
                 <label><input type="checkbox" name="detectar_caida" {% if config.detectar_caida %}checked{% endif %}> Hombre caído (solo cámaras USB / IP del servidor)</label>
+                <label><input type="checkbox" name="modo_anonimo" {% if config.modo_anonimo %}checked{% endif %}> Modo anónimo: sin reconocimiento facial y con las caras pixeladas en las fotos</label>
                 <label>Alertar si sigue en el suelo
                     <input type="number" name="caida_segundos" min="3" max="120" value="{{ config.caida_segundos }}" required style="width: 5rem;"> segundos</label>
             </div>
