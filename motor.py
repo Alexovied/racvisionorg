@@ -14,6 +14,7 @@ import threading
 import time
 import traceback
 import unicodedata
+from datetime import datetime
 from collections import deque
 
 import cv2
@@ -25,9 +26,11 @@ import epp
 import face_id
 import helmet_detector
 import pose
+import salud
 
 # Mismas reglas que static/epp.js: ventana de 8 frames, alerta con 60 % "falta", OK con 70 % y ventana llena
 VENTANA, TH_FALTA, TH_OK, VACIOS_RESET = 8, 0.60, 0.70, 15
+TIMEOUT_IP_MS = 8000   # abrir / leer una cámara IP: más que esto es "sin señal"
 EVENTOS = {"casco": "sin_casco", "chaleco": "sin_chaleco", "zona": "zona_prohibida", "caida": "hombre_caido"}
 TITULOS = {"casco": "SIN CASCO", "chaleco": "SIN CHALECO", "zona": "ZONA PROHIBIDA", "caida": "HOMBRE CAÍDO"}
 ROJO, VERDE, AMARILLO = (68, 68, 239), (129, 185, 16), (0, 200, 255)  # BGR
@@ -116,6 +119,15 @@ def _evaluar(c, min_conf):
     return {"casco": casco, "chaleco": {True: "ok", False: "falta"}.get(c.get("chaleco"))}
 
 
+def en_horario(horario, ahora):
+    """True si a esa hora se exige EPP. horario: {"desde": "07:00", "hasta": "19:00"}; vacío = siempre.
+    Si desde > hasta el turno cruza la medianoche (22:00 a 06:00)."""
+    if not horario or horario.get("desde") == horario.get("hasta"):
+        return True
+    t, d, h = ahora.strftime("%H:%M"), horario["desde"], horario["hasta"]
+    return d <= t < h if d < h else t >= d or t < h
+
+
 def _peor(estados):
     """Voto del frame: la peor situación entre las personas a la vista."""
     return "falta" if "falta" in estados else "ok" if "ok" in estados else None
@@ -141,7 +153,7 @@ def acostados(img, personas, caras, modos, cuerpos=None, inclinacion=0.0):
     cuerpos / inclinacion: lo que dejó analizar() en `info`, para no correr la pose otra vez
     y medir el torso respecto de la vertical real aunque la cámara esté girada."""
     alto, ancho = img.shape[:2]
-    if personas and pose.disponible():
+    if pose.disponible():  # sin detector de chalecos `personas` viene vacío: la pose igual ve a la gente
         if cuerpos is None:
             cuerpos = pose.detectar(img)
         candidatos = [(caja, pose.torso_caido(puntos, inclinacion)) for caja, puntos in cuerpos]
@@ -276,6 +288,11 @@ class Camara(threading.Thread):
         self.caidos, self.t_pose = [], 0.0
         self.nivel = cuerpo.Nivel()   # inclinación de esta cámara, promediada entre frames
         self.estado = {"clase": None, "titulo": "CONECTANDO"}
+        # Salud: lente tapada / desenfocada y señal perdida avisan si duran (salud.SEGUNDOS / 60 s)
+        self.lente, self.t_lente = None, 0.0
+        self.vigia_lente = salud.Vigia()
+        self.vigia_senal = salud.Vigia(60)
+        self.exigia = True            # si en el cuadro anterior se exigía EPP (horario de la cámara)
 
     def _abrir(self):
         if self.cam["type"] == "usb":
@@ -284,7 +301,18 @@ class Camara(threading.Thread):
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             return cap
-        return cv2.VideoCapture(self.cam.get("url", ""))
+        # Cámara IP (RTSP / HTTP): con timeouts, si no un stream colgado deja el último frame congelado
+        # como si fuera en vivo y read() no vuelve nunca
+        return cv2.VideoCapture(self.cam.get("url", ""), cv2.CAP_FFMPEG,
+                                [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, TIMEOUT_IP_MS, cv2.CAP_PROP_READ_TIMEOUT_MSEC, TIMEOUT_IP_MS])
+
+    def _sin_senal(self, ahora):
+        """Sin frames: registra 'camara_sin_senal' si dura 60 s (una sola vez por corte)."""
+        if self.vigia_senal.ver("camara_sin_senal", ahora):
+            try:
+                registrar_evento("camara_sin_senal", 100, self.cam["id"])
+            except Exception:
+                traceback.print_exc()
 
     def run(self):
         for h in self.anteriores:
@@ -292,16 +320,31 @@ class Camara(threading.Thread):
         # Este hilo solo lee la cámara, a su ritmo: el video del panel se ve fluido y nunca se
         # acumulan frames viejos. El análisis va en otro hilo y toma siempre el frame más nuevo.
         threading.Thread(target=self._analizar, daemon=True, name=self.name + "-analisis").start()
+        espera = 5
         while not self.parar.is_set():
-            cap = self._abrir()
-            while not self.parar.is_set():
-                ok, img = cap.read()
-                if not ok:
-                    break
-                self.crudo = img
-            cap.release()
+            cap = None
+            try:  # un error de OpenCV (driver, URL rara) no debe matar el hilo: se reintenta igual
+                cap = self._abrir()
+                t_abierta = time.monotonic()
+                while not self.parar.is_set():
+                    ok, img = cap.read()
+                    if not ok:
+                        break
+                    self.crudo = img
+                    # Volvió la señal (y se sostiene 5 s: un stream que da un cuadro y muere no cuenta)
+                    if espera != 5 and time.monotonic() - t_abierta >= 5:
+                        espera = 5
+                        self.vigia_senal.ver(None, 0)   # el próximo corte avisa de nuevo
+            except Exception:
+                traceback.print_exc()
+            finally:
+                if cap is not None:
+                    cap.release()
             self.crudo, self.jpg, self.fps, self.error = None, None, 0.0, "Sin señal"
-            self.parar.wait(5)  # y se vuelve a intentar: cámara desenchufada o red caída
+            self._sin_senal(time.monotonic())
+            # Se vuelve a intentar (cámara desenchufada o red caída), cada vez más espaciado hasta 1 minuto
+            self.parar.wait(espera)
+            espera = min(60, espera * 2)
 
     def _analizar(self):
         ultimo, t = None, time.monotonic()
@@ -339,17 +382,39 @@ class Camara(threading.Thread):
             self.cfg, self.t_cfg = data_store.load_config(), ahora
         cfg, cam = self.cfg, self.cam
         alto, ancho = img.shape[:2]
+        if ahora - self.t_lente >= 2:  # lente tapada o desenfocada: barato, pero no hace falta en cada frame
+            self.lente, self.t_lente = salud.lente(img), ahora
+            problema = self.vigia_lente.ver(self.lente and "camara_" + self.lente, ahora)
+            if problema:
+                ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                self.pendientes.append((problema, 100, cam["id"], None, jpg.tobytes() if ok else None))
         # Un vértice a menos del 2 % del borde se toma como el borde: una persona cortada por
         # abajo apoya justo en la última fila, y una zona dibujada "hasta abajo" tiene que incluirla.
         pegar = lambda v: 0.0 if v < 0.02 else 1.0 if v > 0.98 else v
         zonas = [np.array([[pegar(x) * ancho, pegar(y) * alto] for x, y in z], np.int32)
                  for z in cam.get("zonas") or []]
-        modos = {"casco": bool(cfg["detectar_casco"]), "chaleco": bool(cfg["detectar_chaleco"])}
+        # Fuera del horario de la cámara (ej. sin turno de noche) no se exige casco ni chaleco;
+        # zonas prohibidas y caídas siguen siempre
+        exige = en_horario(cam.get("horario"), datetime.now())
+        if self.exigia and not exige:
+            # Terminó el horario: las ventanas de casco y chaleco arrancan de cero mañana y, si la
+            # cámara estaba en alerta, se apaga la alarma (si no, la baliza queda en rojo toda la noche)
+            self.seg.ventanas["casco"], self.seg.ventanas["chaleco"] = Ventana(), Ventana()
+            if self.alarma == "alerta":
+                self.alarma = None
+                self.pendientes.append(("con_casco", 100, cam["id"]))
+        self.exigia = exige
+        modos = {"casco": exige and bool(cfg["detectar_casco"]), "chaleco": exige and bool(cfg["detectar_chaleco"])}
         caida = bool(cfg["detectar_caida"])
+        exentas = [np.array([[x * ancho, y * alto] for x, y in z], np.int32) for z in cam.get("exentas") or []]
 
         info = {}
-        caras, personas = analizar(img, modos, con_personas=bool(zonas) or caida, nivel=self.nivel, info=info)
-        estados = [_evaluar(c, cfg["min_confidence"]) for c in caras]
+        caras, personas = analizar(img, modos, con_personas=bool(zonas) or caida, nivel=self.nivel, info=info,
+                                   conocidos=[] if cfg.get("modo_anonimo") else None)   # [] = no identificar a nadie
+        # Zonas exentas (oficina, pasillo seguro): ahí no se juzga el EPP de nadie
+        exenta = lambda c: any(cv2.pointPolygonTest(z, (c["bbox"][0] + c["bbox"][2] / 2, c["bbox"][1] + c["bbox"][3] / 2),
+                                                    False) >= 0 for z in exentas)
+        estados = [{"casco": None, "chaleco": None} if exenta(c) else _evaluar(c, cfg["min_confidence"]) for c in caras]
         votos = {k: _peor([e[k] for e in estados]) for k in modos if modos[k]}
         # En zona: el punto de apoyo de la persona (centro del borde de abajo de su caja) cae en un polígono
         en_zona = [p for p in personas
@@ -402,7 +467,18 @@ class Camara(threading.Thread):
                                 for p in cajas))]
             persona = ", ".join(sorted({c.get("nombre") or "Sin identificar" for c in en_falta})) or None
             conf = max(en_falta[0]["con_casco"], en_falta[0]["sin_casco"]) if k == "casco" and en_falta else 100
-            self.pendientes.append((EVENTOS[k], min(100.0, conf), cam["id"], persona, self.jpg))
+            # Dónde (0 a 1) para el mapa de riesgo: la cabeza en falta, o los pies de la persona en zona / caída
+            alto, ancho = img.shape[:2]
+            if en_falta:
+                x, y, w, h = en_falta[0]["bbox"]
+                pos = [(x + w / 2) / ancho, (y + h / 2) / alto]
+            elif cajas:
+                x, y, w, h = cajas[0]
+                pos = [(x + w / 2) / ancho, (y + h) / alto]
+            else:
+                pos = None
+            pos = [min(1.0, max(0.0, v)) for v in pos] if pos else None
+            self.pendientes.append((EVENTOS[k], min(100.0, conf), cam["id"], persona, self.jpg, pos))
         # Evento "todos con EPP" cuando la cámara vuelve a verde, como hace el monitor del navegador
         if clase and clase != self.alarma:
             self.alarma = clase
@@ -453,7 +529,8 @@ def sincronizar():
 
 def estado():
     """{id de cámara: {clase, titulo, fps, error}} de las cámaras que analiza el servidor."""
-    return {cid: {**h.estado, "fps": round(h.fps, 1), "error": h.error} for cid, h in list(_hilos.items())}
+    return {cid: {**h.estado, "fps": round(h.fps, 1), "error": h.error, "lente": h.lente}
+            for cid, h in list(_hilos.items())}
 
 
 def frame(cam_id):

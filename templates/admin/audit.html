@@ -57,6 +57,31 @@
     </form>
 </div>
 
+{% if precision %}
+<!-- APRENDIZAJE: lo que dicen las alertas marcadas -->
+<div class="admin-card" style="margin-bottom:1.25rem">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-graduation-cap"></i> Lo que aprendió el sistema</h2></div>
+    <p class="section-desc" style="margin-bottom:.75rem">Con cada alerta que marcás como real o falsa, RAC sabe en qué tipos de alerta confiar.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem">
+        {% for tipo, fila in precision.items() %}
+        <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.55rem .8rem;min-width:150px">
+            <div style="font-size:.78rem;color:var(--text-muted)">{{ EVENT_LABELS.get(tipo, tipo) }}</div>
+            <div style="font-size:1.3rem;font-weight:700">{{ fila.precision }}% <small style="font-size:.75rem;font-weight:400;color:var(--text-muted)">reales</small></div>
+            <div style="font-size:.75rem;color:var(--text-muted)">{{ fila.reales }} reales · {{ fila.falsas }} falsas</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if sugerencia %}
+    <p style="margin-top:.85rem;font-size:.9rem">
+        <i class="fa-solid fa-lightbulb" style="color:var(--yellow)"></i>
+        Sugerencia: con la <b>confianza mínima en {{ sugerencia.confianza }}%</b> se habrían evitado {{ sugerencia.falsas_evitadas }}
+        de {{ sugerencia.falsas }} falsas alarmas de cámara sin perder ninguna de las {{ sugerencia.reales }} reales.
+        {% if current_user.role == 'admin' %}<a href="{{ url_for('admin.config') }}">Cambiarla en Configuración</a>{% endif %}
+    </p>
+    {% endif %}
+</div>
+{% endif %}
+
 <!-- RESULTS -->
 <div class="admin-card">
     <div class="table-header-info">
@@ -75,6 +100,7 @@
                     <th>Cámara / Ubicación</th>
                     <th>Persona</th>
                     <th>Foto</th>
+                    <th>¿Fue real?</th>
                 </tr>
             </thead>
             <tbody>
@@ -112,6 +138,21 @@
                                  style="width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border);">
                         </a>
                         {% else %}—{% endif %}
+                    </td>
+                    <td class="veredicto" data-id="{{ event.id }}">
+                        {% if event.type in ALERT_TYPES %}
+                            {% if event.feedback %}
+                            <span class="type-badge {{ 'type-danger' if event.feedback.veredicto == 'real' else 'type-success' }}"
+                                  title="Marcada por {{ event.feedback.usuario }}">{{ 'Real' if event.feedback.veredicto == 'real' else 'Falsa' }}</span>
+                            {% elif current_user.role in ('admin', 'operator') %}
+                            <div class="action-buttons">
+                                <button type="button" class="btn-icon" data-veredicto="real" title="Fue real" aria-label="Fue real"><i class="fa-solid fa-check"></i></button>
+                                <button type="button" class="btn-icon" data-veredicto="falsa" title="Falsa alarma" aria-label="Falsa alarma"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            {% else %}—{% endif %}
+                        {% else %}—{% endif %}
+                        {% if event.detalle %}<br><small class="text-muted">{{ event.detalle }}</small>{% endif %}
+                        {% if event.confirmado_por %}<br><small style="color:var(--green)">✓ {{ event.confirmado_por }}</small>{% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -155,4 +196,23 @@
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('td.veredicto button[data-veredicto]').forEach(b => b.addEventListener('click', async () => {
+    const td = b.closest('td');
+    const r = await fetch(`/admin/api/events/${td.dataset.id}/feedback`, {method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': {{ csrf_token() | tojson }}},
+        body: JSON.stringify({veredicto: b.dataset.veredicto})});
+    if (!r.ok) return;
+    const d = await r.json();
+    const real = b.dataset.veredicto === 'real';
+    const badge = document.createElement('span');
+    badge.className = 'type-badge ' + (real ? 'type-danger' : 'type-success');
+    badge.textContent = real ? 'Real' : 'Falsa';
+    b.closest('.action-buttons').replaceWith(badge);
+    if (d.aprendido) { const s = document.createElement('small'); s.textContent = ' Aprendió: ' + d.aprendido; td.append(document.createElement('br'), s); }
+}));
+</script>
 {% endblock %}

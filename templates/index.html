@@ -64,6 +64,10 @@
                     <button class="btn btn-danger" id="btn-stop" disabled>
                         <i class="fa-solid fa-stop"></i> Detener
                     </button>
+                    <label class="btn" id="btn-archivo" title="Sin cámara: probá con un video de una obra o una foto">
+                        <i class="fa-solid fa-film"></i> Probar con un video
+                        <input type="file" id="archivo" accept="video/*,image/*" hidden>
+                    </label>
                 </div>
             </section>
 
@@ -233,7 +237,63 @@
             captureCanvas.height = overlay.height;
         }
 
+        // Sin webcam (o para mostrarlo con un video de obra): se analiza un video o una foto del visitante.
+        // No sale de su navegador salvo los cuadros que se mandan a /predict, igual que con la cámara.
+        let espejo = true, urlArchivo = null;
+        const contenedor = document.querySelector('.video-container');
+        document.getElementById('archivo').addEventListener('change', e => {
+            const archivo = e.target.files[0];
+            if (!archivo) return;
+            stopWebcam();
+            urlArchivo = URL.createObjectURL(archivo);
+            espejo = false;
+            video.classList.add('sin-espejo');
+            if (archivo.type.startsWith('image/')) {
+                // Una foto: se la pasa a video de un cuadro con un canvas, así usa el mismo circuito
+                const img = new Image();
+                img.onload = () => {
+                    const c = document.createElement('canvas');
+                    c.width = img.naturalWidth; c.height = img.naturalHeight;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    const pista = c.captureStream(1);
+                    const repintar = setInterval(() => { if (!localStream) clearInterval(repintar); else c.getContext('2d').drawImage(img, 0, 0); }, 500);
+                    localStream = pista;
+                    video.srcObject = pista;
+                    arrancarArchivo();
+                };
+                img.src = urlArchivo;
+            } else {
+                localStream = { getTracks: () => [], getVideoTracks: () => [] };
+                video.srcObject = null;
+                video.src = urlArchivo;
+                video.loop = true;
+                arrancarArchivo();
+            }
+            e.target.value = '';
+        });
+
+        function arrancarArchivo() {
+            video.onloadedmetadata = () => {
+                // El recuadro toma la proporción del archivo: así no se recorta y las cajas caen en su lugar
+                contenedor.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+                video.play();
+                setupCanvasSize();
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300);
+                btnStart.disabled = false;
+                btnStop.disabled = false;
+                systemPulse.className = "pulse-dot active";
+                systemStatusText.innerText = "Analizando archivo";
+                isDetecting = true;
+                detectLoop();
+            };
+        }
+
         async function startWebcam() {
+            espejo = true;
+            video.classList.remove('sin-espejo');
+            contenedor.style.aspectRatio = '';
+            if (urlArchivo) stopWebcam();   // venía analizando un archivo: se corta del todo antes de abrir la cámara
             try {
                 // Resetear buffer de suavizado del backend al iniciar
                 fetch('/reset_buffer', { method: 'POST', headers: { 'X-CSRFToken': CSRF } }).catch(() => {});
@@ -284,6 +344,7 @@
                 localStream = null;
             }
             video.srcObject = null;
+            if (urlArchivo) { video.pause(); video.removeAttribute('src'); video.load(); URL.revokeObjectURL(urlArchivo); urlArchivo = null; }
             // Resetear buffer de suavizado del backend al detener
             fetch('/reset_buffer', { method: 'POST', headers: { 'X-CSRFToken': CSRF } }).catch(() => {});
             
@@ -339,8 +400,10 @@
             if (overlay.width !== video.videoWidth) setupCanvasSize();
 
             captureCtx.save();
-            captureCtx.translate(captureCanvas.width, 0);
-            captureCtx.scale(-1, 1);
+            if (espejo) {  // la webcam se ve (y se analiza) espejada; un video o una foto, tal cual
+                captureCtx.translate(captureCanvas.width, 0);
+                captureCtx.scale(-1, 1);
+            }
             captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
             captureCtx.restore();
 
@@ -445,7 +508,7 @@
             if (alarma && alarma !== ultimaAlarma) {
                 ultimaAlarma = alarma;
                 if (alarma === 'con_casco') enviarEvento({ type: 'con_casco', confidence: 100, camera: CAMERA_NAME });
-                if (REGISTRA) fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                if (REGISTRA && !urlArchivo) fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                                       body: JSON.stringify({ state: alarma }) }).then(sesionVencida).catch(() => {});
             }
 
@@ -488,7 +551,7 @@
 
         function enviarEvento(evento) {
             // La auditoría también despacha la alarma física en admin.py
-            if (!REGISTRA) return;  // modo demostración: no se guarda nada
+            if (!REGISTRA || urlArchivo) return;  // modo demostración o un archivo de prueba: no se guarda nada
             fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                                          body: JSON.stringify(evento) }).then(sesionVencida).catch(() => {});
         }
@@ -502,6 +565,7 @@
             enviarEvento({ type: 'sin_' + elemento, camera: CAMERA_NAME,
                            confidence: Math.min(100, EPP.confianza(caras, elemento, 'falta', MIN_CONFIDENCE)),
                            persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE),
+                           pos: EPP.posicion(caras, elemento, MIN_CONFIDENCE, f.width, f.height),
                            foto: f.toDataURL('image/jpeg', 0.8) });
         }
 

@@ -14,6 +14,7 @@ from flask import (
     jsonify, Response, send_file, abort
 )
 import base64
+from datetime import datetime
 import binascii
 import cv2
 import numpy as np
@@ -22,8 +23,15 @@ from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
 )
+import aprendizaje
+import aviso_mqtt
+import aviso_telegram
 import data_store
+import face_detector
+import wearables
 import face_id
+import riesgo
+import salud
 import motor
 from hardware import enviar_comando_esp32
 
@@ -128,6 +136,14 @@ def admin_required(f):
 #  AUTH ROUTES
 # ═══════════════════════════════════════
 
+# Fuerza bruta: 5 contraseñas malas para un usuario desde una IP → 5 minutos sin poder probar.
+# shortcut: en memoria y por proceso (se pierde al reiniciar); detrás de un proxy sin ProxyFix la IP
+# es la del proxy y el bloqueo queda por usuario. Con varios workers o mucho tráfico, pasar a flask-limiter.
+LOGIN_MAX_FALLAS, LOGIN_VENTANA = 5, 300
+_intentos = {}
+_intentos_lock = threading.Lock()
+
+
 @admin_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -136,14 +152,28 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        
+        clave = (request.remote_addr, username.lower())
+        ahora = time.time()
+        with _intentos_lock:
+            fallas = [t for t in _intentos.get(clave, []) if ahora - t < LOGIN_VENTANA]
+            _intentos[clave] = fallas
+        if len(fallas) >= LOGIN_MAX_FALLAS:
+            flash("Demasiados intentos fallidos. Esperá unos minutos y probá de nuevo.", "error")
+            return render_template("admin/login.html"), 429
+
         user_data = data_store.get_user_by_username(username)
         if user_data and data_store.verify_password(user_data, password):
+            _intentos.pop(clave, None)
             user = User(user_data)
             login_user(user)
             next_page = _safe_next(request.args.get("next"))
             return redirect(next_page or url_for("admin.dashboard"))
         else:
+            with _intentos_lock:
+                if len(_intentos) > 1000:  # nombres inventados no llenan la memoria
+                    for k in [k for k, v in _intentos.items() if not v or ahora - v[-1] > LOGIN_VENTANA]:
+                        del _intentos[k]
+                _intentos.setdefault(clave, []).append(ahora)
             flash("Usuario o contraseña incorrectos.", "error")
     
     return render_template("admin/login.html")
@@ -203,6 +233,9 @@ def users():
             if role and role not in ROLES:
                 flash("Rol inválido.", "error")
                 return redirect(url_for("admin.users"))
+            if role and role != "admin" and _es_el_unico_admin(user_id):
+                flash("Es el único administrador: creá otro antes de quitarle el rol.", "error")
+                return redirect(url_for("admin.users"))
             
             success = data_store.update_user(
                 user_id,
@@ -220,15 +253,23 @@ def users():
     all_users = data_store.load_users()
     return render_template("admin/users.html", users=all_users)
 
+
+def _es_el_unico_admin(user_id):
+    admins = [u["id"] for u in data_store.load_users() if u["role"] == "admin"]
+    return admins == [user_id]
+
 @admin_bp.route("/users/<user_id>/delete", methods=["POST"])
 @login_required
 @admin_required
 def delete_user(user_id):
     if user_id == current_user.id:
         flash("No puedes eliminar tu propio usuario.", "error")
-    else:
-        data_store.delete_user(user_id)
+    elif _es_el_unico_admin(user_id):
+        flash("Es el único administrador: no se puede eliminar.", "error")
+    elif data_store.delete_user(user_id):
         flash("Usuario eliminado.", "success")
+    else:
+        flash("El usuario no existe.", "error")
     return redirect(url_for("admin.users"))
 
 
@@ -267,7 +308,11 @@ def personas():
             if any(img is None for img in imagenes):
                 flash("Uno de los archivos no es una imagen válida (usá JPG o PNG).", "error")
             else:
-                utiles, sin_cara = face_id.registrar(nombre, imagenes, current_user.username)
+                try:
+                    utiles, sin_cara = face_id.registrar(nombre, imagenes, current_user.username)
+                except RuntimeError as e:   # archivo cifrado sin la clave: no se pisa a nadie
+                    flash(f"No se pudo registrar: {e}.", "error")
+                    return redirect(url_for("admin.personas"))
                 if utiles >= face_id.MIN_FOTOS:
                     aviso = f" {sin_cara} foto(s) no se usaron porque no se veía la cara." if sin_cara else ""
                     flash(f"'{nombre}' quedó registrada con {utiles} fotos.{aviso}", "success")
@@ -284,7 +329,12 @@ def personas():
 @admin_required
 def borrar_persona():
     nombre = request.form.get("nombre", "")
-    if face_id.borrar(nombre):
+    try:
+        borrada = face_id.borrar(nombre)
+    except RuntimeError as e:
+        flash(f"No se pudo borrar: {e}.", "error")
+        return redirect(url_for("admin.personas"))
+    if borrada:
         flash(f"Se borraron los datos de reconocimiento de '{nombre}'.", "success")
     else:
         flash("Esa persona no está registrada.", "error")
@@ -363,9 +413,11 @@ def toggle_camera(cam_id):
 @login_required
 @admin_required
 def delete_camera(cam_id):
-    data_store.delete_camera(cam_id)
-    motor.sincronizar()
-    flash("Cámara eliminada.", "success")
+    if data_store.delete_camera(cam_id):
+        motor.sincronizar()
+        flash("Cámara eliminada.", "success")
+    else:
+        flash("La cámara no existe.", "error")
     return redirect(url_for("admin.cameras"))
 
 
@@ -382,15 +434,25 @@ def _zonas_validas(zonas):
 @admin_bp.route("/api/cameras/<cam_id>/zonas", methods=["POST"])
 @roles_required("operator", "admin")
 def api_zonas(cam_id):
-    """Guarda las zonas de exclusión dibujadas en Monitoreo: {"zonas": [[[x, y], ...], ...]}."""
+    """Guarda lo dibujado en Monitoreo: {"zonas": [[[x, y], ...], ...], "exentas": [...] (opcional),
+    "horario": {"desde": "07:00", "hasta": "19:00"} o null (opcional: horario en que se exige EPP)}."""
     data = request.get_json(silent=True)
     zonas = data.get("zonas") if isinstance(data, dict) else None
-    if not _zonas_validas(zonas):
+    exentas = data.get("exentas") if isinstance(data, dict) else None
+    if not _zonas_validas(zonas) or (exentas is not None and not _zonas_validas(exentas)):
         return jsonify({"error": "Zonas inválidas: hasta 10 polígonos de 3 a 20 puntos con coordenadas de 0 a 1"}), 400
-    if not data_store.set_zonas(cam_id, zonas):
+    horario = data.get("horario", False)
+    hora = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+    if horario not in (False, None) and not (isinstance(horario, dict) and all(
+            isinstance(horario.get(k), str) and hora.match(horario[k]) for k in ("desde", "hasta"))):
+        return jsonify({"error": "Horario inválido: {desde, hasta} en HH:MM"}), 400
+    if horario:
+        horario = {"desde": horario["desde"], "hasta": horario["hasta"]}
+    cam = data_store.set_zonas(cam_id, zonas, exentas, horario)
+    if not cam:
         return jsonify({"error": "Cámara no encontrada"}), 404
     motor.sincronizar()
-    return jsonify({"ok": True, "zonas": zonas})
+    return jsonify({"ok": True, "zonas": zonas, "exentas": cam.get("exentas", []), "horario": cam.get("horario")})
 
 
 @admin_bp.route("/api/cameras/<cam_id>/frame.jpg")
@@ -422,7 +484,8 @@ def api_video(cam_id):
 @admin_bp.route("/api/motor")
 @roles_required("operator", "admin")
 def api_motor():
-    return jsonify(motor.estado())
+    # _nodo: CPU / RAM / temperatura del equipo (un nodo recalentado o saturado deja de analizar a tiempo)
+    return jsonify({**motor.estado(), "_nodo": salud.nodo()})
 
 
 # ═══════════════════════════════════════
@@ -451,6 +514,7 @@ def config():
                 cfg["detectar_casco"] = request.form.get("detectar_casco") == "on"
                 cfg["detectar_chaleco"] = request.form.get("detectar_chaleco") == "on"
                 cfg["detectar_caida"] = request.form.get("detectar_caida") == "on"
+                cfg["modo_anonimo"] = request.form.get("modo_anonimo") == "on"
                 cfg["caida_segundos"] = max(3, min(120, int(request.form.get("caida_segundos", 10))))
                 if not (cfg["detectar_casco"] or cfg["detectar_chaleco"]):
                     flash("Tiene que quedar activa al menos una detección (casco o chaleco).", "error")
@@ -483,7 +547,7 @@ def audit():
     camera = request.args.get("camera", "all")
     date_from = request.args.get("date_from", "")
     date_to = request.args.get("date_to", "")
-    page = int(request.args.get("page", 1))
+    page = max(1, request.args.get("page", 1, type=int))
     
     events, total = data_store.get_filtered_events(
         event_type=event_type,
@@ -496,6 +560,7 @@ def audit():
     
     total_pages = max(1, (total + 24) // 25)
     all_cameras = data_store.load_cameras()
+    todos = data_store.load_events()
     
     return render_template("admin/audit.html",
         events=events,
@@ -508,8 +573,18 @@ def audit():
             "date_from": date_from,
             "date_to": date_to
         },
-        cameras=all_cameras
+        cameras=all_cameras,
+        precision=aprendizaje.precision(todos),
+        sugerencia=aprendizaje.sugerir_confianza(todos, data_store.load_config()["min_confidence"]),
+        ALERT_TYPES=ALERT_TYPES,
     )
+
+def _celda_csv(valor):
+    """Excel ejecuta como fórmula una celda que empieza con = + - @ (o tab / CR): se antepone '."""
+    if isinstance(valor, str) and valor.startswith(("=", "+", "-", "@", chr(9), chr(13))):
+        return "'" + valor
+    return valor
+
 
 @admin_bp.route("/audit/export")
 @login_required
@@ -532,14 +607,8 @@ def audit_export():
     writer = csv.writer(output)
     writer.writerow(["Fecha/Hora", "Tipo", "Confianza (%)", "Cámara", "Ubicación", "Persona"])
     for e in events:
-        writer.writerow([
-            e.get("timestamp", ""),
-            e.get("type", ""),
-            e.get("confidence", ""),
-            e.get("camera", ""),
-            e.get("ubicacion", ""),
-            e.get("persona", "")
-        ])
+        writer.writerow([_celda_csv(e.get(k, "")) for k in
+                         ("timestamp", "type", "confidence", "camera", "ubicacion", "persona")])
     
     return Response(
         output.getvalue(),
@@ -557,7 +626,12 @@ VALID_EVENT_TYPES = ("con_casco", "sin_casco", "sin_chaleco")
 # Infracciones: guardan persona y foto, y disparan la alarma
 ALERT_TYPES = data_store.ALERT_TYPES
 EVENT_LABELS = {"con_casco": "Con Casco", "sin_casco": "Sin Casco", "sin_chaleco": "Sin Chaleco",
-                "zona_prohibida": "Zona Prohibida", "hombre_caido": "Hombre Caído"}
+                "zona_prohibida": "Zona Prohibida", "hombre_caido": "Hombre Caído",
+                "boton_sos": "Botón de Pánico", "hombre_muerto": "Hombre Muerto", "posible_desmayo": "Posible Desmayo",
+                "ritmo_cardiaco": "Ritmo Cardíaco", "wearable_sin_senal": "Wearable sin Señal",
+                "camara_sin_senal": "Cámara sin señal", "camara_tapada": "Cámara tapada",
+                "camara_desenfocada": "Cámara desenfocada"}
+SALUD_TYPES = data_store.SALUD_TYPES
 
 
 @admin_bp.app_context_processor
@@ -603,6 +677,28 @@ def validate_event_payload(data):
 CALIDAD_WEBP = 80
 
 
+def anonimizar(foto):
+    """JPEG de la foto con las caras pixeladas (modo anónimo), o None si no es una imagen o si no
+    se encontró ninguna cara: ante la duda no se guarda la foto (una cara de perfil o tapada que el
+    detector no ve quedaría nítida). Se agranda la caja de cada cara para tapar también pelo y orejas."""
+    img = cv2.imdecode(np.frombuffer(foto, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    H, W = img.shape[:2]
+    caras = face_detector.detect_faces(img)
+    if not caras:
+        return None
+    for x, y, w, h in caras:
+        x0, y0 = max(0, int(x - 0.3 * w)), max(0, int(y - 0.4 * h))
+        x1, y1 = min(W, int(x + 1.3 * w)), min(H, int(y + 1.3 * h))
+        if x1 - x0 < 2 or y1 - y0 < 2:
+            continue
+        chica = cv2.resize(img[y0:y1, x0:x1], (8, 8), interpolation=cv2.INTER_LINEAR)
+        img[y0:y1, x0:x1] = cv2.resize(chica, (x1 - x0, y1 - y0), interpolation=cv2.INTER_NEAREST)
+    ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    return jpg.tobytes() if ok else None
+
+
 def a_webp(imagen):
     """Bytes WebP de una imagen (bytes JPEG/PNG/WebP o matriz de OpenCV), o None si no se puede.
     Siempre se vuelve a codificar: nunca se guardan bytes tal cual llegan."""
@@ -638,23 +734,47 @@ def datos_de_camara(camera):
     return ("Detector web" if camera == DEFAULT_CAMERA else camera), ""
 
 
-def registrar_evento(event_type, confidence, camera, persona=None, foto=None):
+def _posicion(pos):
+    """[x, y] de 0 a 1 (dónde estaba la persona en la imagen) o None si no vino bien."""
+    if (isinstance(pos, list) and len(pos) == 2
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1 for v in pos)):
+        return [round(float(pos[0]), 3), round(float(pos[1]), 3)]
+    return None
+
+
+def registrar_evento(event_type, confidence, camera, persona=None, foto=None, pos=None, extra_campos=None):
     """Guarda el evento y avisa: alarma física y webhook. Lo usan la API (el navegador decide)
     y el motor de cámaras del servidor (motor.py). camera: id o nombre de una cámara registrada.
     Las alertas guardan además quién era, dónde fue y una foto del momento (en WebP).
-    foto: bytes de imagen; el motor manda el JPEG del cuadro y acá se pasa a WebP."""
+    foto: bytes de imagen; el motor manda el JPEG del cuadro y acá se pasa a WebP.
+    extra_campos: datos propios del origen (los wearables mandan dispositivo, detalle y medición)."""
     camera, ubicacion = datos_de_camara(camera)
     extra = {"ubicacion": ubicacion} if ubicacion else {}
+    extra.update(extra_campos or {})
+    ubicacion = extra.get("ubicacion", "")
+    if data_store.load_config().get("modo_anonimo"):   # nadie con nombre y caras pixeladas en la foto
+        persona = None
+        foto = anonimizar(foto) if foto else None
     if event_type in ALERT_TYPES:
         extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
+        if _posicion(pos):
+            extra["pos"] = _posicion(pos)
+    if event_type == "hombre_caido":
+        # Si el wearable de alguien avisó caída, desmayo o SOS hace poco, la cámara lo confirma
+        quien = extra.get("persona") if extra.get("persona") != "Sin identificar" else None
+        previo = wearables.buscar_confirmacion(data_store.load_events(), wearables.TIPOS_DE_CAIDA,
+                                               datetime.now(), persona=quien)
+        if previo:
+            extra["confirmado_por"] = f"wearable {previo['camera']} ({previo.get('persona', '')})"
+            extra["evento_relacionado"] = previo["id"]
     foto_webp = None
-    if foto and event_type in ALERT_TYPES:
+    if foto and (event_type in ALERT_TYPES or event_type in SALUD_TYPES):
         # La API ya la recodificó en foto_de_alerta(); el JPEG del motor se pasa a WebP acá
         foto_webp = foto if foto[:4] == b"RIFF" and foto[8:12] == b"WEBP" else a_webp(foto)
     event = data_store.append_event(event_type, confidence, camera, foto_webp=foto_webp, **extra)
 
     # Despachar comando al hardware según el tipo de evento
-    if event_type in ALERT_TYPES:
+    if event_type in ALERT_TYPES and event_type != "wearable_sin_senal":
         enviar_comando_esp32("R")   # LED Rojo + Buzzer ON
     elif event_type == "con_casco":
         enviar_comando_esp32("G")   # LED Verde + Buzzer OFF
@@ -677,14 +797,20 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None):
             n8n_headers["Authorization"] = f"Bearer {N8N_WEBHOOK_TOKEN}"
         # En segundo plano: un n8n lento no frena ni la respuesta ni el análisis de la cámara
         threading.Thread(target=_avisar_n8n, args=(n8n_payload, n8n_headers), daemon=True).start()
+    if event_type in ALERT_TYPES or event_type in SALUD_TYPES:
+        aviso_telegram.avisar(event, foto_webp)   # sin TELEGRAM_BOT_TOKEN no hace nada
+    aviso_mqtt.publicar(event)   # todos los eventos, también "con_casco": sin MQTT_HOST no hace nada
     return event
 
 
 def _avisar_n8n(payload, headers):
+    # n8n caído no debe romper el flujo de RAC, pero queda en el log (si no, nadie se entera)
     try:
-        requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=3)
-    except Exception:
-        pass  # n8n inaccesible no debe romper el flujo de RAC
+        r = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=3)
+        if r.status_code >= 400:
+            print(f"[!] n8n respondió {r.status_code} a la alerta {payload['tipo_riesgo']}", flush=True)
+    except Exception as e:
+        print(f"[!] n8n no recibió la alerta {payload['tipo_riesgo']}: {e}", flush=True)
 
 
 motor.registrar_evento = registrar_evento
@@ -704,7 +830,7 @@ def foto_alerta(event_id):
 
 
 @admin_bp.route("/api/events", methods=["POST"])
-@login_required
+@roles_required("operator", "admin")   # viewer es solo lectura
 def api_add_event():
     try:
         data = request.get_json(silent=True)
@@ -714,7 +840,7 @@ def api_add_event():
 
         persona = data.get("persona") if event_type in ALERT_TYPES else None
         foto = foto_de_alerta(data) if event_type in ALERT_TYPES else None
-        event = registrar_evento(event_type, confidence, camera, persona, foto)
+        event = registrar_evento(event_type, confidence, camera, persona, foto, _posicion(data.get("pos")))
 
         return jsonify({"ok": True, "event": event})
     except HTTPException:
@@ -752,6 +878,329 @@ def api_get_stats():
 @admin_bp.route("/api/recent-events", methods=["GET"])
 @login_required
 def api_recent_events():
-    limit = int(request.args.get("limit", 10))
+    limit = max(1, min(100, request.args.get("limit", 10, type=int)))
     events, _ = data_store.get_filtered_events(page=1, per_page=limit)
     return jsonify(events)
+
+
+# ═══════════════════════════════════════
+#  WEARABLES: pulso, caídas, botón SOS y hombre muerto (wearables.py)
+# ═══════════════════════════════════════
+
+# Lo que salta en el aviso rojo de todas las páginas del panel hasta que alguien lo marque
+URGENTES = ("boton_sos", "hombre_muerto", "posible_desmayo", "hombre_caido", "ritmo_cardiaco")
+URGENTE_MINUTOS = 15
+
+
+def alerta_de_wearable(disp, tipo, detalle, lectura):
+    """Registra una alerta de un wearable como cualquier otra (panel, alarma, n8n y Telegram).
+    Si es una caída y la cámara de su zona vio a alguien en el piso hace poco, va confirmada."""
+    extra = {"dispositivo": disp["id"], "detalle": detalle,
+             "medicion": {k: lectura[k] for k in ("bpm", "spo2", "actividad", "bateria") if k in lectura}}
+    if disp.get("camara"):
+        _, ubicacion = datos_de_camara(disp["camara"])
+        if ubicacion:
+            extra["ubicacion"] = ubicacion
+    confianza = wearables.CONFIANZA[tipo]
+    if tipo in wearables.TIPOS_DE_CAIDA:
+        camara = datos_de_camara(disp["camara"])[0] if disp.get("camara") else None
+        vista = wearables.buscar_confirmacion(data_store.load_events(), ("hombre_caido",), datetime.now(),
+                                              camara=camara, persona=disp.get("persona"))
+        if vista:
+            extra["confirmado_por"] = f"cámara {vista['camera']}"
+            extra["evento_relacionado"] = vista["id"]
+            confianza = max(confianza, 98)
+    return registrar_evento(tipo, confianza, disp["nombre"], persona=disp.get("persona"), extra_campos=extra)
+
+
+def revisar_wearables(ahora=None):
+    """Avisa de los equipos que dejaron de mandar datos. La llama el hilo de vigilancia."""
+    ahora = time.monotonic() if ahora is None else ahora
+    with wearables._lock:
+        ids = wearables.callados(wearables._estados, ahora)
+    avisados = []
+    for disp_id in ids:
+        disp = wearables.obtener(disp_id)
+        if disp and disp.get("activo", True):
+            avisados.append(alerta_de_wearable(disp, "wearable_sin_senal",
+                                               f"sin datos hace más de {wearables.SIN_SENAL_S} s", {}))
+    return avisados
+
+
+_vigilancia = None
+
+
+def _iniciar_vigilancia():
+    """Un hilo que cada 15 s revisa qué wearables se callaron. Arranca con la primera lectura."""
+    global _vigilancia
+    if _vigilancia is not None:
+        return
+
+    def bucle():
+        while True:
+            time.sleep(15)
+            try:
+                revisar_wearables()
+            except Exception as e:
+                print(f"[!] Vigilancia de wearables: {e}", flush=True)
+
+    _vigilancia = threading.Thread(target=bucle, daemon=True, name="vigilancia-wearables")
+    _vigilancia.start()
+
+
+def _token_del_equipo():
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return request.headers.get("X-Device-Token", "").strip()
+
+
+@admin_bp.route("/api/dispositivos/telemetria", methods=["POST"])
+def api_telemetria():
+    """La llama el wearable cada pocos segundos, con su token (no con sesión: no pasa por CSRF).
+    Responde qué alertas nuevas generó, para que el equipo vibre y el trabajador sepa que llegó."""
+    disp = wearables.por_token(_token_del_equipo())
+    if not disp:
+        return jsonify({"error": "Token de dispositivo inválido"}), 401
+    lectura, error = wearables.validar_lectura(request.get_json(silent=True))
+    if error:
+        return jsonify({"error": error}), 400
+    with wearables._lock:
+        nuevas = wearables.evaluar(wearables.estado_de(disp["id"]), lectura, time.monotonic(),
+                                   wearables.umbrales_de(disp))
+    eventos = [alerta_de_wearable(disp, tipo, detalle, lectura) for tipo, detalle in nuevas]
+    _iniciar_vigilancia()
+    return jsonify({"ok": True, "alertas": [e["type"] for e in eventos], "aviso_recibido": bool(eventos)})
+
+
+@admin_bp.route("/wearables", methods=["GET", "POST"])
+@login_required
+def wearables_pagina():
+    """Lista de equipos en vivo. El admin registra equipos: el token se muestra una sola vez."""
+    if current_user.role in ("pm", "auditor"):
+        return redirect(url_for("sgep.dashboard"))
+    token_nuevo = None
+    if request.method == "POST":
+        if current_user.role != "admin":
+            flash("Solo un administrador puede registrar equipos.", "error")
+            return redirect(url_for("admin.wearables_pagina"))
+        nombre = request.form.get("nombre", "").strip()
+        persona = request.form.get("persona", "").strip()
+        if not nombre or not persona:
+            flash("Poné un nombre para el equipo y a quién se lo das.", "error")
+        else:
+            disp, token = wearables.crear(nombre, persona, request.form.get("camara", ""))
+            token_nuevo = {"nombre": disp["nombre"], "token": token}
+    return render_template("admin/wearables.html", cameras=data_store.load_cameras(), token_nuevo=token_nuevo,
+                           umbrales=wearables.UMBRALES, sin_senal=wearables.SIN_SENAL_S)
+
+
+@admin_bp.route("/wearables/<disp_id>/token", methods=["POST"])
+@login_required
+@admin_required
+def wearable_token(disp_id):
+    token = wearables.regenerar_token(disp_id)
+    if not token:
+        abort(404)
+    disp = wearables.obtener(disp_id)
+    return render_template("admin/wearables.html", cameras=data_store.load_cameras(),
+                           token_nuevo={"nombre": disp["nombre"], "token": token},
+                           umbrales=wearables.UMBRALES, sin_senal=wearables.SIN_SENAL_S)
+
+
+@admin_bp.route("/wearables/<disp_id>/borrar", methods=["POST"])
+@login_required
+@admin_required
+def wearable_borrar(disp_id):
+    if wearables.borrar(disp_id):
+        flash("Equipo borrado. Si lo volvés a usar, registralo de nuevo y cargale el token nuevo.", "success")
+    else:
+        flash("Ese equipo ya no existe.", "error")
+    return redirect(url_for("admin.wearables_pagina"))
+
+
+@admin_bp.route("/wearables/<disp_id>/restablecer", methods=["POST"])
+@login_required
+@admin_required
+def wearable_restablecer(disp_id):
+    if wearables.restablecer_umbrales(disp_id):
+        flash("Umbrales de fábrica restablecidos para ese equipo.", "success")
+    return redirect(url_for("admin.wearables_pagina"))
+
+
+@admin_bp.route("/api/wearables")
+@roles_required("admin", "operator", "viewer")
+def api_wearables():
+    ahora = time.monotonic()
+    return jsonify([wearables.resumen(d, ahora) for d in wearables.cargar()])
+
+
+@admin_bp.route("/api/alertas-urgentes")
+@roles_required("admin", "operator", "viewer")
+def api_alertas_urgentes():
+    """Alertas graves de los últimos minutos que nadie marcó todavía (el aviso rojo del panel)."""
+    desde = datetime.now().timestamp() - URGENTE_MINUTOS * 60
+    urgentes = []
+    for e in data_store.load_events():
+        try:
+            if datetime.fromisoformat(e["timestamp"]).timestamp() < desde:
+                break
+        except (KeyError, ValueError):
+            continue
+        if e.get("type") in URGENTES and not e.get("feedback"):
+            urgentes.append({k: e.get(k) for k in ("id", "type", "camera", "persona", "ubicacion", "detalle",
+                                                    "confirmado_por", "timestamp")}
+                            | {"etiqueta": EVENT_LABELS.get(e["type"], e["type"])})
+    return jsonify(urgentes[:10])
+
+
+@admin_bp.route("/api/events/<event_id>/feedback", methods=["POST"])
+@roles_required("admin", "operator")
+def api_feedback(event_id):
+    """Fue real o falsa alarma: atiende el aviso y le enseña al sistema."""
+    data = request.get_json(silent=True) or {}
+    veredicto = data.get("veredicto")
+    if veredicto not in ("real", "falsa"):
+        return jsonify({"error": "'veredicto' debe ser 'real' o 'falsa'"}), 400
+    evento = data_store.get_event(event_id)
+    if not evento or evento.get("type") not in ALERT_TYPES:
+        return jsonify({"error": "No existe esa alerta"}), 404
+    evento = data_store.set_feedback(event_id, veredicto, current_user.username)
+    aprendido = wearables.aprender_de_falsa(evento) if veredicto == "falsa" else None
+    return jsonify({"ok": True, "aprendido": aprendido})
+
+
+# ═══════════════════════════════════════
+#  MAPA DE RIESGO Y REPORTE DIARIO (riesgo.py)
+# ═══════════════════════════════════════
+
+@admin_bp.route("/riesgo")
+@login_required
+def riesgo_pagina():
+    camaras = [c for c in data_store.load_cameras()]
+    return render_template("admin/riesgo.html", cameras=camaras, telegram=aviso_telegram.configurado())
+
+
+@admin_bp.route("/api/riesgo")
+@login_required
+def api_riesgo():
+    """Matriz día × hora, pronóstico de mañana, tendencia y puntos de una cámara (por nombre)."""
+    tipo = request.args.get("tipo")
+    tipo = tipo if tipo in ALERT_TYPES else None
+    dias = max(1, min(365, request.args.get("dias", 28, type=int)))
+    camara = request.args.get("camara") or None
+    eventos = data_store.load_events()
+    return jsonify({
+        "matriz": riesgo.matriz(eventos, dias=dias, tipo=tipo, camara=camara),
+        "pronostico": riesgo.pronostico(eventos),
+        "tendencia": riesgo.tendencia(eventos),
+        "puntos": riesgo.puntos(eventos, camara, dias=dias, tipo=tipo) if camara else [],
+        "kpis": riesgo.kpis(eventos, dias=dias),
+    })
+
+
+@admin_bp.route("/riesgo/kpis.csv")
+@login_required
+def riesgo_kpis_csv():
+    """Indicadores por turno y alertas por día, para adjuntar a una auditoría ISO 45001."""
+    dias = max(1, min(365, request.args.get("dias", 30, type=int)))
+    k = riesgo.kpis(data_store.load_events(), dias=dias)
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow([f"RAC Vision - indicadores de los últimos {dias} días", f"días sin alertas: {k['dias_sin_alertas']}"])
+    w.writerow(["Turno", "Alertas", *[EVENT_LABELS[t] for t in ALERT_TYPES], "Corregidas", "Corrección (min, mediana)"])
+    for f in k["turnos"]:
+        w.writerow([f["turno"], f["alertas"], *[f["por_tipo"].get(t, 0) for t in ALERT_TYPES], f["corregidas"],
+                    "" if f["correccion_min"] is None else f["correccion_min"]])
+    w.writerow([])
+    w.writerow(["Fecha", "Alertas"])
+    for d in k["por_dia"]:
+        w.writerow([d["fecha"], d["alertas"]])
+    return Response(out.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=rac_kpis_{dias}d.csv"})
+
+
+@admin_bp.route("/reporte")
+@login_required
+def reporte_pagina():
+    try:
+        dia = datetime.strptime(request.args.get("fecha", ""), "%Y-%m-%d").date()
+    except ValueError:
+        dia = None
+    r = riesgo.reporte(data_store.load_events(), dia)
+    # La IA solo se usa a pedido (?ia=1): cada recarga de la página no gasta una llamada
+    usar_ia = request.args.get("ia") == "1" and current_user.role == "admin"   # cada llamada cuesta
+    texto = riesgo.redactar(r) if usar_ia else riesgo.texto(r)
+    return render_template("admin/reporte.html", r=r, texto=texto, telegram=aviso_telegram.configurado(),
+                           ia=bool(os.environ.get("ANTHROPIC_API_KEY")))
+
+
+@admin_bp.route("/reporte/enviar", methods=["POST"])
+@login_required
+@admin_required
+def reporte_enviar():
+    texto = request.form.get("texto", "").strip()
+    if not texto:
+        flash("El reporte está vacío.", "error")
+    elif aviso_telegram.mandar_texto(texto):
+        flash("Reporte enviado por Telegram.", "success")
+    else:
+        flash("No se pudo enviar: revisá TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID.", "error")
+    return redirect(url_for("admin.reporte_pagina", fecha=request.form.get("fecha", "")))
+
+
+_textos_reporte = {}   # fecha → texto ya redactado: si Telegram falla, el reintento no vuelve a pagar la IA
+
+
+def enviar_reporte_del_dia(dia=None):
+    """Arma el reporte de `dia` (ayer por defecto), lo redacta y lo manda por Telegram una sola vez.
+    Un .lock (O_EXCL) evita que dos procesos lo manden a la vez y el .enviado se escribe recién
+    cuando Telegram lo aceptó: si el proceso muere a mitad, se reintenta en la próxima vuelta."""
+    r = riesgo.reporte(data_store.load_events(), dia)
+    os.makedirs(data_store.DATA_DIR, exist_ok=True)
+    marca = os.path.join(data_store.DATA_DIR, f"reporte-{r['fecha']}.enviado")
+    lock = marca + ".lock"
+    if os.path.exists(marca):
+        return False
+    try:
+        if time.time() - os.path.getmtime(lock) > 600:   # lock de un proceso que murió
+            os.remove(lock)
+    except OSError:
+        pass
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    os.close(fd)
+    try:
+        if r["fecha"] not in _textos_reporte:
+            _textos_reporte[r["fecha"]] = riesgo.redactar(r)
+        if not aviso_telegram.mandar_texto(_textos_reporte[r["fecha"]]):
+            return False
+        open(marca, "w").close()
+        _textos_reporte.pop(r["fecha"], None)
+        return True
+    finally:
+        os.remove(lock)
+
+
+def iniciar_reporte_diario():
+    """Con REPORTE_HORA=8 (y Telegram configurado) manda el reporte de ayer todos los días a esa hora.
+    shortcut: arranca un hilo por proceso; con varios workers el .lock y el .enviado en data/ evitan
+    duplicados mientras compartan la carpeta. Con varios contenedores, pasarlo a un cron aparte."""
+    hora = os.environ.get("REPORTE_HORA", "")
+    if not (hora.isdecimal() and 0 <= int(hora) <= 23) or not aviso_telegram.configurado():
+        return None
+
+    def bucle():
+        while True:
+            if datetime.now().hour >= int(hora):
+                try:
+                    enviar_reporte_del_dia()
+                except Exception as e:
+                    print(f"[!] Reporte diario: {aviso_telegram.sin_token(e)}", flush=True)
+            time.sleep(300)
+
+    hilo = threading.Thread(target=bucle, daemon=True, name="reporte-diario")
+    hilo.start()
+    return hilo

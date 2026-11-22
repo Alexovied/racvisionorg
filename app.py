@@ -94,16 +94,21 @@ app.jinja_env.globals["csrf_token"] = csrf_token
 def verificar_csrf():
     if request.method != "POST" or not app.config.get("WTF_CSRF_ENABLED", True):
         return
+    # Los wearables se autentican con su token en el header, sin cookie de sesión: no hay CSRF posible
+    if request.path == "/admin/api/dispositivos/telemetria":
+        return
     enviado = request.headers.get("X-CSRFToken") or request.form.get("csrf_token", "")
     esperado = session.get("csrf_token")
     if not esperado or not secrets.compare_digest(enviado, esperado):
         abort(403, "Token CSRF inválido o ausente. Recargá la página e intentá de nuevo.")
 
 # Register admin Blueprint & Flask-Login
+import admin
 from admin import admin_bp, init_login, roles_required
 from sgep import sgep_bp
 app.register_blueprint(admin_bp)
 app.register_blueprint(sgep_bp)
+admin.iniciar_reporte_diario()   # reporte por Telegram: solo con REPORTE_HORA y TELEGRAM_* configurados
 init_login(app)
 
 # Inicializar conexión con ESP32 (falla silenciosamente si no está conectado)
@@ -222,7 +227,8 @@ def _conocidos():
     con sesión iniciada, las personas dadas de alta (un visitante no ve nombres del personal)."""
     demo = _demo.get(session.get("demo"))
     propias = [(demo[1], demo[2])] if demo and demo[0] > time.time() else []
-    return (face_id._personas() if current_user.is_authenticated else []) + propias
+    anonimo = data_store.load_config().get("modo_anonimo")
+    return (face_id._personas() if current_user.is_authenticated and not anonimo else []) + propias
 
 
 @app.route("/api/demo/cara", methods=["POST", "DELETE"])
@@ -364,7 +370,7 @@ def reset_buffer():
 # ═══════════════════════════════════════
 
 @app.route("/api/alarm", methods=["POST"])
-@login_required
+@roles_required("operator", "admin")
 def api_alarm():
     """
     Endpoint dedicado para activar/desactivar la alarma física del ESP32.

@@ -32,13 +32,15 @@ def _save_json(filename, data):
     path = os.path.join(DATA_DIR, filename)
     with _lock:
         # Se escribe aparte y se reemplaza: un corte de luz a mitad no deja el archivo truncado
-        with open(path + ".tmp", "w", encoding="utf-8") as f:
+        # .tmp propio de cada proceso: dos workers escribiendo a la vez no mezclan sus archivos
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         # En Windows el reemplazo falla si otro programa (antivirus, backup, un editor) tiene
         # el archivo abierto en ese instante: se reintenta un cuarto de segundo antes de rendirse.
         for intento in range(5):
             try:
-                os.replace(path + ".tmp", path)
+                os.replace(tmp, path)
                 break
             except PermissionError:
                 if intento == 4:
@@ -138,9 +140,11 @@ def update_user(user_id, username=None, password=None, role=None):
     return False
 
 def delete_user(user_id):
+    """True si el usuario existía y se borró."""
     users = load_users()
-    users = [u for u in users if u["id"] != user_id]
-    save_users(users)
+    quedan = [u for u in users if u["id"] != user_id]
+    save_users(quedan)
+    return len(quedan) < len(users)
 
 def verify_password(user, password):
     return check_password_hash(user["password_hash"], password)
@@ -181,17 +185,25 @@ def toggle_camera(cam_id):
     return None
 
 def delete_camera(cam_id):
+    """True si la cámara existía y se borró."""
     cameras = load_cameras()
-    cameras = [c for c in cameras if c["id"] != cam_id]
-    save_cameras(cameras)
+    quedan = [c for c in cameras if c["id"] != cam_id]
+    save_cameras(quedan)
+    return len(quedan) < len(cameras)
 
-def set_zonas(cam_id, zonas):
-    """Zonas de exclusión de una cámara: polígonos [[x, y], ...] con coordenadas de 0 a 1."""
+def set_zonas(cam_id, zonas, exentas=None, horario=False):
+    """Zonas de exclusión de una cámara: polígonos [[x, y], ...] con coordenadas de 0 a 1.
+    exentas: polígonos donde no se exige EPP (None = no cambian). horario: {"desde", "hasta"} en que
+    se exige EPP, None = siempre (False = no cambia)."""
     with _lock:
         cameras = load_cameras()
         for c in cameras:
             if c["id"] == cam_id:
                 c["zonas"] = zonas
+                if exentas is not None:
+                    c["exentas"] = exentas
+                if horario is not False:
+                    c["horario"] = horario
                 save_cameras(cameras)
                 return c
     return None
@@ -211,6 +223,8 @@ DEFAULT_CONFIG = {
     # Solo para cámaras que analiza el servidor (motor.py)
     "detectar_caida": True,
     "caida_segundos": 10,
+    # Modo anónimo: sin reconocimiento facial y con las caras pixeladas en las fotos de las alertas
+    "modo_anonimo": False,
 }
 
 def load_config():
@@ -234,7 +248,11 @@ def reset_config():
 # ═══════════════════════════════════════
 
 # Infracciones: guardan persona y foto, disparan la alarma y cuentan como alerta en el panel
-ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido")
+ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido",
+               # de los wearables (wearables.py)
+               "boton_sos", "hombre_muerto", "posible_desmayo", "ritmo_cardiaco", "wearable_sin_senal")
+# Salud de las cámaras (motor.py + salud.py): avisan y guardan foto, pero no hacen sonar la alarma
+SALUD_TYPES = ("camara_sin_senal", "camara_tapada", "camara_desenfocada")
 
 def load_events():
     return _load_json("events.json", [])
@@ -291,6 +309,28 @@ def append_event(event_type, confidence, camera="webcam", foto_webp=None, **extr
             raise
         return event
 
+def get_event(event_id):
+    for e in load_events():
+        if e.get("id") == event_id:
+            return e
+    return None
+
+def update_event(event_id, **campos):
+    """Agrega o cambia campos de un evento guardado. Devuelve el evento o None si no existe."""
+    with _lock:
+        events = load_events()
+        for e in events:
+            if e.get("id") == event_id:
+                e.update(campos)
+                _save_json("events.json", events)
+                return e
+    return None
+
+def set_feedback(event_id, veredicto, usuario):
+    """Marca una alerta como "real" o "falsa" (lo usa aprendizaje.py)."""
+    return update_event(event_id, feedback={"veredicto": veredicto, "usuario": usuario,
+                                            "fecha": datetime.now().isoformat(timespec="seconds")})
+
 def get_filtered_events(event_type=None, camera=None, date_from=None, date_to=None, page=1, per_page=20):
     events = load_events()
     filtered = []
@@ -318,6 +358,8 @@ def get_filtered_events(event_type=None, camera=None, date_from=None, date_to=No
         filtered.append(e)
     
     total = len(filtered)
+    if page < 1 or per_page < 1:   # filtered[-25:0] daría los últimos eventos
+        return [], total
     start = (page - 1) * per_page
     end = start + per_page
     return filtered[start:end], total
@@ -349,6 +391,8 @@ def get_stats():
                 if hour_key not in detections_by_hour:
                     detections_by_hour[hour_key] = {"con_casco": 0, "sin_casco": 0}
                 evt_type = e.get("type", "con_casco")
+                if evt_type in ALERT_TYPES:
+                    evt_type = "sin_casco"   # la barra roja junta todas las alertas, como la tarjeta "Alertas 24 h"
                 if evt_type in detections_by_hour[hour_key]:
                     detections_by_hour[hour_key][evt_type] += 1
         except (ValueError, KeyError):
