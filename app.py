@@ -89,6 +89,18 @@ def csrf_token():
 
 app.jinja_env.globals["csrf_token"] = csrf_token
 
+# Entorno: RAC_ENTORNO=desarrollo en el servidor de pruebas (dev.racvision.org). Muestra una franja
+# en el panel para no confundirlo con producción y le pide a Google que no lo indexe.
+ENTORNO = os.environ.get("RAC_ENTORNO", "produccion").strip().lower()
+app.jinja_env.globals["entorno"] = ENTORNO
+
+
+@app.after_request
+def no_indexar_desarrollo(respuesta):
+    if ENTORNO != "produccion":
+        respuesta.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return respuesta
+
 
 @app.before_request
 def verificar_csrf():
