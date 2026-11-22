@@ -573,6 +573,50 @@
     </div>
 </div>
 
+<!-- ═══════════ SPOT 20 s ═══════════ -->
+<div class="video-section" id="spot">
+    <div class="video-inner reveal">
+        <div class="video-head">
+            <h2>Prevention changes <span>everything</span></h2>
+        </div>
+        <div class="video-frame">
+            <video id="video-spot" aria-describedby="spot-transcripcion" muted playsinline controls preload="none"
+                   poster="{{ url_for('static', filename='video/racvision-spot-20s-poster.jpg') }}">
+                <source src="{{ url_for('static', filename='video/racvision-spot-20s.mp4') }}" type="video/mp4">
+            </video>
+        </div>
+        <details class="video-transcripcion" id="spot-transcripcion">
+            <summary>{% if en %}Video description and voiceover (in Spanish){% else %}Descripción y locución del video{% endif %}</summary>
+            {% if en %}
+            <ol>
+                <li>A security camera comes apart piece by piece and reassembles. "Underground, every second counts."</li>
+                <li>Three miners walk through a tunnel while a laser scans them. "RAC Vision sees what the eye misses."</li>
+                <li>Detections: helmet and vest OK, "no vest", "no helmet". "No helmet, no vest: instant alert."</li>
+                <li>The alert reaches the RAC Vision dashboard. "And everything is logged in your panel, in real time."</li>
+                <li>RAC logo. "RAC Vision. Prevention changes everything."</li>
+            </ol>
+            {% else %}
+            <ol>
+                <li>Una cámara de seguridad se desarma pieza por pieza y se vuelve a armar. "Bajo tierra, cada segundo cuenta."</li>
+                <li>Tres mineros caminan por un túnel mientras un láser los escanea. "RAC Vision ve lo que el ojo pierde."</li>
+                <li>Detecciones: casco y chaleco OK, "sin chaleco", "sin casco". "Sin casco, sin chaleco: alerta al instante."</li>
+                <li>La alerta llega al panel de RAC Vision. "Y todo queda en tu panel, en tiempo real."</li>
+                <li>Logo de RAC. "RAC Vision. La prevención lo cambia todo."</li>
+            </ol>
+            {% endif %}
+        </details>
+    </div>
+    <script>
+        // Arranca en silencio recién cuando se ve en pantalla (igual que el video de 60 s)
+        (function () {
+            const v = document.getElementById('video-spot');
+            new IntersectionObserver((e, obs) => {
+                if (e[0].isIntersecting) { v.play().catch(() => {}); obs.disconnect(); }
+            }, { threshold: 0.25 }).observe(v);
+        })();
+    </script>
+</div>
+
 <!-- ═══════════ VIDEO ═══════════ -->
 <div class="video-section" id="video">
     <div class="video-inner reveal">
@@ -772,9 +816,10 @@
             // 1. Intro: las letras RAC crecen hasta que el túnel llena la pantalla
             // Con el scroll las letras crecen hasta mostrar el túnel y recién ahí aparece el texto
             const intro = gsap.timeline({ scrollTrigger: { trigger: '.intro', start: 'top top', end: '+=160%', pin: true, scrub: 0.8 } });
-            gsap.fromTo('.intro-lema, .deslizar', { opacity: 1 }, { opacity: 0, ease: 'none',
-                scrollTrigger: { trigger: '.intro', start: 'top top', end: '+=150', scrub: true } });
-            intro.fromTo('.intro-letras', { scale: 1 }, { scale: 28, svgOrigin: '800 450', ease: 'power2.in', duration: 1 }, 0)
+            // El lema y "Deslizá" se apagan en los primeros ~150 px, dentro del mismo timeline:
+            // un ScrollTrigger aparte sobre '.intro' arrancaba recién cuando terminaba el pin y quedaban encima del texto.
+            intro.fromTo('.intro-lema, .deslizar', { opacity: 1 }, { opacity: 0, ease: 'none', duration: 0.15 }, 0)
+                 .fromTo('.intro-letras', { scale: 1 }, { scale: 28, svgOrigin: '800 450', ease: 'power2.in', duration: 1 }, 0)
                  .fromTo('.intro-tapa', { opacity: 1 }, { opacity: 0, ease: 'none', duration: 0.35 }, 0.5)
                  .fromTo('.intro-img', { scale: 1.3 }, { scale: 1, ease: 'none', duration: 1.2 }, 0)
                  .fromTo('.intro-texto', { opacity: 0, y: 60 }, { opacity: 1, y: 0, ease: 'power2.out', duration: 0.45 }, 0.85)
