@@ -195,6 +195,8 @@ SISTEMA = ("Sos el asistente de seguridad e higiene de una obra que usa RAC Visi
            "con 1 a 3 acciones concretas para mañana. Usá solo los datos que te pasan; no inventes.")
 # Gemini tiene plan gratis (con límite diario, de sobra para un reporte por día). GEMINI_MODEL lo cambia.
 MODELO_GEMINI = "gemini-flash-latest"
+# Si el modelo está saturado (503), sin cupo (429) o no existe (404), se prueba el siguiente.
+RESPALDOS_GEMINI = ("gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite")
 
 
 def hay_ia():
@@ -203,8 +205,19 @@ def hay_ia():
 
 
 def _con_gemini(datos):
+    modelos = [os.environ.get("GEMINI_MODEL") or MODELO_GEMINI]
+    modelos += [m for m in RESPALDOS_GEMINI if m not in modelos]
+    for i, modelo in enumerate(modelos):
+        try:
+            return _gemini(modelo, datos)
+        except RuntimeError as e:
+            if i == len(modelos) - 1 or not str(e).startswith(("Gemini 503", "Gemini 429", "Gemini 404")):
+                raise
+            print(f"[!] {e} — pruebo con {modelos[i + 1]}", flush=True)
+
+
+def _gemini(modelo, datos):
     import requests
-    modelo = os.environ.get("GEMINI_MODEL") or MODELO_GEMINI
     r = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
         headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},

@@ -112,6 +112,15 @@ def test_redactar_con_gemini_gratis_y_respaldo_si_falla(monkeypatch):
         assert json.loads(kw["json"]["contents"][0]["parts"][0]["text"].split("\n", 1)[1])["total"] == 0
         ok.json.return_value = {"candidates": []}            # bloqueado o vacío → plantilla
         assert riesgo.redactar(r) == riesgo.texto(r)
+        ocupado = mock.MagicMock(status_code=503, headers={"content-type": "application/json"})
+        ocupado.json.return_value = {"error": {"message": "high demand"}}
+        ok.json.return_value = {"candidates": [{"content": {"parts": [{"text": "Con el de respaldo."}]}}]}
+        post.side_effect = [ocupado, ok]                    # saturado → prueba el siguiente modelo
+        assert riesgo.redactar(r) == "Con el de respaldo."
+        assert post.call_args.args[0].endswith("/models/gemini-flash-lite-latest:generateContent")
+        post.side_effect = None
+        post.return_value = ocupado                         # todos saturados → plantilla
+        assert riesgo.redactar(r) == riesgo.texto(r)
         post.side_effect = RuntimeError("cuota agotada")
         assert riesgo.redactar(r) == riesgo.texto(r)
 
