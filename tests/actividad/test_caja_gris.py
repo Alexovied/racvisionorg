@@ -51,7 +51,7 @@ def test_CG01_alerta_por_api_queda_en_json_y_foto_en_disco(operator_client, tmp_
     [ev] = json.loads((tmp_data / "events.json").read_text(encoding="utf-8"))
     assert (ev["type"], ev["confidence"], ev["camera"], ev["ubicacion"], ev["persona"]) == \
         ("sin_casco", 91.3, "Taller", "Sector B", "owen")      # redondeo a 1 decimal y strip()
-    ruta = tmp_data / "alertas" / f"{ev['id']}.jpg"
+    ruta = tmp_data / "alertas" / f"{ev['id']}.webp"   # desde e0ac5f6 las fotos van en WebP
     assert ruta.exists()
     # La foto se re-codifica en el servidor: nunca se guardan los bytes del cliente tal cual
     assert ruta.read_bytes() != base64.b64decode(foto.split(",", 1)[1])
@@ -132,7 +132,7 @@ def test_CG03_n8n_caido_no_rompe_el_registro(operator_client, monkeypatch):
 # Supuesto (ver resumen_proyecto.md): "viewer" es un rol de solo lectura.
 #   acción                      admin  operator  viewer
 #   ver dashboard                 ✔       ✔        ✔
-#   abrir el detector (/app)      ✔       ✔        ✘
+#   abrir el detector (/app)      ✔       ✔        ✔   (público, pero no registra)
 #   abrir monitor multicámara     ✔       ✔        ✘
 #   gestionar usuarios            ✔       ✘        ✘
 #   borrar cámaras                ✔       ✘        ✘
@@ -141,7 +141,7 @@ def test_CG03_n8n_caido_no_rompe_el_registro(operator_client, monkeypatch):
 
 MATRIZ = [
     ("dashboard", {"admin": True, "operator": True, "viewer": True}),
-    ("detector", {"admin": True, "operator": True, "viewer": False}),
+    ("detector", {"admin": True, "operator": True, "viewer": True}),   # /app es público a propósito (demo); sin operador no registra nada
     ("monitor", {"admin": True, "operator": True, "viewer": False}),
     ("usuarios", {"admin": True, "operator": False, "viewer": False}),
     ("borrar_camara", {"admin": True, "operator": False, "viewer": False}),

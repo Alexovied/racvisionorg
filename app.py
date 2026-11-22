@@ -364,7 +364,7 @@ def reset_buffer():
 # ═══════════════════════════════════════
 
 @app.route("/api/alarm", methods=["POST"])
-@login_required
+@roles_required("operator", "admin")
 def api_alarm():
     """
     Endpoint dedicado para activar/desactivar la alarma física del ESP32.

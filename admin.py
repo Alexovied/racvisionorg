@@ -203,6 +203,9 @@ def users():
             if role and role not in ROLES:
                 flash("Rol inválido.", "error")
                 return redirect(url_for("admin.users"))
+            if role and role != "admin" and _es_el_unico_admin(user_id):
+                flash("Es el único administrador: creá otro antes de quitarle el rol.", "error")
+                return redirect(url_for("admin.users"))
             
             success = data_store.update_user(
                 user_id,
@@ -220,15 +223,23 @@ def users():
     all_users = data_store.load_users()
     return render_template("admin/users.html", users=all_users)
 
+
+def _es_el_unico_admin(user_id):
+    admins = [u["id"] for u in data_store.load_users() if u["role"] == "admin"]
+    return admins == [user_id]
+
 @admin_bp.route("/users/<user_id>/delete", methods=["POST"])
 @login_required
 @admin_required
 def delete_user(user_id):
     if user_id == current_user.id:
         flash("No puedes eliminar tu propio usuario.", "error")
-    else:
-        data_store.delete_user(user_id)
+    elif _es_el_unico_admin(user_id):
+        flash("Es el único administrador: no se puede eliminar.", "error")
+    elif data_store.delete_user(user_id):
         flash("Usuario eliminado.", "success")
+    else:
+        flash("El usuario no existe.", "error")
     return redirect(url_for("admin.users"))
 
 
@@ -363,9 +374,11 @@ def toggle_camera(cam_id):
 @login_required
 @admin_required
 def delete_camera(cam_id):
-    data_store.delete_camera(cam_id)
-    motor.sincronizar()
-    flash("Cámara eliminada.", "success")
+    if data_store.delete_camera(cam_id):
+        motor.sincronizar()
+        flash("Cámara eliminada.", "success")
+    else:
+        flash("La cámara no existe.", "error")
     return redirect(url_for("admin.cameras"))
 
 
@@ -483,7 +496,7 @@ def audit():
     camera = request.args.get("camera", "all")
     date_from = request.args.get("date_from", "")
     date_to = request.args.get("date_to", "")
-    page = int(request.args.get("page", 1))
+    page = max(1, request.args.get("page", 1, type=int))
     
     events, total = data_store.get_filtered_events(
         event_type=event_type,
@@ -511,6 +524,13 @@ def audit():
         cameras=all_cameras
     )
 
+def _celda_csv(valor):
+    """Excel ejecuta como fórmula una celda que empieza con = + - @ (o tab / CR): se antepone '."""
+    if isinstance(valor, str) and valor.startswith(("=", "+", "-", "@", chr(9), chr(13))):
+        return "'" + valor
+    return valor
+
+
 @admin_bp.route("/audit/export")
 @login_required
 def audit_export():
@@ -532,14 +552,8 @@ def audit_export():
     writer = csv.writer(output)
     writer.writerow(["Fecha/Hora", "Tipo", "Confianza (%)", "Cámara", "Ubicación", "Persona"])
     for e in events:
-        writer.writerow([
-            e.get("timestamp", ""),
-            e.get("type", ""),
-            e.get("confidence", ""),
-            e.get("camera", ""),
-            e.get("ubicacion", ""),
-            e.get("persona", "")
-        ])
+        writer.writerow([_celda_csv(e.get(k, "")) for k in
+                         ("timestamp", "type", "confidence", "camera", "ubicacion", "persona")])
     
     return Response(
         output.getvalue(),
@@ -704,7 +718,7 @@ def foto_alerta(event_id):
 
 
 @admin_bp.route("/api/events", methods=["POST"])
-@login_required
+@roles_required("operator", "admin")   # viewer es solo lectura
 def api_add_event():
     try:
         data = request.get_json(silent=True)
@@ -752,6 +766,6 @@ def api_get_stats():
 @admin_bp.route("/api/recent-events", methods=["GET"])
 @login_required
 def api_recent_events():
-    limit = int(request.args.get("limit", 10))
+    limit = max(1, min(100, request.args.get("limit", 10, type=int)))
     events, _ = data_store.get_filtered_events(page=1, per_page=limit)
     return jsonify(events)
