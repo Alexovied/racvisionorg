@@ -51,3 +51,4 @@ monitor-run/
 *.zip
 # Scripts de vista previa con SECRET_KEY y ADMIN_PASSWORD fijos
 .claude/
+debug_*
