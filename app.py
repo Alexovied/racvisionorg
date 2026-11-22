@@ -94,6 +94,9 @@ app.jinja_env.globals["csrf_token"] = csrf_token
 def verificar_csrf():
     if request.method != "POST" or not app.config.get("WTF_CSRF_ENABLED", True):
         return
+    # Los wearables se autentican con su token en el header, sin cookie de sesión: no hay CSRF posible
+    if request.path == "/admin/api/dispositivos/telemetria":
+        return
     enviado = request.headers.get("X-CSRFToken") or request.form.get("csrf_token", "")
     esperado = session.get("csrf_token")
     if not esperado or not secrets.compare_digest(enviado, esperado):

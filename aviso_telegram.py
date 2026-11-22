@@ -16,6 +16,9 @@ import requests
 ESPERA = 60
 TITULOS = {"sin_casco": "⛑️ SIN CASCO", "sin_chaleco": "🦺 SIN CHALECO",
            "zona_prohibida": "🚫 ZONA PROHIBIDA", "hombre_caido": "🆘 HOMBRE CAÍDO",
+           "boton_sos": "🚨 BOTÓN DE PÁNICO", "hombre_muerto": "🆘 HOMBRE MUERTO SIN RESPUESTA",
+           "posible_desmayo": "🆘 POSIBLE DESMAYO", "ritmo_cardiaco": "❤️ RITMO CARDÍACO",
+           "wearable_sin_senal": "📡 WEARABLE SIN SEÑAL",
            "camara_sin_senal": "📵 CÁMARA SIN SEÑAL", "camara_tapada": "🙈 CÁMARA TAPADA",
            "camara_desenfocada": "🌫️ CÁMARA DESENFOCADA"}
 _ultimo = {}
@@ -41,6 +44,10 @@ def leyenda(evento):
     partes = [f"{TITULOS.get(evento['type'], evento['type'])} · {evento.get('camera', '')}"]
     if evento.get("ubicacion"):
         partes.append(f"📍 {evento['ubicacion']}")
+    if evento.get("detalle"):
+        partes.append(f"ℹ️ {evento['detalle']}")
+    if evento.get("confirmado_por"):
+        partes.append(f"✅ Confirmado por {evento['confirmado_por']}")
     if evento["type"].startswith("camara_"):
         partes.append(f"Punto ciego desde las {t}: revisar la cámara")
     else:

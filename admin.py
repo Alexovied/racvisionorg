@@ -23,10 +23,12 @@ from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
 )
+import aprendizaje
 import aviso_mqtt
 import aviso_telegram
 import data_store
 import face_detector
+import wearables
 import face_id
 import riesgo
 import salud
@@ -558,6 +560,7 @@ def audit():
     
     total_pages = max(1, (total + 24) // 25)
     all_cameras = data_store.load_cameras()
+    todos = data_store.load_events()
     
     return render_template("admin/audit.html",
         events=events,
@@ -570,7 +573,10 @@ def audit():
             "date_from": date_from,
             "date_to": date_to
         },
-        cameras=all_cameras
+        cameras=all_cameras,
+        precision=aprendizaje.precision(todos),
+        sugerencia=aprendizaje.sugerir_confianza(todos, data_store.load_config()["min_confidence"]),
+        ALERT_TYPES=ALERT_TYPES,
     )
 
 def _celda_csv(valor):
@@ -621,6 +627,8 @@ VALID_EVENT_TYPES = ("con_casco", "sin_casco", "sin_chaleco")
 ALERT_TYPES = data_store.ALERT_TYPES
 EVENT_LABELS = {"con_casco": "Con Casco", "sin_casco": "Sin Casco", "sin_chaleco": "Sin Chaleco",
                 "zona_prohibida": "Zona Prohibida", "hombre_caido": "Hombre Caído",
+                "boton_sos": "Botón de Pánico", "hombre_muerto": "Hombre Muerto", "posible_desmayo": "Posible Desmayo",
+                "ritmo_cardiaco": "Ritmo Cardíaco", "wearable_sin_senal": "Wearable sin Señal",
                 "camara_sin_senal": "Cámara sin señal", "camara_tapada": "Cámara tapada",
                 "camara_desenfocada": "Cámara desenfocada"}
 SALUD_TYPES = data_store.SALUD_TYPES
@@ -734,13 +742,16 @@ def _posicion(pos):
     return None
 
 
-def registrar_evento(event_type, confidence, camera, persona=None, foto=None, pos=None):
+def registrar_evento(event_type, confidence, camera, persona=None, foto=None, pos=None, extra_campos=None):
     """Guarda el evento y avisa: alarma física y webhook. Lo usan la API (el navegador decide)
     y el motor de cámaras del servidor (motor.py). camera: id o nombre de una cámara registrada.
     Las alertas guardan además quién era, dónde fue y una foto del momento (en WebP).
-    foto: bytes de imagen; el motor manda el JPEG del cuadro y acá se pasa a WebP."""
+    foto: bytes de imagen; el motor manda el JPEG del cuadro y acá se pasa a WebP.
+    extra_campos: datos propios del origen (los wearables mandan dispositivo, detalle y medición)."""
     camera, ubicacion = datos_de_camara(camera)
     extra = {"ubicacion": ubicacion} if ubicacion else {}
+    extra.update(extra_campos or {})
+    ubicacion = extra.get("ubicacion", "")
     if data_store.load_config().get("modo_anonimo"):   # nadie con nombre y caras pixeladas en la foto
         persona = None
         foto = anonimizar(foto) if foto else None
@@ -748,6 +759,14 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
         extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
         if _posicion(pos):
             extra["pos"] = _posicion(pos)
+    if event_type == "hombre_caido":
+        # Si el wearable de alguien avisó caída, desmayo o SOS hace poco, la cámara lo confirma
+        quien = extra.get("persona") if extra.get("persona") != "Sin identificar" else None
+        previo = wearables.buscar_confirmacion(data_store.load_events(), wearables.TIPOS_DE_CAIDA,
+                                               datetime.now(), persona=quien)
+        if previo:
+            extra["confirmado_por"] = f"wearable {previo['camera']} ({previo.get('persona', '')})"
+            extra["evento_relacionado"] = previo["id"]
     foto_webp = None
     if foto and (event_type in ALERT_TYPES or event_type in SALUD_TYPES):
         # La API ya la recodificó en foto_de_alerta(); el JPEG del motor se pasa a WebP acá
@@ -755,7 +774,7 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
     event = data_store.append_event(event_type, confidence, camera, foto_webp=foto_webp, **extra)
 
     # Despachar comando al hardware según el tipo de evento
-    if event_type in ALERT_TYPES:
+    if event_type in ALERT_TYPES and event_type != "wearable_sin_senal":
         enviar_comando_esp32("R")   # LED Rojo + Buzzer ON
     elif event_type == "con_casco":
         enviar_comando_esp32("G")   # LED Verde + Buzzer OFF
@@ -862,6 +881,193 @@ def api_recent_events():
     limit = max(1, min(100, request.args.get("limit", 10, type=int)))
     events, _ = data_store.get_filtered_events(page=1, per_page=limit)
     return jsonify(events)
+
+
+# ═══════════════════════════════════════
+#  WEARABLES: pulso, caídas, botón SOS y hombre muerto (wearables.py)
+# ═══════════════════════════════════════
+
+# Lo que salta en el aviso rojo de todas las páginas del panel hasta que alguien lo marque
+URGENTES = ("boton_sos", "hombre_muerto", "posible_desmayo", "hombre_caido", "ritmo_cardiaco")
+URGENTE_MINUTOS = 15
+
+
+def alerta_de_wearable(disp, tipo, detalle, lectura):
+    """Registra una alerta de un wearable como cualquier otra (panel, alarma, n8n y Telegram).
+    Si es una caída y la cámara de su zona vio a alguien en el piso hace poco, va confirmada."""
+    extra = {"dispositivo": disp["id"], "detalle": detalle,
+             "medicion": {k: lectura[k] for k in ("bpm", "spo2", "actividad", "bateria") if k in lectura}}
+    if disp.get("camara"):
+        _, ubicacion = datos_de_camara(disp["camara"])
+        if ubicacion:
+            extra["ubicacion"] = ubicacion
+    confianza = wearables.CONFIANZA[tipo]
+    if tipo in wearables.TIPOS_DE_CAIDA:
+        camara = datos_de_camara(disp["camara"])[0] if disp.get("camara") else None
+        vista = wearables.buscar_confirmacion(data_store.load_events(), ("hombre_caido",), datetime.now(),
+                                              camara=camara, persona=disp.get("persona"))
+        if vista:
+            extra["confirmado_por"] = f"cámara {vista['camera']}"
+            extra["evento_relacionado"] = vista["id"]
+            confianza = max(confianza, 98)
+    return registrar_evento(tipo, confianza, disp["nombre"], persona=disp.get("persona"), extra_campos=extra)
+
+
+def revisar_wearables(ahora=None):
+    """Avisa de los equipos que dejaron de mandar datos. La llama el hilo de vigilancia."""
+    ahora = time.monotonic() if ahora is None else ahora
+    with wearables._lock:
+        ids = wearables.callados(wearables._estados, ahora)
+    avisados = []
+    for disp_id in ids:
+        disp = wearables.obtener(disp_id)
+        if disp and disp.get("activo", True):
+            avisados.append(alerta_de_wearable(disp, "wearable_sin_senal",
+                                               f"sin datos hace más de {wearables.SIN_SENAL_S} s", {}))
+    return avisados
+
+
+_vigilancia = None
+
+
+def _iniciar_vigilancia():
+    """Un hilo que cada 15 s revisa qué wearables se callaron. Arranca con la primera lectura."""
+    global _vigilancia
+    if _vigilancia is not None:
+        return
+
+    def bucle():
+        while True:
+            time.sleep(15)
+            try:
+                revisar_wearables()
+            except Exception as e:
+                print(f"[!] Vigilancia de wearables: {e}", flush=True)
+
+    _vigilancia = threading.Thread(target=bucle, daemon=True, name="vigilancia-wearables")
+    _vigilancia.start()
+
+
+def _token_del_equipo():
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return request.headers.get("X-Device-Token", "").strip()
+
+
+@admin_bp.route("/api/dispositivos/telemetria", methods=["POST"])
+def api_telemetria():
+    """La llama el wearable cada pocos segundos, con su token (no con sesión: no pasa por CSRF).
+    Responde qué alertas nuevas generó, para que el equipo vibre y el trabajador sepa que llegó."""
+    disp = wearables.por_token(_token_del_equipo())
+    if not disp:
+        return jsonify({"error": "Token de dispositivo inválido"}), 401
+    lectura, error = wearables.validar_lectura(request.get_json(silent=True))
+    if error:
+        return jsonify({"error": error}), 400
+    with wearables._lock:
+        nuevas = wearables.evaluar(wearables.estado_de(disp["id"]), lectura, time.monotonic(),
+                                   wearables.umbrales_de(disp))
+    eventos = [alerta_de_wearable(disp, tipo, detalle, lectura) for tipo, detalle in nuevas]
+    _iniciar_vigilancia()
+    return jsonify({"ok": True, "alertas": [e["type"] for e in eventos], "aviso_recibido": bool(eventos)})
+
+
+@admin_bp.route("/wearables", methods=["GET", "POST"])
+@login_required
+def wearables_pagina():
+    """Lista de equipos en vivo. El admin registra equipos: el token se muestra una sola vez."""
+    if current_user.role in ("pm", "auditor"):
+        return redirect(url_for("sgep.dashboard"))
+    token_nuevo = None
+    if request.method == "POST":
+        if current_user.role != "admin":
+            flash("Solo un administrador puede registrar equipos.", "error")
+            return redirect(url_for("admin.wearables_pagina"))
+        nombre = request.form.get("nombre", "").strip()
+        persona = request.form.get("persona", "").strip()
+        if not nombre or not persona:
+            flash("Poné un nombre para el equipo y a quién se lo das.", "error")
+        else:
+            disp, token = wearables.crear(nombre, persona, request.form.get("camara", ""))
+            token_nuevo = {"nombre": disp["nombre"], "token": token}
+    return render_template("admin/wearables.html", cameras=data_store.load_cameras(), token_nuevo=token_nuevo,
+                           umbrales=wearables.UMBRALES, sin_senal=wearables.SIN_SENAL_S)
+
+
+@admin_bp.route("/wearables/<disp_id>/token", methods=["POST"])
+@login_required
+@admin_required
+def wearable_token(disp_id):
+    token = wearables.regenerar_token(disp_id)
+    if not token:
+        abort(404)
+    disp = wearables.obtener(disp_id)
+    return render_template("admin/wearables.html", cameras=data_store.load_cameras(),
+                           token_nuevo={"nombre": disp["nombre"], "token": token},
+                           umbrales=wearables.UMBRALES, sin_senal=wearables.SIN_SENAL_S)
+
+
+@admin_bp.route("/wearables/<disp_id>/borrar", methods=["POST"])
+@login_required
+@admin_required
+def wearable_borrar(disp_id):
+    if wearables.borrar(disp_id):
+        flash("Equipo borrado. Si lo volvés a usar, registralo de nuevo y cargale el token nuevo.", "success")
+    else:
+        flash("Ese equipo ya no existe.", "error")
+    return redirect(url_for("admin.wearables_pagina"))
+
+
+@admin_bp.route("/wearables/<disp_id>/restablecer", methods=["POST"])
+@login_required
+@admin_required
+def wearable_restablecer(disp_id):
+    if wearables.restablecer_umbrales(disp_id):
+        flash("Umbrales de fábrica restablecidos para ese equipo.", "success")
+    return redirect(url_for("admin.wearables_pagina"))
+
+
+@admin_bp.route("/api/wearables")
+@roles_required("admin", "operator", "viewer")
+def api_wearables():
+    ahora = time.monotonic()
+    return jsonify([wearables.resumen(d, ahora) for d in wearables.cargar()])
+
+
+@admin_bp.route("/api/alertas-urgentes")
+@roles_required("admin", "operator", "viewer")
+def api_alertas_urgentes():
+    """Alertas graves de los últimos minutos que nadie marcó todavía (el aviso rojo del panel)."""
+    desde = datetime.now().timestamp() - URGENTE_MINUTOS * 60
+    urgentes = []
+    for e in data_store.load_events():
+        try:
+            if datetime.fromisoformat(e["timestamp"]).timestamp() < desde:
+                break
+        except (KeyError, ValueError):
+            continue
+        if e.get("type") in URGENTES and not e.get("feedback"):
+            urgentes.append({k: e.get(k) for k in ("id", "type", "camera", "persona", "ubicacion", "detalle",
+                                                    "confirmado_por", "timestamp")}
+                            | {"etiqueta": EVENT_LABELS.get(e["type"], e["type"])})
+    return jsonify(urgentes[:10])
+
+
+@admin_bp.route("/api/events/<event_id>/feedback", methods=["POST"])
+@roles_required("admin", "operator")
+def api_feedback(event_id):
+    """Fue real o falsa alarma: atiende el aviso y le enseña al sistema."""
+    data = request.get_json(silent=True) or {}
+    veredicto = data.get("veredicto")
+    if veredicto not in ("real", "falsa"):
+        return jsonify({"error": "'veredicto' debe ser 'real' o 'falsa'"}), 400
+    evento = data_store.get_event(event_id)
+    if not evento or evento.get("type") not in ALERT_TYPES:
+        return jsonify({"error": "No existe esa alerta"}), 404
+    evento = data_store.set_feedback(event_id, veredicto, current_user.username)
+    aprendido = wearables.aprender_de_falsa(evento) if veredicto == "falsa" else None
+    return jsonify({"ok": True, "aprendido": aprendido})
 
 
 # ═══════════════════════════════════════
