@@ -297,10 +297,13 @@ def predict():
         if helmet_detector.disponible() or (not modos["casco"] and modos["chaleco"] and epp.disponible()):
             # "caida": la página lo pide un par de veces por segundo (es otra pasada de red)
             caida = bool(data.get("caida")) and bool(cfg["detectar_caida"])
-            caras, personas = motor.analizar(img, modos, con_personas=caida, conocidos=_conocidos())
-            respuesta = {"has_face": len(caras) > 0, "modos": modos, "faces": caras}
+            info = {}
+            caras, personas = motor.analizar(img, modos, con_personas=caida, conocidos=_conocidos(), info=info)
+            respuesta = {"has_face": len(caras) > 0, "modos": modos, "faces": caras,
+                         "inclinacion": round(info.get("inclinacion", 0.0), 1)}
             if caida:
-                respuesta["acostados"] = motor.acostados(img, personas, caras, modos)
+                respuesta["acostados"] = motor.acostados(img, personas, caras, modos, info.get("cuerpos"),
+                                                         info.get("inclinacion", 0.0))
             return jsonify(respuesta)
 
         # Respaldo sin detector_casco.onnx: cara (YuNet) + clasificador Keras

@@ -79,6 +79,14 @@ def tmp_data(tmp_path, monkeypatch):
     return data_dir
 
 
+@pytest.fixture(autouse=True)
+def sin_modelo_de_pose(monkeypatch):
+    """Los tests con cabezas simuladas no tienen cuerpos: sin esto, si detector_pose.onnx está
+    en la carpeta, motor.analizar descartaría esas cabezas. test_cuerpo.py lo prende a mano."""
+    import pose
+    monkeypatch.setattr(pose, "_net", None)
+
+
 @pytest.fixture
 def client(flask_app):
     return flask_app.app.test_client()

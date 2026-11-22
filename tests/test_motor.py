@@ -68,7 +68,7 @@ def test_hombre_caido_registra_evento(camara, monkeypatch):
     hilo, eventos = camara
     reloj = iter(range(100, 200))
     monkeypatch.setattr(motor.time, "monotonic", lambda: next(reloj))
-    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False: ([], [[330, 300, 290, 100]]))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([], [[330, 300, 290, 100]]))
     for _ in range(11):                # t = 100 ... 110 con caida_segundos = 10
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))
     assert [e[0] for e in eventos] == ["hombre_caido"]
@@ -80,7 +80,7 @@ def test_zona_hasta_el_borde_incluye_a_quien_queda_cortado_abajo(monkeypatch):
     cam = data_store.set_zonas(cam["id"], [[[0.05, 0.4], [0.95, 0.4], [0.95, 0.995], [0.05, 0.995]]])
     eventos = []
     monkeypatch.setattr(motor, "registrar_evento", lambda *a: eventos.append(a))
-    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False: ([], [[200, 100, 200, 380]]))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([], [[200, 100, 200, 380]]))
     hilo = motor.Camara(cam)
     for _ in range(3):
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))   # la caja termina en y = 480, el borde
@@ -97,7 +97,7 @@ def test_evento_que_no_se_pudo_guardar_se_reintenta(camara, monkeypatch):
         eventos.append(a)
 
     monkeypatch.setattr(motor, "registrar_evento", registrar)
-    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False: ([], [[100, 100, 80, 300]]))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([], [[100, 100, 80, 300]]))
     frame = lambda: hilo._procesar(np.zeros((480, 640, 3), np.uint8))
     frame(), frame()
     with pytest.raises(PermissionError):
@@ -109,7 +109,7 @@ def test_evento_que_no_se_pudo_guardar_se_reintenta(camara, monkeypatch):
 def test_evento_de_zona_lleva_el_nombre_de_quien_entro(camara, monkeypatch):
     hilo, eventos = camara
     cara = {"bbox": [110, 110, 50, 50], "nombre": "José", "con_casco": 95.0, "sin_casco": 5.0, "chaleco": True}
-    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False: ([cara], [[100, 100, 80, 300]]))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([cara], [[100, 100, 80, 300]]))
     for _ in range(3):
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))
     assert eventos[0][:4] == ("zona_prohibida", 100.0, hilo.cam["id"], "José")
@@ -144,7 +144,7 @@ def camara(monkeypatch):
 def test_persona_en_zona_registra_evento_con_foto(camara, monkeypatch):
     hilo, eventos = camara
     en_zona = [100, 100, 80, 300]     # apoya en x=140: adentro
-    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False: ([], [en_zona]))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([], [en_zona]))
     for _ in range(3):
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))
     assert [e[0] for e in eventos] == ["zona_prohibida"]
@@ -155,7 +155,7 @@ def test_persona_en_zona_registra_evento_con_foto(camara, monkeypatch):
 
 def test_persona_fuera_de_zona_no_alerta(camara, monkeypatch):
     hilo, eventos = camara
-    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False: ([], [[400, 100, 80, 300]]))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([], [[400, 100, 80, 300]]))
     for _ in range(10):
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))
     assert eventos == []
@@ -164,7 +164,7 @@ def test_persona_fuera_de_zona_no_alerta(camara, monkeypatch):
 def test_sin_casco_pasa_de_alerta_a_todos_con_epp(camara, monkeypatch):
     hilo, eventos = camara
     cara = {"bbox": [300, 50, 60, 60], "nombre": "José", "con_casco": 5.0, "sin_casco": 95.0, "chaleco": True}
-    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False: ([cara], []))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([cara], []))
     for _ in range(3):
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))
     assert eventos[0][:4] == ("sin_casco", 95.0, hilo.cam["id"], "José")
@@ -247,7 +247,7 @@ def test_con_pose_sentado_cerca_no_es_caida_y_acostado_si(camara, monkeypatch):
     monkeypatch.setattr(motor.time, "monotonic", lambda: next(reloj))
     monkeypatch.setattr(motor.pose, "disponible", lambda: True)
     ancha = [330, 95, 290, 200]      # caja ancha: la regla de la caja diría "acostado"
-    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False: ([], [ancha]))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([], [ancha]))
     monkeypatch.setattr(motor.pose, "detectar", lambda img: [(ancha, _puntos((470, 120), (470, 280)))])
     for _ in range(12):
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))
