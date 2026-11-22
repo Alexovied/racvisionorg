@@ -199,6 +199,10 @@ header p {
     transform: scaleX(-1); /* Espejar para vista natural */
 }
 
+#webcam.sin-espejo {
+    transform: none; /* un video o una foto se ven como son */
+}
+
 #overlay {
     position: absolute;
     top: 0;
