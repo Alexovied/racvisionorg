@@ -141,7 +141,7 @@ def acostados(img, personas, caras, modos, cuerpos=None, inclinacion=0.0):
     cuerpos / inclinacion: lo que dejó analizar() en `info`, para no correr la pose otra vez
     y medir el torso respecto de la vertical real aunque la cámara esté girada."""
     alto, ancho = img.shape[:2]
-    if personas and pose.disponible():
+    if pose.disponible():  # sin detector de chalecos `personas` viene vacío: la pose igual ve a la gente
         if cuerpos is None:
             cuerpos = pose.detectar(img)
         candidatos = [(caja, pose.torso_caido(puntos, inclinacion)) for caja, puntos in cuerpos]
@@ -293,13 +293,19 @@ class Camara(threading.Thread):
         # acumulan frames viejos. El análisis va en otro hilo y toma siempre el frame más nuevo.
         threading.Thread(target=self._analizar, daemon=True, name=self.name + "-analisis").start()
         while not self.parar.is_set():
-            cap = self._abrir()
-            while not self.parar.is_set():
-                ok, img = cap.read()
-                if not ok:
-                    break
-                self.crudo = img
-            cap.release()
+            cap = None
+            try:  # un error de OpenCV (driver, URL rara) no debe matar el hilo: se reintenta igual
+                cap = self._abrir()
+                while not self.parar.is_set():
+                    ok, img = cap.read()
+                    if not ok:
+                        break
+                    self.crudo = img
+            except Exception:
+                traceback.print_exc()
+            finally:
+                if cap is not None:
+                    cap.release()
             self.crudo, self.jpg, self.fps, self.error = None, None, 0.0, "Sin señal"
             self.parar.wait(5)  # y se vuelve a intentar: cámara desenchufada o red caída
 

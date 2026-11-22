@@ -72,6 +72,13 @@ def flask_app():
 
 
 @pytest.fixture(autouse=True)
+def sin_intentos_de_login():
+    """El contador de contraseñas malas es global: cada test arranca sin bloqueos."""
+    import admin
+    admin._intentos.clear()
+
+
+@pytest.fixture(autouse=True)
 def tmp_data(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     monkeypatch.setattr(data_store, "DATA_DIR", str(data_dir))

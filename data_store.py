@@ -32,13 +32,15 @@ def _save_json(filename, data):
     path = os.path.join(DATA_DIR, filename)
     with _lock:
         # Se escribe aparte y se reemplaza: un corte de luz a mitad no deja el archivo truncado
-        with open(path + ".tmp", "w", encoding="utf-8") as f:
+        # .tmp propio de cada proceso: dos workers escribiendo a la vez no mezclan sus archivos
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         # En Windows el reemplazo falla si otro programa (antivirus, backup, un editor) tiene
         # el archivo abierto en ese instante: se reintenta un cuarto de segundo antes de rendirse.
         for intento in range(5):
             try:
-                os.replace(path + ".tmp", path)
+                os.replace(tmp, path)
                 break
             except PermissionError:
                 if intento == 4:

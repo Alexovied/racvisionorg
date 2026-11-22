@@ -128,6 +128,14 @@ def admin_required(f):
 #  AUTH ROUTES
 # ═══════════════════════════════════════
 
+# Fuerza bruta: 5 contraseñas malas para un usuario desde una IP → 5 minutos sin poder probar.
+# shortcut: en memoria y por proceso (se pierde al reiniciar); detrás de un proxy sin ProxyFix la IP
+# es la del proxy y el bloqueo queda por usuario. Con varios workers o mucho tráfico, pasar a flask-limiter.
+LOGIN_MAX_FALLAS, LOGIN_VENTANA = 5, 300
+_intentos = {}
+_intentos_lock = threading.Lock()
+
+
 @admin_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -136,14 +144,28 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        
+        clave = (request.remote_addr, username.lower())
+        ahora = time.time()
+        with _intentos_lock:
+            fallas = [t for t in _intentos.get(clave, []) if ahora - t < LOGIN_VENTANA]
+            _intentos[clave] = fallas
+        if len(fallas) >= LOGIN_MAX_FALLAS:
+            flash("Demasiados intentos fallidos. Esperá unos minutos y probá de nuevo.", "error")
+            return render_template("admin/login.html"), 429
+
         user_data = data_store.get_user_by_username(username)
         if user_data and data_store.verify_password(user_data, password):
+            _intentos.pop(clave, None)
             user = User(user_data)
             login_user(user)
             next_page = _safe_next(request.args.get("next"))
             return redirect(next_page or url_for("admin.dashboard"))
         else:
+            with _intentos_lock:
+                if len(_intentos) > 1000:  # nombres inventados no llenan la memoria
+                    for k in [k for k, v in _intentos.items() if not v or ahora - v[-1] > LOGIN_VENTANA]:
+                        del _intentos[k]
+                _intentos.setdefault(clave, []).append(ahora)
             flash("Usuario o contraseña incorrectos.", "error")
     
     return render_template("admin/login.html")
@@ -695,10 +717,13 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None):
 
 
 def _avisar_n8n(payload, headers):
+    # n8n caído no debe romper el flujo de RAC, pero queda en el log (si no, nadie se entera)
     try:
-        requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=3)
-    except Exception:
-        pass  # n8n inaccesible no debe romper el flujo de RAC
+        r = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=3)
+        if r.status_code >= 400:
+            print(f"[!] n8n respondió {r.status_code} a la alerta {payload['tipo_riesgo']}", flush=True)
+    except Exception as e:
+        print(f"[!] n8n no recibió la alerta {payload['tipo_riesgo']}: {e}", flush=True)
 
 
 motor.registrar_evento = registrar_evento

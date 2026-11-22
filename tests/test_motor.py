@@ -256,3 +256,34 @@ def test_con_pose_sentado_cerca_no_es_caida_y_acostado_si(camara, monkeypatch):
     for _ in range(16):    # 5 frames para ser mayoría en la ventana + 10 s acostado
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))
     assert [e[0] for e in eventos] == ["hombre_caido"]
+
+
+def test_caida_con_pose_aunque_no_haya_modelo_de_chalecos(monkeypatch):
+    # Sin detector_chaleco.onnx `personas` llega vacío: la pose igual tiene que ver al acostado
+    monkeypatch.setattr(motor.pose, "disponible", lambda: True)
+    caja = [330, 195, 290, 100]
+    cuerpos = [(caja, _puntos((350, 200), (560, 210)))]
+    assert motor.acostados(np.zeros((480, 640, 3), np.uint8), [], [], {"casco": True, "chaleco": False},
+                           cuerpos) == [caja]
+
+
+def test_hilo_de_camara_sobrevive_a_un_error_de_opencv(camara, monkeypatch):
+    hilo, _ = camara
+    llamadas = []
+
+    def abrir():
+        llamadas.append(1)
+        if len(llamadas) == 2:
+            hilo.parar.set()
+        raise cv2.error("driver roto")
+
+    monkeypatch.setattr(hilo, "_abrir", abrir)
+    monkeypatch.setattr(hilo.parar, "wait", lambda s=None: None)
+    monkeypatch.setattr(motor.threading, "Thread", lambda **kw: mock_hilo())
+    hilo.run()
+    assert len(llamadas) == 2 and hilo.error == "Sin señal"     # reintentó en vez de morir
+
+
+class mock_hilo:
+    def start(self):
+        pass

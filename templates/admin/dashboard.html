@@ -251,6 +251,9 @@
         return ts.substring(11, 19);
     }
 
+    // El nombre de la cámara lo escribe un operador: va escapado, si no es XSS contra el admin
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
     function buildEventHTML(event) {
         const isDanger = event.type !== 'con_casco';
         const cls   = isDanger ? 'event-danger' : 'event-success';
@@ -261,7 +264,7 @@
                 <i class="fa-solid ${icon}"></i>
                 <div>
                     <span class="event-type">${label}</span>
-                    <span class="event-camera">${event.camera || 'webcam'}</span>
+                    <span class="event-camera">${esc(event.camera || 'webcam')}</span>
                 </div>
             </div>
             <div class="event-right">
