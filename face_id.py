@@ -74,7 +74,7 @@ def _fernet():
     return Fernet(clave.encode())
 
 
-def _leer_db():
+def _leer_db(estricto=False):
     """{nombre: [embeddings]}. Con RAC_CLAVE_BIOMETRIA el archivo está cifrado en reposo (Ley 25.326:
     los datos biométricos son sensibles); un archivo viejo sin cifrar se lee igual y se cifra al guardar."""
     datos = data_store._load_json("personas.json", {})
@@ -84,6 +84,8 @@ def _leer_db():
         return json.loads(_fernet().decrypt(datos["cifrado"].encode()))
     except Exception as e:  # sin clave o clave equivocada: nadie se reconoce, pero no se borra nada
         print(f"[!] personas.json está cifrado y no se pudo abrir ({type(e).__name__}): revisá {CLAVE_ENV}", flush=True)
+        if estricto:   # quien va a escribir no puede seguir: pisaría a todas las personas con un archivo nuevo
+            raise RuntimeError(f"personas.json está cifrado y falta o no coincide {CLAVE_ENV}") from e
         return {}
 
 
@@ -123,7 +125,7 @@ def registrar(nombre, imagenes, por):
     solo guarda si hay al menos MIN_FOTOS útiles. Las fotos no se guardan."""
     embs, sin_cara = _embeddings(imagenes)
     if len(embs) >= MIN_FOTOS:
-        datos = _leer_db()
+        datos = _leer_db(estricto=True)
         registro = data_store._load_json("personas_registro.json", {})
         datos[nombre] = embs
         registro[nombre] = {"alta": datetime.now().isoformat(timespec="seconds"), "por": por, "consentimiento": True}
@@ -133,7 +135,7 @@ def registrar(nombre, imagenes, por):
 
 def borrar(nombre):
     """Quita los embeddings y el registro de una persona (derecho de supresión)."""
-    datos = _leer_db()
+    datos = _leer_db(estricto=True)
     registro = data_store._load_json("personas_registro.json", {})
     if datos.pop(nombre, None) is None:
         return False
@@ -192,7 +194,7 @@ def identificar(img, bbox, personas=None):
 def enrolar(carpeta=os.path.join(BASE, "personas")):
     """Lee personas/<nombre>/*.jpg|png y suma esas personas a data/personas.json
     (no borra a las registradas desde el panel)."""
-    datos, sin_cara = _leer_db(), []
+    datos, sin_cara = _leer_db(estricto=True), []
     for dir_persona in sorted(glob.glob(os.path.join(carpeta, "*"))):
         if not os.path.isdir(dir_persona):
             continue

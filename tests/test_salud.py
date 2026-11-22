@@ -141,3 +141,26 @@ def test_api_guarda_exentas_y_horario(operator_client):
     assert data_store.load_cameras()[0]["horario"] is None
     assert operator_client.post(url, json={"zonas": [], "horario": {"desde": "7", "hasta": "19:00"}}).status_code == 400
     assert operator_client.post(url, json={"zonas": [], "exentas": "x"}).status_code == 400
+
+
+def test_al_cerrar_el_horario_se_apaga_la_alarma(monkeypatch):
+    cam = data_store.create_camera("Taller", "", "usb", "0")
+    eventos = []
+    monkeypatch.setattr(motor, "registrar_evento", lambda *a: eventos.append(a))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([SIN_CASCO] if modos["casco"] else [], []))
+    monkeypatch.setattr(motor.salud, "lente", lambda img: None)
+    exige = [True]
+    monkeypatch.setattr(motor, "en_horario", lambda h, ahora: exige[0])
+    hilo = motor.Camara(cam)
+    for _ in range(3):
+        hilo._procesar(np.zeros((480, 640, 3), np.uint8))
+    assert [e[0] for e in eventos] == ["sin_casco"] and hilo.alarma == "alerta"
+    exige[0] = False                                    # 19:00: se termina el horario
+    hilo._procesar(np.zeros((480, 640, 3), np.uint8))
+    assert [e[0] for e in eventos] == ["sin_casco", "con_casco"] and hilo.alarma is None
+
+
+def test_escena_oscura_con_contraste_no_es_lente_tapada():
+    noche = (np.random.default_rng(5).random((480, 640, 3)) * 40).astype(np.uint8)   # media ~20, con textura
+    noche[200:260, 300:340] = 200                                                       # una luz
+    assert salud.lente(noche) != "tapada"

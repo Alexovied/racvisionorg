@@ -293,7 +293,7 @@
             espejo = true;
             video.classList.remove('sin-espejo');
             contenedor.style.aspectRatio = '';
-            if (urlArchivo) { video.removeAttribute('src'); URL.revokeObjectURL(urlArchivo); urlArchivo = null; }
+            if (urlArchivo) stopWebcam();   // venía analizando un archivo: se corta del todo antes de abrir la cámara
             try {
                 // Resetear buffer de suavizado del backend al iniciar
                 fetch('/reset_buffer', { method: 'POST', headers: { 'X-CSRFToken': CSRF } }).catch(() => {});

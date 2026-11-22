@@ -318,6 +318,7 @@
         [desde, hasta].forEach(i => i.addEventListener('change', () => { btnGuardar.disabled = false; }));
         btnGuardar.addEventListener('click', async () => {
             if (actual) btnZona.click();  // una zona a medio dibujar se cierra antes de guardar
+            if (!desde.value !== !hasta.value) return alert('Completá las dos horas del horario, o dejá las dos vacías para exigir EPP siempre.');
             const horario = desde.value && hasta.value ? { desde: desde.value, hasta: hasta.value } : null;
             const r = await fetch(`/admin/api/cameras/${camId}/zonas`, { method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },

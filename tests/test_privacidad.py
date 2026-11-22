@@ -95,3 +95,19 @@ def test_sin_la_clave_nadie_se_reconoce_y_no_se_borra_nada(clave, monkeypatch):
     monkeypatch.delenv(face_id.CLAVE_ENV)
     assert face_id._leer_db() == {}
     assert set(data_store._load_json("personas.json", {})) == {"cifrado"}     # sigue ahí
+
+
+def test_sin_clave_no_se_puede_registrar_ni_pisar_el_archivo(clave, monkeypatch):
+    face_id._escribir_db({"José": [[0.1]]})
+    monkeypatch.delenv(face_id.CLAVE_ENV)
+    monkeypatch.setattr(face_id, "_embeddings", lambda imgs: ([[0.2]] * 3, 0))
+    with pytest.raises(RuntimeError):
+        face_id.registrar("Ana", [None] * 3, "admin")
+    with pytest.raises(RuntimeError):
+        face_id.borrar("José")
+    assert set(data_store._load_json("personas.json", {})) == {"cifrado"}
+
+
+def test_modo_anonimo_sin_caras_detectadas_no_guarda_foto(monkeypatch):
+    monkeypatch.setattr(admin.face_detector, "detect_faces", lambda im: [])
+    assert admin.anonimizar(_foto()) is None
