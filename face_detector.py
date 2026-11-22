@@ -11,6 +11,9 @@ cascadas Haar de antes como respaldo.
 import os
 import threading
 import cv2
+import numpy as np
+
+import helmet_detector  # comparte el Core y el dispositivo de OpenVINO
 
 YUNET_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "face_detection_yunet_2023mar.onnx")
@@ -39,6 +42,59 @@ if hasattr(cv2, "FaceDetectorYN") and os.path.exists(YUNET_PATH):
         print(f"[!] No se pudo cargar YuNet ({e}). Se usan cascadas Haar.")
 if _yunet is None:
     print("[!] Detector de rostros: cascadas Haar (YuNet no disponible)")
+
+
+class _YuNetOpenVINO:
+    """YuNet con OpenVINO, con la misma interfaz que cv2.FaceDetectorYN (setInputSize,
+    setScoreThreshold, detect) y su mismo pre y posprocesamiento (opencv face_detect.cpp)."""
+
+    def __init__(self, path, score, nms, top_k):
+        self.modelo, self.score, self.nms, self.top_k = helmet_detector._core.read_model(path), score, nms, top_k
+        self.redes, self.tam = {}, (320, 320)
+
+    def setInputSize(self, tam):
+        self.tam = tuple(tam)
+
+    def setScoreThreshold(self, score):
+        self.score = score
+
+    def _red(self, pw, ph):
+        # Una red compilada por tamaño (la cámara casi siempre manda el mismo)
+        if (pw, ph) not in self.redes:
+            m = self.modelo.clone()
+            m.reshape([1, 3, ph, pw])
+            self.redes[(pw, ph)] = helmet_detector._core.compile_model(m, helmet_detector.DEVICE)
+        return self.redes[(pw, ph)]
+
+    def detect(self, img):
+        w, h = self.tam
+        pw, ph = ((w - 1) // 32 + 1) * 32, ((h - 1) // 32 + 1) * 32
+        blob = cv2.dnn.blobFromImage(cv2.copyMakeBorder(img, 0, ph - h, 0, pw - w, cv2.BORDER_CONSTANT, value=0))
+        red = self._red(pw, ph)
+        res = red(blob)
+        out = {n: res[red.output(n)][0] for n in (f"{k}_{s}" for k in ("cls", "obj", "bbox", "kps") for s in (8, 16, 32))}
+        filas = []
+        for s in (8, 16, 32):
+            cols = pw // s
+            idx = np.arange(out[f"cls_{s}"].shape[0])
+            c, r = (idx % cols)[:, None], (idx // cols)[:, None]
+            score = np.sqrt(np.clip(out[f"cls_{s}"], 0, 1) * np.clip(out[f"obj_{s}"], 0, 1))
+            b = out[f"bbox_{s}"]
+            wh = np.exp(b[:, 2:4]) * s
+            xy = (np.hstack([c, r]) + b[:, 0:2]) * s - wh / 2
+            kps = (out[f"kps_{s}"].reshape(-1, 5, 2) + np.hstack([c, r])[:, None, :]) * s
+            filas.append(np.hstack([xy, wh, kps.reshape(-1, 10), score]))
+        filas = np.vstack(filas).astype(np.float32)
+        keep = cv2.dnn.NMSBoxes(filas[:, :4].tolist(), filas[:, 14].tolist(), self.score, self.nms, top_k=self.top_k)
+        return 1, (filas[np.array(keep).flatten()] if len(keep) else None)
+
+
+if _yunet is not None and helmet_detector._core is not None:
+    try:
+        _yunet = _YuNetOpenVINO(YUNET_PATH, SCORE_THRESHOLD, NMS_THRESHOLD, 50)
+        print("[+] YuNet corre con OpenVINO")
+    except Exception as e:
+        print(f"[!] YuNet sigue con cv2.dnn ({e})")
 
 _face_cascade    = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 _profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_profileface.xml')

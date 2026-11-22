@@ -1,0 +1,151 @@
+{% extends "admin/base.html" %}
+{% block title %}Editor de encuesta{% endblock %}
+{% block page_title %}Constructor de encuestas{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='sgep.css') }}">{% endblock %}
+
+{% block content %}
+<form method="POST" class="sg-form sg-stack" id="form-editor">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="preguntas_json" id="preguntas-json">
+    {% if tiene_respuestas %}
+    <div class="sg-error">Esta encuesta ya tiene respuestas: si cambiás o borrás preguntas, las respuestas viejas quedan sin pregunta asociada en los reportes.</div>
+    {% endif %}
+    <div class="admin-card sg-grid">
+        <div><label class="sg-muted" for="e-tit">Título</label><input id="e-tit" name="titulo" value="{{ encuesta.titulo }}" maxlength="150" required></div>
+        <div><label class="sg-muted" for="e-proy">Proyecto</label>
+            <select id="e-proy" name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}" {% if p.id == encuesta.proyecto_id %}selected{% endif %}>{{ p.nombre }}</option>{% endfor %}</select></div>
+        <div><label class="sg-muted" for="e-tipo">Tipo</label>
+            <select id="e-tipo" name="tipo">{% for k, v in TIPOS_ENCUESTA.items() %}<option value="{{ k }}" {% if k == encuesta.tipo %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+        <label class="sg-check"><input type="checkbox" name="anonima" {% if encuesta.anonima %}checked{% endif %}> Anónima</label>
+        <label class="sg-check"><input type="checkbox" name="como_plantilla"> Guardar también como plantilla</label>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header"><h2><i class="fa-solid fa-shapes"></i> Tipos de pregunta</h2></div>
+        <p class="sg-muted" style="margin-bottom:.6rem">Arrastrá un tipo a la lista o hacé clic para agregarlo al final. Reordená arrastrando las tarjetas o con los botones ↑ ↓.</p>
+        <div class="sg-paleta">
+            {% for k, v in TIPOS_PREGUNTA.items() %}
+            <button type="button" class="sg-chip" draggable="true" data-tipo="{{ k }}">{{ v }}</button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header"><h2><i class="fa-solid fa-list-ol"></i> Preguntas</h2></div>
+        <div id="lista" class="sg-lista" aria-live="polite"></div>
+    </div>
+
+    <div class="sg-actions">
+        <button class="btn-action btn-create" type="submit"><i class="fa-solid fa-floppy-disk"></i> Guardar encuesta</button>
+        <a class="btn-action btn-cancel" href="{{ url_for('sgep.encuesta', eid=encuesta.id) }}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TIPOS = {{ TIPOS_PREGUNTA|tojson }};
+let preguntas = {{ encuesta.preguntas|tojson }};
+const lista = document.getElementById('lista');
+const nid = () => Math.random().toString(36).slice(2, 10);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let arrastrada = null;  // índice de la tarjeta que se mueve
+
+function nueva(tipo) {
+    return {id: nid(), texto: '', tipo, opciones: tipo === 'opcion' ? ['Opción 1', 'Opción 2'] : [], condicion: null};
+}
+
+function render() {
+    lista.innerHTML = preguntas.map((p, i) => {
+        const previas = preguntas.slice(0, i);
+        return `<div class="sg-pregunta" draggable="true" data-i="${i}">
+          <div class="sg-pregunta-head">
+            <span class="sg-asa" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>
+            <strong>${i + 1}.</strong> <span class="sg-muted">${esc(TIPOS[p.tipo])}</span>
+            <span style="flex:1"></span>
+            <button type="button" class="btn-icon" data-mover="-1" aria-label="Subir pregunta ${i + 1}" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button type="button" class="btn-icon" data-mover="1" aria-label="Bajar pregunta ${i + 1}" ${i === preguntas.length - 1 ? 'disabled' : ''}>↓</button>
+            <button type="button" class="btn-icon btn-delete" data-borrar aria-label="Borrar pregunta ${i + 1}"><i class="fa-solid fa-trash"></i></button>
+          </div>
+          <div class="sg-grid">
+            <div style="grid-column:1/-1"><label class="sg-muted" for="t-${i}">Texto de la pregunta</label>
+              <input id="t-${i}" data-campo="texto" value="${esc(p.texto)}" maxlength="300" required></div>
+            ${p.tipo === 'opcion' ? `<div style="grid-column:1/-1"><label class="sg-muted" for="o-${i}">Opciones (separadas por coma)</label>
+              <input id="o-${i}" data-campo="opciones" value="${esc(p.opciones.join(', '))}"></div>` : ''}
+            <div><label class="sg-muted" for="c-${i}">Mostrar solo si…</label>
+              <select id="c-${i}" data-campo="cond-p"><option value="">Siempre</option>
+              ${previas.map((q, j) => `<option value="${q.id}" ${p.condicion && p.condicion.pregunta === q.id ? 'selected' : ''}>${j + 1}. ${esc(q.texto || TIPOS[q.tipo])}</option>`).join('')}
+              </select></div>
+            ${p.condicion ? `<div><label class="sg-muted" for="v-${i}">…la respuesta es</label>
+              <input id="v-${i}" data-campo="cond-v" value="${esc(p.condicion.valor)}" placeholder="ej.: si"></div>` : ''}
+          </div></div>`;
+    }).join('') || '<p class="text-muted">Arrastrá acá un tipo de pregunta.</p>';
+}
+
+lista.addEventListener('input', e => {
+    const card = e.target.closest('.sg-pregunta'); if (!card) return;
+    const p = preguntas[card.dataset.i];
+    const campo = e.target.dataset.campo;
+    if (campo === 'texto') p.texto = e.target.value;
+    if (campo === 'opciones') p.opciones = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (campo === 'cond-v') p.condicion.valor = e.target.value;
+});
+lista.addEventListener('change', e => {
+    if (e.target.dataset.campo !== 'cond-p') return;
+    const p = preguntas[e.target.closest('.sg-pregunta').dataset.i];
+    p.condicion = e.target.value ? {pregunta: e.target.value, valor: p.condicion ? p.condicion.valor : ''} : null;
+    render();
+});
+lista.addEventListener('click', e => {
+    const card = e.target.closest('.sg-pregunta'); if (!card) return;
+    const i = +card.dataset.i;
+    const mover = e.target.closest('[data-mover]');
+    if (mover) mover_(i, i + +mover.dataset.mover);
+    if (e.target.closest('[data-borrar]')) { preguntas.splice(i, 1); limpiarCondiciones(); render(); }
+});
+
+function mover_(desde, hasta) {
+    if (hasta < 0 || hasta >= preguntas.length) return;
+    const [p] = preguntas.splice(desde, 1);
+    preguntas.splice(hasta, 0, p);
+    limpiarCondiciones();
+    render();
+}
+// Una condición solo puede apuntar a una pregunta anterior
+function limpiarCondiciones() {
+    preguntas.forEach((p, i) => {
+        if (p.condicion && !preguntas.slice(0, i).some(q => q.id === p.condicion.pregunta)) p.condicion = null;
+    });
+}
+
+// Drag & drop: desde la paleta (agrega) o entre tarjetas (reordena)
+document.querySelectorAll('.sg-chip').forEach(chip => {
+    chip.addEventListener('click', () => { preguntas.push(nueva(chip.dataset.tipo)); render(); });
+    chip.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', 'tipo:' + chip.dataset.tipo));
+});
+lista.addEventListener('dragstart', e => {
+    const card = e.target.closest('.sg-pregunta'); if (!card) return;
+    arrastrada = +card.dataset.i;
+    card.classList.add('arrastrando');
+    e.dataTransfer.setData('text/plain', 'mover');
+});
+lista.addEventListener('dragover', e => { e.preventDefault(); lista.classList.add('sobre'); });
+lista.addEventListener('dragleave', () => lista.classList.remove('sobre'));
+lista.addEventListener('drop', e => {
+    e.preventDefault();
+    lista.classList.remove('sobre');
+    const card = e.target.closest('.sg-pregunta');
+    const destino = card ? +card.dataset.i : preguntas.length;
+    const dato = e.dataTransfer.getData('text/plain');
+    if (dato.startsWith('tipo:')) { preguntas.splice(destino, 0, nueva(dato.slice(5))); limpiarCondiciones(); render(); }
+    else if (arrastrada !== null) mover_(arrastrada, Math.min(destino, preguntas.length - 1));
+    arrastrada = null;
+});
+lista.addEventListener('dragend', () => { arrastrada = null; render(); });
+
+document.getElementById('form-editor').addEventListener('submit', () => {
+    document.getElementById('preguntas-json').value = JSON.stringify(preguntas);
+});
+render();
+</script>
+{% endblock %}

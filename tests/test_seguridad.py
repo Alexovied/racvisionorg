@@ -13,11 +13,9 @@ BIG = 2 * 1024 * 1024 + 1024  # apenas más de 2 MB
 # ── Sin sesión: todo lo protegido responde 401 (API) o 302 (páginas) ─────────
 
 @pytest.mark.parametrize("method,url", [
-    ("post", "/predict"),
     ("post", "/api/alarm"),
     ("post", "/admin/api/events"),
     ("get", "/admin/api/config"),
-    ("post", "/reset_buffer"),
 ])
 def test_api_sin_sesion_devuelve_401(client, method, url):
     r = getattr(client, method)(url, json={})
@@ -25,11 +23,33 @@ def test_api_sin_sesion_devuelve_401(client, method, url):
     assert r.is_json and "error" in r.get_json()
 
 
-def test_app_sin_sesion_redirige_al_login(client):
-    r = client.get("/app")
-    assert r.status_code == 302
-    assert "/admin/login" in r.headers["Location"]
-    assert "next=" in r.headers["Location"]
+def test_detector_es_publico_y_en_modo_demo_no_registra(client):
+    html = client.get("/app").get_data(as_text=True)
+    assert "Modo demostración" in html and "const REGISTRA = false;" in html
+    assert client.post("/predict", json={"image": 123}).status_code == 400   # atiende sin sesión
+    # ...pero lo que guarda datos o acciona la alarma sigue pidiendo sesión
+    assert client.post("/admin/api/events", json={"type": "sin_casco", "confidence": 90}).status_code == 401
+    assert data_store.load_events() == []
+
+
+def test_detector_con_operador_registra(operator_client):
+    assert "const REGISTRA = true;" in operator_client.get("/app").get_data(as_text=True)
+
+
+def test_cara_de_prueba_es_temporal_y_por_visita(flask_app, client, monkeypatch):
+    foto = "data:image/jpeg;base64," + _frame_b64().split(",")[1]
+    monkeypatch.setattr(flask_app.face_id, "_embeddings", lambda imgs: ([[1.0, 0.0]] * len(imgs), 0))
+    assert client.post("/api/demo/cara", json={"nombre": "Ana", "fotos": [foto] * 2}).status_code == 400
+    assert client.post("/api/demo/cara", json={"nombre": "Ana", "fotos": [foto] * 3}).status_code == 200
+    with client.session_transaction() as s:
+        token = s["demo"]
+    assert flask_app._demo[token][1] == "Ana"
+    assert not (data_store.DATA_DIR and __import__("os").path.exists(data_store.DATA_DIR + "/personas.json"))
+    otro = flask_app.app.test_client()                       # otra visita no ve esa cara
+    with flask_app.app.test_request_context():
+        assert flask_app._conocidos() == []
+    assert client.delete("/api/demo/cara").status_code == 200
+    assert token not in flask_app._demo
 
 
 def test_landing_sigue_siendo_publica(client):
@@ -159,3 +179,63 @@ def test_robots_y_sitemap_para_buscadores(client):
     assert "<loc>https://racvision.org/</loc>" in client.get("/sitemap.xml").get_data(as_text=True)
     landing = client.get("/").get_data(as_text=True)
     assert '<link rel="canonical" href="https://racvision.org/">' in landing and '"name": "RAC Vision"' in landing
+
+
+def test_paginas_legales_publicas_y_enlazadas(client):
+    for ruta in ("/privacidad", "/cookies", "/terminos"):
+        r = client.get(ruta)
+        assert r.status_code == 200 and "alex@racvision.org" in r.get_data(as_text=True)
+    landing = client.get("/").get_data(as_text=True)
+    assert all(f'href="/{p}"' in landing for p in ("privacidad", "cookies", "terminos"))
+
+
+def test_landing_en_ingles_por_parametro_o_navegador(client):
+    assert "No one goes in" in client.get("/?lang=en").get_data(as_text=True)
+    assert "Nadie entra" in client.get("/?lang=es", headers={"Accept-Language": "en"}).get_data(as_text=True)
+    assert 'lang="en"' in client.get("/", headers={"Accept-Language": "en-US"}).get_data(as_text=True)
+    assert 'lang="es"' in client.get("/?lang=xx").get_data(as_text=True)
+
+
+def test_panel_de_accesibilidad_en_todas_las_paginas(client, operator_client):
+    for ruta in ("/", "/?lang=en", "/privacidad", "/cookies", "/terminos", "/admin/login"):
+        assert "accesibilidad.js" in client.get(ruta).get_data(as_text=True), ruta
+    assert "accesibilidad.js" in operator_client.get("/app").get_data(as_text=True)
+
+
+# ── CSRF: un POST sin el token de la sesión (p. ej. desde otro sitio) se rechaza ──
+
+def test_csrf_rechaza_post_sin_token_y_acepta_con_token(flask_app, monkeypatch):
+    import re
+    monkeypatch.setitem(flask_app.app.config, "WTF_CSRF_ENABLED", True)
+    data_store.create_user("admin_csrf", "clave-admin", role="admin")
+    c = flask_app.app.test_client()
+
+    # El login también exige el token: sin él, 403
+    assert c.post("/admin/login", data={"username": "admin_csrf", "password": "clave-admin"}).status_code == 403
+    token = re.search(r'name="csrf_token" value="([^"]+)"', c.get("/admin/login").get_data(as_text=True)).group(1)
+    r = c.post("/admin/login", data={"username": "admin_csrf", "password": "clave-admin", "csrf_token": token})
+    assert r.status_code == 302
+
+    # Con la sesión abierta, un formulario o fetch sin token (o con uno falso) no hace nada
+    assert c.post("/admin/cameras", data={"name": "intrusa"}).status_code == 403
+    assert c.post("/admin/cameras", data={"name": "intrusa", "csrf_token": "falso"}).status_code == 403
+    assert c.post("/admin/api/events", json={"type": "con_casco", "confidence": 90}).status_code == 403
+    assert c.post("/predict", json={}).status_code == 403
+    assert data_store.load_cameras() == []
+
+    # Con el token (campo o header X-CSRFToken) pasa
+    assert c.post("/admin/api/events", json={"type": "con_casco", "confidence": 90},
+                  headers={"X-CSRFToken": token}).status_code == 200
+
+
+def test_cookie_de_sesion_samesite_lax(flask_app):
+    assert flask_app.app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+    assert flask_app.app.config["SESSION_COOKIE_SECURE"] is True  # con gunicorn (producción)
+
+
+def test_login_se_bloquea_tras_cinco_contrasenas_malas(client):
+    data_store.create_user("u2", "clave-u2", role="operator")
+    for _ in range(5):
+        assert client.post("/admin/login", data={"username": "u2", "password": "mala"}).status_code == 200
+    # Ya bloqueado: ni la contraseña correcta entra hasta que pase la ventana
+    assert client.post("/admin/login", data={"username": "u2", "password": "clave-u2"}).status_code == 429

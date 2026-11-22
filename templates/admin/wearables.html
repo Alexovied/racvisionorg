@@ -1,0 +1,164 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Wearables{% endblock %}
+{% block page_title %}Wearables{% endblock %}
+
+{% block head %}
+<style>
+    .wear-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 1rem; margin-top: 1rem; }
+    .wear { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.1rem; position: relative; }
+    .wear.ok { border-color: rgba(16,185,129,.35); }
+    .wear.alerta { border-color: var(--red); box-shadow: 0 0 0 2px rgba(239,68,68,.25); animation: latido 1.2s infinite; }
+    .wear.sin_senal { border-color: var(--yellow); }
+    @keyframes latido { 50% { box-shadow: 0 0 0 6px rgba(239,68,68,.12); } }
+    @media (prefers-reduced-motion: reduce) { .wear.alerta { animation: none; } }
+    .wear h3 { font-size: 1rem; margin-bottom: .1rem; }
+    .wear .quien { color: var(--text-muted); font-size: .85rem; }
+    .wear .estado { position: absolute; top: .9rem; right: 1rem; font-size: .72rem; font-weight: 600; padding: .15rem .55rem; border-radius: 999px; }
+    .estado.ok { background: rgba(16,185,129,.15); color: var(--green); }
+    .estado.alerta { background: rgba(239,68,68,.18); color: var(--red); }
+    .estado.sin_senal, .estado.sin_datos { background: rgba(245,158,11,.15); color: var(--yellow); }
+    .medidas { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .8rem 0 .5rem; }
+    .medida { background: rgba(255,255,255,.03); border-radius: var(--radius-sm); padding: .45rem .5rem; text-align: center; }
+    .medida .n { font-size: 1.35rem; font-weight: 700; }
+    .medida .t { font-size: .7rem; color: var(--text-muted); }
+    .wear .pie { font-size: .75rem; color: var(--text-muted); display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+    .wear .alertas-activas { color: var(--red); font-size: .82rem; font-weight: 600; margin-top: .3rem; }
+    .wear details { margin-top: .6rem; font-size: .78rem; color: var(--text-muted); }
+    .wear details li { margin-left: 1rem; }
+    .wear .acciones { display: flex; gap: .4rem; margin-top: .7rem; flex-wrap: wrap; }
+    .wear .acciones form { display: inline; }
+    .token-box { background: rgba(232,117,26,.1); border: 1px solid var(--orange); border-radius: var(--radius-sm); padding: 1rem; margin-bottom: 1rem; }
+    .token-box code { display: block; word-break: break-all; font-size: .95rem; margin: .5rem 0; padding: .5rem; background: var(--bg-2); border-radius: 6px; user-select: all; }
+    .reglas { font-size: .85rem; color: var(--text-muted); line-height: 1.6; }
+    .reglas b { color: var(--text); }
+    .alta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; align-items: end; }
+    .alta input, .alta select { width: 100%; background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: var(--radius-sm);
+                                padding: .6rem .75rem; color: var(--text); font-family: var(--font); }
+    .vacio { color: var(--text-muted); text-align: center; padding: 2rem 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Pulseras o arneses con pulso, detector de caídas, botón de pánico y hombre muerto. Se actualiza solo cada 3 segundos.</p>
+</div>
+
+{% if token_nuevo %}
+<div class="token-box" role="alert">
+    <strong><i class="fa-solid fa-key"></i> Token de «{{ token_nuevo.nombre }}»</strong>
+    <code>{{ token_nuevo.token }}</code>
+    Copialo ahora y cargalo en el firmware (<code style="display:inline;padding:0 .3rem">TOKEN</code> en wearable_rac.ino) o en el simulador.
+    No se vuelve a mostrar: si se pierde, generá uno nuevo.
+</div>
+{% endif %}
+
+<div class="wear-grid" id="equipos"><div class="vacio">Cargando…</div></div>
+
+{% if current_user.role == 'admin' %}
+<div class="admin-card" style="margin-top:1.25rem">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-plus"></i> Registrar un equipo</h2></div>
+    <form method="POST" action="{{ url_for('admin.wearables_pagina') }}" class="alta">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="margin:0">
+            <label for="w-nombre">Equipo</label>
+            <input id="w-nombre" name="nombre" maxlength="60" placeholder="Pulsera 01" required>
+        </div>
+        <div class="form-group" style="margin:0">
+            <label for="w-persona">Trabajador</label>
+            <input id="w-persona" name="persona" maxlength="120" placeholder="Juan Pérez" required>
+        </div>
+        <div class="form-group" style="margin:0">
+            <label for="w-camara">Cámara de su zona (opcional)</label>
+            <select id="w-camara" name="camara">
+                <option value="">Cualquiera</option>
+                {% for cam in cameras %}<option value="{{ cam.id }}">{{ cam.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn-action btn-create"><i class="fa-solid fa-plus"></i> Registrar</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="admin-card" style="margin-top:1.25rem">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-heart-pulse"></i> Cuándo avisa</h2></div>
+    <div class="reglas">
+        <p><b>Botón de pánico:</b> al mantener apretado el botón 2 segundos. Avisa al instante.</p>
+        <p><b>Hombre muerto:</b> si el trabajador queda quieto, el equipo vibra; si no aprieta el botón a tiempo, avisa.</p>
+        <p><b>Posible desmayo:</b> quieto {{ umbrales.inactivo_s }} s después de una caída, o quieto con el pulso bajo o sin pulso. Si la cámara de su zona vio a alguien en el piso, llega confirmado.</p>
+        <p><b>Ritmo cardíaco:</b> menos de {{ umbrales.bpm_min }} o más de {{ umbrales.bpm_max }} latidos por minuto, sin pulso con el sensor apoyado, u oxígeno bajo {{ umbrales.spo2_min }}%, durante {{ umbrales.sostenido_s }} s seguidos.</p>
+        <p><b>Sin señal:</b> el equipo no manda datos hace más de {{ sin_senal }} s.</p>
+        <p style="margin-top:.5rem"><b>Aprende:</b> cuando marcás una alerta de pulso o desmayo como «Falsa alarma», los umbrales de ese trabajador se ajustan para que esa misma lectura no vuelva a avisar (con topes: nunca deja de avisar). Podés volver a los de fábrica desde la tarjeta del equipo.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+    const ES_ADMIN = {{ (current_user.role == 'admin') | tojson }};
+    const CSRF = {{ csrf_token() | tojson }};
+    const URLS = {
+        token: id => `{{ url_for('admin.wearable_token', disp_id='ID') }}`.replace('ID', id),
+        borrar: id => `{{ url_for('admin.wearable_borrar', disp_id='ID') }}`.replace('ID', id),
+        restablecer: id => `{{ url_for('admin.wearable_restablecer', disp_id='ID') }}`.replace('ID', id),
+    };
+    const ESTADOS = {ok: 'En línea', alerta: 'ALERTA', sin_senal: 'Sin señal', sin_datos: 'Esperando datos'};
+    const ALERTAS = {{ EVENT_LABELS | tojson }};
+    const cont = document.getElementById('equipos');
+
+    const el = (tag, cls, texto) => { const e = document.createElement(tag); if (cls) e.className = cls; if (texto != null) e.textContent = texto; return e; };
+    const medida = (n, t) => { const d = el('div', 'medida'); d.append(el('div', 'n', n), el('div', 't', t)); return d; };
+    function boton(url, icono, titulo, confirmar) {
+        const f = el('form'); f.method = 'POST'; f.action = url;
+        if (confirmar) f.onsubmit = () => confirm(confirmar);
+        const h = el('input'); h.type = 'hidden'; h.name = 'csrf_token'; h.value = CSRF;
+        const b = el('button', 'btn-icon'); b.type = 'submit'; b.title = titulo; b.setAttribute('aria-label', titulo);
+        b.append(el('i', 'fa-solid ' + icono));
+        f.append(h, b); return f;
+    }
+
+    function tarjeta(w) {
+        const l = w.lectura || {};
+        const c = el('div', 'wear ' + w.situacion);
+        c.append(el('span', 'estado ' + w.situacion, ESTADOS[w.situacion] || w.situacion));
+        c.append(el('h3', null, w.nombre), el('div', 'quien', w.persona));
+        const m = el('div', 'medidas');
+        m.append(medida(l.bpm != null ? Math.round(l.bpm) : '—', 'lpm'),
+                 medida(l.spo2 != null ? Math.round(l.spo2) + '%' : '—', 'SpO₂'),
+                 medida(l.bateria != null ? Math.round(l.bateria) + '%' : '—', 'batería'));
+        c.append(m);
+        if (w.alertas.length) c.append(el('div', 'alertas-activas', '⚠ ' + w.alertas.map(a => ALERTAS[a] || a).join(' · ')));
+        const pie = el('div', 'pie');
+        pie.append(el('span', null, w.hace_s == null ? 'Nunca mandó datos' : `Último dato hace ${w.hace_s} s`),
+                   el('span', null, l.actividad != null ? (l.actividad < 0.05 ? 'Quieto' : 'En movimiento') : ''));
+        c.append(pie);
+        if (w.aprendido.length) {
+            const d = el('details'); d.append(el('summary', null, 'Lo que aprendió'));
+            const ul = el('ul'); w.aprendido.forEach(a => ul.append(el('li', null, `${a.fecha.slice(0, 10)}: ${a.cambio}`)));
+            d.append(ul); c.append(d);
+        }
+        if (ES_ADMIN) {
+            const a = el('div', 'acciones');
+            a.append(boton(URLS.token(w.id), 'fa-key', 'Generar token nuevo', '¿Generar un token nuevo? El actual deja de funcionar.'));
+            if (w.aprendido.length) a.append(boton(URLS.restablecer(w.id), 'fa-rotate-left', 'Volver a los umbrales de fábrica'));
+            a.append(boton(URLS.borrar(w.id), 'fa-trash', 'Borrar equipo', `¿Borrar ${w.nombre}?`));
+            c.append(a);
+        }
+        return c;
+    }
+
+    async function cargar() {
+        try {
+            const r = await fetch('{{ url_for("admin.api_wearables") }}', {headers: {Accept: 'application/json'}});
+            if (!r.ok) return;
+            const lista = await r.json();
+            cont.replaceChildren(...(lista.length ? lista.map(tarjeta)
+                : [el('div', 'vacio', 'Todavía no hay equipos registrados. Probá con el simulador: python simulador_wearable.py --help')]));
+        } catch (e) { /* sin red: se reintenta en 3 s */ }
+    }
+    cargar();
+    setInterval(cargar, 3000);
+})();
+</script>
+{% endblock %}

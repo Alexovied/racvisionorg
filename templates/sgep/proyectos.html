@@ -1,0 +1,117 @@
+{% extends "admin/base.html" %}
+{% block title %}Proyectos{% endblock %}
+{% block page_title %}Proyectos de 7mo y responsables{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='sgep.css') }}">{% endblock %}
+
+{% block content %}
+<div class="sg-stack">
+{% if puede_gestionar %}
+<div class="admin-card">
+    <div class="admin-card-header"><h2 id="titulo-form"><i class="fa-solid fa-plus"></i> Nuevo proyecto</h2></div>
+    {% if not responsables %}<p class="sg-muted">Primero cargá al menos un responsable (abajo).</p>{% endif %}
+    <form method="POST" action="{{ url_for('sgep.guardar_proyecto') }}" class="sg-form sg-grid" id="form-proyecto">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="id" id="p-id">
+        <div><label class="sg-muted" for="p-nombre">Nombre *</label><input id="p-nombre" name="nombre" required maxlength="200"></div>
+        <div><label class="sg-muted" for="p-curso">Curso *</label><input id="p-curso" name="curso" required placeholder="7mo 1ra" maxlength="50"></div>
+        <div><label class="sg-muted" for="p-cliente">Cliente</label><input id="p-cliente" name="cliente" maxlength="120"></div>
+        <div><label class="sg-muted" for="p-resp">Responsable *</label>
+            <select id="p-resp" name="responsable_id" required>{% for r in responsables %}<option value="{{ r.id }}">{{ r.nombre }}</option>{% endfor %}</select></div>
+        <div><label class="sg-muted" for="p-inicio">Inicio *</label><input id="p-inicio" type="date" name="inicio" required></div>
+        <div><label class="sg-muted" for="p-fin">Fin *</label><input id="p-fin" type="date" name="fin" required></div>
+        <div style="grid-column:1/-1"><label class="sg-muted" for="p-desc">Descripción</label><input id="p-desc" name="descripcion" maxlength="200"></div>
+        <div class="sg-actions">
+            <button class="btn-action btn-create" type="submit"><i class="fa-solid fa-check"></i> Guardar</button>
+            <button class="btn-action btn-cancel" type="reset" onclick="nuevoProyecto()">Limpiar</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<div class="admin-card">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-diagram-project"></i> Proyectos ({{ proyectos|length }})</h2></div>
+    <div class="table-responsive">
+    <table class="admin-table">
+        <thead><tr><th>Proyecto</th><th>Curso</th><th>Cliente</th><th>Responsable</th><th>Período</th><th>Encuestas</th>{% if puede_gestionar %}<th>Acciones</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for p in proyectos %}
+        <tr>
+            <td><strong>{{ p.nombre }}</strong><br><span class="sg-muted">{{ p.descripcion }}</span></td>
+            <td>{{ p.curso }}</td><td>{{ p.cliente or '—' }}</td><td>{{ p.responsable }}</td>
+            <td class="text-muted">{{ p.inicio }} → {{ p.fin }}</td><td>{{ p.encuestas }}</td>
+            {% if puede_gestionar %}
+            <td><div class="action-buttons">
+                <button class="btn-icon btn-edit" type="button" title="Editar" aria-label="Editar {{ p.nombre }}"
+                        onclick='editarProyecto({{ p|tojson }})'><i class="fa-solid fa-pen"></i></button>
+                <form method="POST" action="{{ url_for('sgep.borrar_proyecto', pid=p.id) }}" onsubmit="return confirm('¿Eliminar el proyecto?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn-icon btn-delete" type="submit" title="Eliminar" aria-label="Eliminar {{ p.nombre }}"><i class="fa-solid fa-trash"></i></button>
+                </form>
+            </div></td>
+            {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-muted">Todavía no hay proyectos.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-user-tie"></i> Responsables ({{ responsables|length }})</h2></div>
+    {% if puede_gestionar %}
+    <form method="POST" action="{{ url_for('sgep.guardar_responsable') }}" class="sg-form sg-grid" style="margin-bottom:1rem">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="id" id="r-id">
+        <div><label class="sg-muted" for="r-nombre">Nombre *</label><input id="r-nombre" name="nombre" required maxlength="120"></div>
+        <div><label class="sg-muted" for="r-email">Email *</label><input id="r-email" type="email" name="email" required maxlength="200"></div>
+        <div class="sg-actions"><button class="btn-action btn-create" type="submit"><i class="fa-solid fa-check"></i> Guardar responsable</button></div>
+    </form>
+    {% endif %}
+    <div class="table-responsive">
+    <table class="admin-table">
+        <thead><tr><th>Nombre</th><th>Email</th>{% if puede_gestionar %}<th>Acciones</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for r in responsables %}
+        <tr><td>{{ r.nombre }}</td><td>{{ r.email }}</td>
+            {% if puede_gestionar %}
+            <td><div class="action-buttons">
+                <button class="btn-icon btn-edit" type="button" title="Editar" aria-label="Editar {{ r.nombre }}"
+                        onclick='editarResponsable({{ r|tojson }})'><i class="fa-solid fa-pen"></i></button>
+                <form method="POST" action="{{ url_for('sgep.borrar_responsable', rid=r.id) }}" onsubmit="return confirm('¿Eliminar el responsable?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn-icon btn-delete" type="submit" title="Eliminar" aria-label="Eliminar {{ r.nombre }}"><i class="fa-solid fa-trash"></i></button>
+                </form>
+            </div></td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editarProyecto(p) {
+    for (const k of ['id', 'nombre', 'curso', 'cliente', 'inicio', 'fin']) document.getElementById('p-' + k).value = p[k] || '';
+    document.getElementById('p-resp').value = p.responsable_id;
+    document.getElementById('p-desc').value = p.descripcion || '';
+    document.getElementById('titulo-form').innerHTML = '<i class="fa-solid fa-pen"></i> Editar proyecto';
+    document.getElementById('p-nombre').focus();
+}
+function nuevoProyecto() {
+    document.getElementById('p-id').value = '';
+    document.getElementById('titulo-form').innerHTML = '<i class="fa-solid fa-plus"></i> Nuevo proyecto';
+}
+function editarResponsable(r) {
+    document.getElementById('r-id').value = r.id;
+    document.getElementById('r-nombre').value = r.nombre;
+    document.getElementById('r-email').value = r.email;
+    document.getElementById('r-nombre').focus();
+}
+</script>
+{% endblock %}

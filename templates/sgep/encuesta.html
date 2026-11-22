@@ -1,0 +1,83 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ encuesta.titulo }}{% endblock %}
+{% block page_title %}Distribución — {{ encuesta.titulo }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sgep.css') }}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="sg-stack">
+<div class="kpi-grid sg-kpis" style="margin-bottom:0">
+    <div class="kpi-card"><div class="kpi-data"><span class="kpi-value">{{ n_respuestas }}</span><span class="kpi-label">Respuestas</span></div></div>
+    <div class="kpi-card"><div class="kpi-data"><span class="kpi-value">{{ invitaciones|length }}</span><span class="kpi-label">Invitaciones</span></div></div>
+    <div class="kpi-card"><div class="kpi-data"><span class="kpi-value">{{ participacion if participacion is not none else '—' }}{% if participacion is not none %} %{% endif %}</span><span class="kpi-label">Participación</span></div></div>
+    <div class="kpi-card"><div class="kpi-data"><span class="kpi-value">{{ 'Abierta' if encuesta.activa else 'Cerrada' }}</span><span class="kpi-label">{{ proyecto.nombre }} · {{ TIPOS_ENCUESTA[encuesta.tipo] }}{% if encuesta.anonima %} · anónima{% endif %}</span></div></div>
+</div>
+
+<div class="sg-row-2">
+    <div class="admin-card">
+        <div class="admin-card-header"><h2><i class="fa-solid fa-link"></i> Link general y QR</h2></div>
+        <p class="sg-muted">Para compartir en clase o en el stand. Quien entra por acá no queda identificado.</p>
+        <p style="margin:.6rem 0"><a class="sg-link" href="{{ link }}" target="_blank" rel="noopener" id="link">{{ link }}</a></p>
+        <div class="sg-actions">
+            <button type="button" class="btn-action btn-cancel" onclick="navigator.clipboard.writeText('{{ link }}').then(() => this.textContent = 'Copiado ✓')"><i class="fa-solid fa-copy"></i> Copiar link</button>
+            {% if puede_gestionar %}
+            <a class="btn-action btn-edit btn-cancel" href="{{ url_for('sgep.editar_encuesta', eid=encuesta.id) }}"><i class="fa-solid fa-pen"></i> Editar preguntas</a>
+            <form method="POST" action="{{ url_for('sgep.cambiar_estado', eid=encuesta.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn-action btn-cancel" type="submit"><i class="fa-solid fa-power-off"></i> {{ 'Cerrar encuesta' if encuesta.activa else 'Reabrir encuesta' }}</button>
+            </form>
+            {% endif %}
+        </div>
+        <div id="qr" role="img" aria-label="Código QR del link de la encuesta" style="background:#fff;display:inline-block;margin-top:1rem;border-radius:.5rem;line-height:0"></div>
+    </div>
+
+    {% if puede_gestionar %}
+    <div class="admin-card">
+        <div class="admin-card-header"><h2><i class="fa-solid fa-paper-plane"></i> Invitar por email</h2></div>
+        <form method="POST" action="{{ url_for('sgep.invitar', eid=encuesta.id) }}" class="sg-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="sg-muted" for="dest">Una persona por línea: <code>Nombre &lt;email&gt;</code> o solo el email. Cada una recibe un link único.</label>
+            <textarea id="dest" name="destinatarios" rows="6" style="margin:.5rem 0" placeholder="Ana Pérez <ana@example.com>&#10;cliente@example.com"></textarea>
+            <button class="btn-action btn-create" type="submit"><i class="fa-solid fa-paper-plane"></i> Enviar invitaciones</button>
+        </form>
+        <form method="POST" action="{{ url_for('sgep.recordar', eid=encuesta.id) }}" style="margin-top:1rem"
+              onsubmit="return confirm('¿Enviar un recordatorio a quienes todavía no respondieron?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn-action btn-cancel" type="submit"><i class="fa-solid fa-bell"></i> Recordar a pendientes ({{ invitaciones|rejectattr('respondida')|list|length }})</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-list-check"></i> Control de respuestas</h2></div>
+    {% if encuesta.anonima %}<p class="sg-muted" style="margin-bottom:.6rem">Encuesta anónima: se registra quién respondió, pero no qué respondió.</p>{% endif %}
+    <div class="table-responsive">
+    <table class="admin-table">
+        <thead><tr><th>Nombre</th><th>Email</th><th>Invitada</th><th>Recordatorios</th><th>Estado</th></tr></thead>
+        <tbody>
+        {% for i in invitaciones %}
+        <tr><td>{{ i.nombre or '—' }}</td><td>{{ i.email }}</td><td class="text-muted">{{ i.creada[:10] }}</td><td>{{ i.recordatorios }}</td>
+            <td>{% if i.respondida %}<span class="sg-luz sg-verde">respondió {{ i.respondida[:10] }}</span>{% else %}<span class="sg-luz sg-amarillo">pendiente</span>{% endif %}</td></tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Sin invitaciones todavía.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+if (window.qrcode) {
+    const qr = qrcode(0, 'M');
+    qr.addData({{ link|tojson }});
+    qr.make();
+    document.getElementById('qr').innerHTML = qr.createSvgTag({cellSize: 5, margin: 3});
+}
+</script>
+{% endblock %}

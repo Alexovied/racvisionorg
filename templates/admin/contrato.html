@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acuerdo de tratamiento de datos personales — RAC Vision</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Georgia, "Times New Roman", serif; color: #111; background: #e9e9e9; margin: 0; line-height: 1.55; }
+        .barra { font-family: system-ui, sans-serif; background: #111; color: #fff; padding: 12px 20px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+        .barra p { margin: 0; font-size: 14px; }
+        .barra button { font: 700 14px system-ui, sans-serif; background: #E8751A; color: #111; border: 0; padding: 10px 18px; border-radius: 4px; cursor: pointer; min-height: 44px; }
+        .hoja { background: #fff; max-width: 800px; margin: 24px auto; padding: 48px 56px; box-shadow: 0 4px 20px rgba(0,0,0,.15); }
+        h1 { font-size: 21px; text-align: center; margin: 0 0 4px; }
+        .sub { text-align: center; font-size: 13px; margin: 0 0 24px; color: #444; }
+        h2 { font-size: 15px; margin: 22px 0 6px; }
+        p, li, td, th { font-size: 14px; }
+        ol, ul { padding-left: 22px; }
+        li { margin-bottom: 4px; }
+        .borrador { border: 2px solid #111; padding: 12px 16px; margin: 0 0 24px; font-size: 13.5px; }
+        .campo { display: inline-block; min-width: 230px; border-bottom: 1px solid #111; }
+        .campo.corto { min-width: 120px; }
+        table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+        th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; vertical-align: top; }
+        th { background: #f2f2f2; }
+        .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 56px; }
+        .firmas div { border-top: 1px solid #111; padding-top: 6px; font-size: 13px; text-align: center; }
+        @media (max-width: 640px) { .hoja { padding: 28px 20px; margin: 0; } .firmas { grid-template-columns: 1fr; } }
+        @media print { body { background: #fff; } .barra { display: none; } .hoja { box-shadow: none; margin: 0; max-width: none; padding: 0; } @page { margin: 18mm; } h2 { break-after: avoid; } table, .firmas { break-inside: avoid; } }
+    </style>
+</head>
+<body>
+<div class="barra">
+    <p>Borrador para revisar con un abogado. Imprimí dos copias, una para cada parte, y firmalas antes de usar el sistema con el personal.</p>
+    <button type="button" onclick="window.print()">Imprimir</button>
+</div>
+<main class="hoja">
+    <h1>Acuerdo de tratamiento de datos personales</h1>
+    <p class="sub">Sistema RAC Vision · Artículo 25 de la Ley 25.326 de Protección de los Datos Personales</p>
+
+    <p class="borrador"><strong>BORRADOR.</strong> Este texto es un modelo preparado por el equipo de RAC Vision y no fue revisado por un abogado. Antes de firmarlo, cada parte debería consultarlo con un profesional, que puede adaptarlo a la actividad de la Empresa y a la normativa laboral y de datos personales vigente.</p>
+
+    <p>En <span class="campo"></span>, a los <span class="campo corto"></span> días del mes de <span class="campo corto"></span> de <span class="campo corto"></span>, se celebra este acuerdo entre:</p>
+    <ul>
+        <li><span class="campo"></span>, CUIT <span class="campo corto"></span>, con domicilio en <span class="campo"></span>, representada por <span class="campo"></span>, DNI <span class="campo corto"></span> (en adelante, "la Empresa"), en su carácter de <strong>responsable de la base de datos</strong>; y</li>
+        <li><strong>RAC Vision</strong>, proyecto integrado por Alex Oviedo, Mateo Silvero y Luciano Campanelli, con domicilio en <span class="campo"></span>, Provincia de Buenos Aires, contacto alex@racvision.org (en adelante, "RAC Vision"), en su carácter de <strong>encargado del tratamiento</strong>, que presta un servicio de tratamiento de datos por cuenta de la Empresa (artículo 25 de la Ley 25.326).</li>
+    </ul>
+    <p>Las partes acuerdan lo siguiente:</p>
+
+    <h2>1. Objeto</h2>
+    <p>RAC Vision presta a la Empresa un servicio de control de elementos de protección personal (EPP) por cámaras, en las instalaciones o zonas que indique la Empresa: <span class="campo"></span>. Para eso trata datos personales del personal de la Empresa y de otras personas que pasen por esas zonas, siempre por cuenta y según las instrucciones de la Empresa. Este acuerdo fija las condiciones de ese tratamiento.</p>
+
+    <h2>2. Finalidad: solo seguridad laboral</h2>
+    <p>Los datos se tratan únicamente para:</p>
+    <ol type="a">
+        <li>detectar si las personas llevan casco y chaleco reflectante y avisar cuando falta alguno; y</li>
+        <li>de manera opcional, y solo si la Empresa lo activa, identificar por su cara a trabajadores registrados para que la alerta indique su nombre.</li>
+    </ol>
+    <p>Queda prohibido usar el sistema o sus datos para controlar horarios o asistencia, medir el rendimiento o la productividad, seguir los movimientos de las personas fuera de las alertas de EPP, o aplicar sanciones de forma automática. Las alertas son una herramienta de apoyo: cualquier decisión sobre una persona la tiene que tomar siempre una persona, después de revisar lo ocurrido. Ninguna de las partes puede cambiar esta finalidad sin un nuevo acuerdo por escrito y, si corresponde, sin nuevos consentimientos.</p>
+
+    <h2>3. Datos que se tratan</h2>
+    <table>
+        <thead><tr><th>Dato</th><th>Detalle</th><th>Cuánto se guarda</th></tr></thead>
+        <tbody>
+            <tr><td>Cuadros de video</td><td>Imágenes de las cámaras que se analizan en memoria. No se graba video.</td><td>No se guardan: se descartan apenas se analizan.</td></tr>
+            <tr><td>Alertas</td><td>Tipo de alerta, cámara, fecha y hora, confianza de la detección, persona identificada (si la hay) y una foto del momento.</td><td>Las últimas 5000 alertas. Al superar ese número, las más antiguas se borran junto con su foto.</td></tr>
+            <tr><td>Datos de reconocimiento facial (opcional)</td><td>Nombre de la persona, fecha de registro, usuario que la registró y su embedding: una lista de números calculada a partir de 3 a 10 fotos de la cara. <strong>Las fotos de registro no se guardan</strong>: se procesan y se descartan.</td><td>Hasta que la persona retire su consentimiento, deje de trabajar en la Empresa o termine este acuerdo.</td></tr>
+            <tr><td>Cuentas del panel</td><td>Nombre de usuario, rol (operador o administrador) y contraseña guardada con hash. Registro de las acciones hechas en el panel.</td><td>Hasta que se dé de baja la cuenta o termine este acuerdo.</td></tr>
+        </tbody>
+    </table>
+    <p>Los embeddings son <strong>datos biométricos</strong> y las partes los tratan como datos sensibles (artículos 2 y 7 de la Ley 25.326). Nadie puede ser obligado a darlos.</p>
+
+    <h2>4. Obligaciones de la Empresa</h2>
+    <p>Como responsable de la base de datos, la Empresa se compromete a:</p>
+    <ol type="a">
+        <li><strong>Consentimiento para el reconocimiento facial.</strong> Antes de registrar a una persona, obtener su consentimiento libre, expreso, informado y por escrito, con el formulario que ofrece el panel (sección Personas, "formulario de consentimiento") u otro equivalente, y guardar el original firmado mientras la persona esté registrada. Debe respetar a quien no acepte o retire su consentimiento, sin ninguna consecuencia laboral, y pedir a RAC Vision o borrar desde el panel sus datos dentro de los 5 días hábiles. No registrar a menores de edad.</li>
+        <li><strong>Información y cartelería.</strong> Informar a su personal, por escrito, que hay cámaras con análisis automático y para qué se usan, y colocar carteles visibles en los accesos a cada zona vigilada que indiquen que es una zona videovigilada, quién es el responsable y dónde se pueden ejercer los derechos, según la Disposición 10/2015 de la autoridad de control.</li>
+        <li><strong>Registro de la base.</strong> Inscribir la base de datos en el Registro Nacional de Bases de Datos de la Agencia de Acceso a la Información Pública (AAIP), según el artículo 21 de la Ley 25.326, y mantener la inscripción actualizada, indicando a RAC Vision como encargado del tratamiento.</li>
+        <li><strong>Derechos de las personas.</strong> Atender los pedidos de acceso, rectificación, actualización y supresión (artículos 14 a 16 de la Ley 25.326) dentro de los plazos legales: 10 días corridos para el acceso y 5 días hábiles para la rectificación o supresión.</li>
+        <li><strong>Uso correcto del sistema.</strong> Usarlo solo para la finalidad del punto 2, dar acceso al panel solo a personas que lo necesiten, mantener en secreto las contraseñas y dar de baja las cuentas de quienes ya no deban usarlo.</li>
+        <li><strong>Normativa laboral.</strong> Cumplir las normas laborales sobre controles al personal (por ejemplo, los artículos 70 a 72 de la Ley de Contrato de Trabajo) y lo que establezcan los convenios colectivos aplicables. El sistema no reemplaza las obligaciones de la Empresa en materia de higiene y seguridad (Leyes 19.587 y 24.557).</li>
+    </ol>
+
+    <h2>5. Obligaciones de RAC Vision</h2>
+    <p>Como encargado del tratamiento, RAC Vision se compromete a:</p>
+    <ol type="a">
+        <li><strong>Seguir las instrucciones de la Empresa.</strong> Tratar los datos solo para prestar el servicio y según las instrucciones escritas de la Empresa.</li>
+        <li><strong>No usar los datos para otros fines.</strong> No usarlos para fines propios ni distintos de los del punto 2. En particular, no usar las fotos de alertas ni los embeddings para entrenar o mejorar sus modelos sin una autorización previa y por escrito de la Empresa.</li>
+        <li><strong>No cederlos.</strong> No ceder ni comunicar los datos a terceros, ni siquiera para su conservación, salvo a los proveedores del punto 6 o cuando una autoridad competente lo exija por ley. En ese último caso, avisará a la Empresa antes de entregarlos, si la ley lo permite.</li>
+        <li><strong>Confidencialidad.</strong> Guardar secreto sobre los datos (artículo 10 de la Ley 25.326) y exigir lo mismo a cada integrante del equipo con acceso a ellos. Esta obligación sigue vigente después de que termine el acuerdo.</li>
+        <li><strong>Medidas de seguridad</strong> (artículo 9 de la Ley 25.326), entre ellas: conexión cifrada (HTTPS); contraseñas guardadas con hash; acceso al panel solo con sesión iniciada y por roles; fotos de alertas visibles solo para usuarios con sesión; descarte inmediato de los cuadros de video y de las fotos de registro; registro de las acciones hechas en el panel; y revisiones de seguridad del código.</li>
+        <li><strong>Aviso de incidentes.</strong> Avisar a la Empresa por escrito dentro de las 72 horas de detectar un incidente de seguridad que afecte los datos (acceso no autorizado, pérdida o filtración), con lo que se sepa sobre qué datos y personas afecta, qué se hizo para contenerlo y qué se recomienda hacer. Colaborar con la Empresa para avisar a las personas afectadas y a la AAIP si corresponde.</li>
+        <li><strong>Ayudar con los derechos.</strong> Si una persona le pide a RAC Vision acceso, corrección o supresión de sus datos, derivar el pedido a la Empresa dentro de los 2 días hábiles y ayudarla a responderlo a tiempo.</li>
+        <li><strong>Rendir cuentas.</strong> Dar a la Empresa, cuando lo pida, la información necesaria para comprobar que cumple este acuerdo.</li>
+    </ol>
+
+    <h2>6. Proveedores y transferencia internacional</h2>
+    <p>El servicio funciona en un servidor contratado por RAC Vision a <strong>OVH</strong>, ubicado en los <strong>Estados Unidos</strong>. Por eso los datos se transfieren a un país que la autoridad de control no considera con protección adecuada, lo que solo se permite en los casos del artículo 12 de la Ley 25.326. Las partes acuerdan que:</p>
+    <ol type="a">
+        <li>la Empresa autoriza esa transferencia, y el formulario de consentimiento para el reconocimiento facial informa a cada persona que sus datos se guardan en los Estados Unidos;</li>
+        <li>RAC Vision mantiene con su proveedor condiciones de seguridad y confidencialidad equivalentes a las de este acuerdo y, si la Empresa lo pide, firma las cláusulas modelo de transferencia internacional aprobadas por la autoridad de control (Disposición 60-E/2016 o la que la reemplace);</li>
+        <li>RAC Vision no suma otros proveedores que accedan a los datos sin avisarle antes y por escrito a la Empresa, que puede oponerse y, en ese caso, terminar el acuerdo según el punto 7.</li>
+    </ol>
+
+    <h2>7. Plazo y terminación</h2>
+    <p>Este acuerdo rige desde su firma y mientras RAC Vision preste el servicio a la Empresa. Cualquiera de las partes puede terminarlo avisando a la otra por escrito con <span class="campo corto"></span> días de anticipación. La Empresa puede terminarlo de inmediato si RAC Vision usa los datos para otro fin, los cede o no cumple las medidas de seguridad.</p>
+
+    <h2>8. Devolución y destrucción de los datos</h2>
+    <p>Al terminar el servicio, por cualquier motivo:</p>
+    <ol type="a">
+        <li>la Empresa puede pedir, dentro de los 15 días corridos, una copia de las alertas con sus fotos y del listado de personas registradas, en un formato de uso común;</li>
+        <li>dentro de los 30 días corridos de terminado el servicio, RAC Vision destruye todos los datos de la Empresa (alertas, fotos, embeddings, cuentas y registros), incluidas las copias de respaldo, y le entrega a la Empresa una constancia escrita de la destrucción;</li>
+        <li>RAC Vision solo puede conservar datos más allá de ese plazo si la Empresa lo autoriza por escrito para futuros servicios, con las debidas medidas de seguridad y por un máximo de dos años (artículo 25, inciso 2, de la Ley 25.326), o si una ley lo obliga.</li>
+    </ol>
+
+    <h2>9. Responsabilidad</h2>
+    <p>Cada parte responde por los incumplimientos que le sean atribuibles. Si RAC Vision usa los datos para otro fin, los cede o los trata en contra de este acuerdo, pasa a responder como responsable de ese tratamiento. El sistema es una herramienta de apoyo y puede equivocarse: no reemplaza la supervisión de una persona responsable, como dicen los Términos y condiciones de racvision.org.</p>
+
+    <h2>10. Relación con otros documentos</h2>
+    <p>Este acuerdo se complementa con los Términos y condiciones y la Política de privacidad publicados en racvision.org. Si hubiera una contradicción sobre los datos del personal de la Empresa, prevalece este acuerdo. Cualquier cambio a este acuerdo se hace por escrito y firmado por ambas partes.</p>
+
+    <h2>11. Ley aplicable y domicilios</h2>
+    <p>Este acuerdo se rige por las leyes de la República Argentina, en especial la Ley 25.326 y su Decreto Reglamentario 1558/2001. Para cualquier conflicto, las partes se someten a los tribunales competentes de <span class="campo"></span> y constituyen domicilio en los indicados al comienzo, donde serán válidas las notificaciones. También valen las comunicaciones por correo electrónico a las direcciones que indique cada parte: Empresa <span class="campo"></span>; RAC Vision alex@racvision.org.</p>
+
+    <p>Se firman dos ejemplares de un mismo tenor y a un solo efecto.</p>
+
+    <div class="firmas">
+        <div>Por la Empresa<br>Firma, aclaración y cargo</div>
+        <div>Por RAC Vision<br>Firma y aclaración</div>
+    </div>
+</main>
+</body>
+</html>

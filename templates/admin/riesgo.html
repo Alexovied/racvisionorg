@@ -1,0 +1,289 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Mapa de riesgo{% endblock %}
+{% block page_title %}Mapa de riesgo{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    .riesgo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 1.25rem; margin-top: 1.25rem; }
+    .riesgo-desc { color: var(--text-muted); font-size: .85rem; margin: -.25rem 0 .9rem; }
+    .escena { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius-sm); overflow: hidden;
+              background: repeating-linear-gradient(0deg, transparent 0 39px, var(--border) 39px 40px),
+                          repeating-linear-gradient(90deg, transparent 0 39px, var(--border) 39px 40px), var(--bg-2); }
+    .escena img, .escena canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .escena img { opacity: .55; }
+    .escena-vacia { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: .9rem; text-align: center; padding: 1rem; }
+    .matriz { display: grid; grid-template-columns: 2.6rem repeat(24, 1fr); gap: 2px; font-size: .68rem; color: var(--text-muted); }
+    .matriz .c { aspect-ratio: 1; border-radius: 3px; background: rgba(255,255,255,.04); }
+    .matriz .h { text-align: center; }
+    .matriz .d { display: flex; align-items: center; }
+    .escala { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; font-size: .75rem; color: var(--text-muted); }
+    .escala span.barra { flex: 0 0 120px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(232,117,26,.08), rgba(232,117,26,1)); }
+    .picos { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
+    .pico { background: var(--orange-glow); border: 1px solid rgba(232,117,26,.35); border-radius: 999px; padding: .25rem .7rem; font-size: .8rem; color: var(--text); }
+    .tendencias { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; }
+    .tend { background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .8rem 1rem; }
+    .tend .n { font-size: 1.6rem; font-weight: 700; color: var(--text); }
+    .tend .t { font-size: .8rem; color: var(--text-muted); }
+    .tend .var { font-size: .8rem; margin-left: .35rem; }
+    .sube { color: var(--red); } .baja { color: var(--green); } .igual { color: var(--text-muted); }
+    .tabla-kpis-wrap { overflow-x: auto; }
+    .tabla-kpis { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .tabla-kpis th, .tabla-kpis td { padding: .5rem .6rem; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .tabla-kpis th:first-child, .tabla-kpis td:first-child { text-align: left; }
+    .tabla-kpis th { color: var(--text-muted); font-weight: 500; }
+    #tooltip-matriz { position: fixed; pointer-events: none; background: var(--card-bg-solid); border: 1px solid var(--border-hover);
+                      border-radius: 8px; padding: .35rem .6rem; font-size: .8rem; color: var(--text); display: none; z-index: 50; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Dónde y cuándo pasan las infracciones, y qué horas de mañana conviene vigilar más.</p>
+    <a href="{{ url_for('admin.reporte_pagina') }}" class="btn-action"><i class="fa-solid fa-file-lines"></i> Reporte diario</a>
+</div>
+
+<div class="admin-card filter-card">
+    <form class="filter-form" id="filtros" onsubmit="return false">
+        <div class="filter-group">
+            <label for="f-tipo">Alerta</label>
+            <div class="select-wrapper select-compact">
+                <select id="f-tipo">
+                    <option value="">Todas</option>
+                    <option value="sin_casco">Sin casco</option>
+                    <option value="sin_chaleco">Sin chaleco</option>
+                    <option value="zona_prohibida">Zona prohibida</option>
+                    <option value="hombre_caido">Hombre caído</option>
+                    <option value="posible_desmayo">Posible desmayo (wearable)</option>
+                    <option value="ritmo_cardiaco">Ritmo cardíaco (wearable)</option>
+                    <option value="boton_sos">Botón de pánico</option>
+                    <option value="hombre_muerto">Hombre muerto</option>
+                </select>
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+        </div>
+        <div class="filter-group">
+            <label for="f-dias">Período</label>
+            <div class="select-wrapper select-compact">
+                <select id="f-dias">
+                    <option value="7">7 días</option>
+                    <option value="28" selected>28 días</option>
+                    <option value="90">90 días</option>
+                </select>
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+        </div>
+        <div class="filter-group">
+            <label for="f-camara">Cámara</label>
+            <div class="select-wrapper select-compact">
+                <select id="f-camara">
+                    <option value="">Todas</option>
+                    {% for cam in cameras %}
+                    <option value="{{ cam.name }}" data-id="{{ cam.id }}" data-tipo="{{ cam.type }}">{{ cam.name }}</option>
+                    {% endfor %}
+                    <option value="Detector web">Detector web</option>
+                </select>
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="riesgo-grid">
+    <div class="admin-card">
+        <div class="admin-card-header"><h2><i class="fa-solid fa-crosshairs"></i> ¿Dónde?</h2></div>
+        <p class="riesgo-desc">Cada infracción deja una marca donde estaba la persona. Lo más brillante es donde más se repite.</p>
+        <div class="escena" id="escena">
+            <img id="escena-img" alt="" hidden>
+            <canvas id="escena-calor" width="640" height="480" role="img" aria-label="Mapa de calor de las infracciones sobre la imagen de la cámara"></canvas>
+            <div class="escena-vacia" id="escena-vacia">Elegí una cámara para ver dónde pasan las infracciones.</div>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header"><h2><i class="fa-solid fa-calendar-week"></i> ¿Cuándo?</h2></div>
+        <p class="riesgo-desc">Alertas por día de la semana y hora.</p>
+        <div class="matriz" id="matriz" role="table" aria-label="Alertas por día y hora"></div>
+        <div class="escala"><span>menos</span><span class="barra"></span><span>más</span></div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header"><h2><i class="fa-solid fa-wand-magic-sparkles"></i> Pronóstico de mañana</h2></div>
+        <p class="riesgo-desc" id="pron-desc">Alertas esperadas por hora según las últimas 4 semanas.</p>
+        <div style="height: 220px"><canvas id="pron-chart" role="img" aria-label="Alertas esperadas por hora para mañana"></canvas></div>
+        <div class="picos" id="picos"></div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2><i class="fa-solid fa-clipboard-check"></i> Indicadores por turno</h2>
+            <a href="#" class="card-link" id="kpis-csv"><i class="fa-solid fa-file-csv"></i> CSV para auditoría</a>
+        </div>
+        <p class="riesgo-desc" id="kpis-desc"></p>
+        <div class="tabla-kpis-wrap">
+            <table class="tabla-kpis">
+                <thead><tr><th scope="col">Turno</th><th scope="col">Alertas</th><th scope="col">Sin casco</th>
+                    <th scope="col">Sin chaleco</th><th scope="col">Zona</th><th scope="col">Caída</th>
+                    <th scope="col" title="Mediana de minutos entre la alerta y la vuelta a verde de esa cámara">Corrección</th></tr></thead>
+                <tbody id="kpis-filas"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header"><h2><i class="fa-solid fa-arrow-trend-up"></i> Últimos 7 días</h2></div>
+        <p class="riesgo-desc">Comparado con los 7 días anteriores.</p>
+        <div class="tendencias" id="tendencias"></div>
+    </div>
+</div>
+<div id="tooltip-matriz" role="tooltip"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+    const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const DIAS_LARGOS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+    const NOMBRES = {sin_casco: 'Sin casco', sin_chaleco: 'Sin chaleco', zona_prohibida: 'Zona prohibida', hombre_caido: 'Hombre caído',
+                     boton_sos: 'Botón de pánico', hombre_muerto: 'Hombre muerto', posible_desmayo: 'Posible desmayo',
+                     ritmo_cardiaco: 'Ritmo cardíaco', wearable_sin_senal: 'Wearable sin señal'};
+    const $ = id => document.getElementById(id);
+    const hh = h => String(h).padStart(2, '0') + ':00';
+    const tip = $('tooltip-matriz');
+
+    // ── Matriz día × hora: un solo tono (naranja), de transparente a pleno según la cantidad
+    function pintarMatriz(m) {
+        const max = Math.max(1, ...m.flat());
+        const el = $('matriz');
+        el.innerHTML = '';
+        el.append(document.createElement('span'));
+        for (let h = 0; h < 24; h++) {
+            const s = document.createElement('span');
+            s.className = 'h'; s.textContent = h % 3 === 0 ? h : '';
+            el.append(s);
+        }
+        m.forEach((fila, d) => {
+            const etiqueta = document.createElement('span');
+            etiqueta.className = 'd'; etiqueta.textContent = DIAS[d];
+            el.append(etiqueta);
+            fila.forEach((n, h) => {
+                const c = document.createElement('span');
+                c.className = 'c';
+                if (n) c.style.background = `rgba(232,117,26,${(0.15 + 0.85 * n / max).toFixed(2)})`;
+                const texto = `${DIAS_LARGOS[d]} ${hh(h)}: ${n} alerta${n === 1 ? '' : 's'}`;
+                c.setAttribute('aria-label', texto);
+                c.addEventListener('mouseenter', () => { tip.textContent = texto; tip.style.display = 'block'; });
+                c.addEventListener('mousemove', e => { tip.style.left = (e.clientX + 12) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; });
+                c.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+                el.append(c);
+            });
+        });
+    }
+
+    // ── Pronóstico: barras de una sola serie, sin leyenda (el título la nombra)
+    const pron = new Chart($('pron-chart'), {
+        type: 'bar',
+        data: {labels: Array.from({length: 24}, (_, h) => hh(h)),
+               datasets: [{label: 'Alertas esperadas', data: [], backgroundColor: 'rgba(232,117,26,0.75)',
+                           hoverBackgroundColor: '#FF8C35', borderRadius: 4, barPercentage: 0.8}]},
+        options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}},
+                  scales: {x: {ticks: {color: '#9CA3AF', maxRotation: 0, autoSkip: true, maxTicksLimit: 8}, grid: {display: false}},
+                           y: {beginAtZero: true, ticks: {color: '#9CA3AF', precision: 0}, grid: {color: 'rgba(255,255,255,0.05)'}}}}
+    });
+
+    function pintarPronostico(p) {
+        pron.data.datasets[0].data = p.horas;
+        pron.update();
+        $('pron-desc').textContent = p.semanas_con_datos
+            ? `Alertas esperadas por hora el ${p.dia} ${p.fecha.slice(8)}/${p.fecha.slice(5, 7)}, según los últimos 4 ${p.dia}.`
+            : 'Todavía no hay semanas anteriores para pronosticar.';
+        $('picos').innerHTML = '';
+        p.picos.forEach(x => {
+            const s = document.createElement('span');
+            s.className = 'pico';
+            s.textContent = `${hh(x.hora)} · ${x.esperadas} esperadas`;
+            $('picos').append(s);
+        });
+    }
+
+    function pintarTendencia(t) {
+        const el = $('tendencias');
+        el.innerHTML = '';
+        const DE_CAMARA = ['sin_casco', 'sin_chaleco', 'zona_prohibida', 'hombre_caido'];
+        Object.entries(t).forEach(([tipo, [ahora, antes]]) => {
+            if (!DE_CAMARA.includes(tipo) && !ahora && !antes) return;   // wearables: solo si hubo alguna
+            const dif = ahora - antes;
+            const cls = dif > 0 ? 'sube' : dif < 0 ? 'baja' : 'igual';
+            const flecha = dif > 0 ? '▲' : dif < 0 ? '▼' : '＝';
+            const d = document.createElement('div');
+            d.className = 'tend';
+            d.innerHTML = `<div class="t"></div><div><span class="n"></span><span class="var ${cls}"></span></div>`;
+            d.querySelector('.t').textContent = NOMBRES[tipo] || tipo;
+            d.querySelector('.n').textContent = ahora;
+            d.querySelector('.var').textContent = `${flecha} ${Math.abs(dif)} vs ${antes}`;
+            el.append(d);
+        });
+    }
+
+    // ── Calor sobre la imagen: manchas suaves que se suman donde se repiten
+    function pintarEscena(puntos, opcion) {
+        const cv = $('escena-calor'), ctx = cv.getContext('2d');
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        const img = $('escena-img');
+        const id = opcion && opcion.dataset.id;
+        if (id && opcion.dataset.tipo !== 'webcam') {
+            img.onerror = () => { img.hidden = true; };
+            img.onload = () => { img.hidden = false; };
+            img.src = `{{ url_for('admin.dashboard') }}api/cameras/${id}/frame.jpg?t=${Date.now()}`;
+        } else {
+            img.hidden = true;
+        }
+        $('escena-vacia').textContent = !opcion || !opcion.value ? 'Elegí una cámara para ver dónde pasan las infracciones.'
+            : puntos.length ? '' : 'Sin infracciones con posición en este período.';
+        ctx.globalCompositeOperation = 'lighter';
+        const r = cv.width * 0.09;
+        // Con muchos puntos cada uno pesa menos: así no se quema todo a blanco y se ven las diferencias
+        const a = Math.max(0.04, Math.min(0.45, 8 / Math.max(1, puntos.length))).toFixed(3);
+        for (const [x, y] of puntos) {
+            const g = ctx.createRadialGradient(x * cv.width, y * cv.height, 0, x * cv.width, y * cv.height, r);
+            g.addColorStop(0, `rgba(255,120,30,${a})`);
+            g.addColorStop(1, 'rgba(255,120,30,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(x * cv.width - r, y * cv.height - r, 2 * r, 2 * r);
+        }
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function pintarKpis(k) {
+        $('kpis-desc').textContent = `${k.total} alertas en ${k.dias} días · ${k.dias_sin_alertas} día${k.dias_sin_alertas === 1 ? '' : 's'} seguidos sin alertas.`;
+        const tb = $('kpis-filas');
+        tb.innerHTML = '';
+        for (const f of k.turnos) {
+            const tr = document.createElement('tr');
+            const celdas = [f.turno, f.alertas, f.por_tipo.sin_casco || 0, f.por_tipo.sin_chaleco || 0,
+                            f.por_tipo.zona_prohibida || 0, f.por_tipo.hombre_caido || 0,
+                            f.correccion_min == null ? '—' : `${f.correccion_min} min`];
+            celdas.forEach((v, i) => { const td = document.createElement(i ? 'td' : 'th'); if (!i) td.scope = 'row'; td.textContent = v; tr.append(td); });
+            tb.append(tr);
+        }
+        $('kpis-csv').href = `{{ url_for('admin.riesgo_kpis_csv') }}?dias=${k.dias}`;
+    }
+
+    async function actualizar() {
+        const sel = $('f-camara');
+        const q = new URLSearchParams({tipo: $('f-tipo').value, dias: $('f-dias').value, camara: sel.value});
+        const r = await fetch(`{{ url_for('admin.api_riesgo') }}?${q}`);
+        if (!r.ok) return;
+        const d = await r.json();
+        pintarMatriz(d.matriz);
+        pintarPronostico(d.pronostico);
+        pintarTendencia(d.tendencia);
+        pintarKpis(d.kpis);
+        pintarEscena(d.puntos, sel.selectedOptions[0]);
+    }
+    $('filtros').addEventListener('change', actualizar);
+    actualizar();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,6 @@
+# Datos de usuarios, alertas y embeddings: se montan como volumen, nunca dentro de la imagen
+data/
+.env
+*.bak
+__pycache__/
+.git/

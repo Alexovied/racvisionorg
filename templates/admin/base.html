@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>RAC Admin — {% block title %}Panel{% endblock %}</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='accesibilidad.css') }}">
+    <script src="{{ url_for('static', filename='accesibilidad.js') }}"></script>
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -28,9 +31,48 @@
         </div>
 
         <nav class="sidebar-nav">
+            {% if current_user.role in ('admin', 'pm', 'auditor') %}
+            {# Para el admin de RAC, SGEP va plegado; pm y auditor (que solo usan SGEP) lo ven abierto #}
+            <details class="nav-grupo" {% if solo_sgep or current_user.role != 'admin' or (request.endpoint or '').startswith('sgep.') %}open{% endif %}>
+            <summary class="nav-item"><i class="fa-solid fa-square-poll-vertical"></i><span>SGEP · Encuestas</span></summary>
+            <a href="{{ url_for('sgep.dashboard') }}" class="nav-item {% if request.endpoint == 'sgep.dashboard' %}active{% endif %}">
+                <i class="fa-solid fa-gauge-high"></i>
+                <span>SGEP Dashboard</span>
+            </a>
+            <a href="{{ url_for('sgep.proyectos') }}" class="nav-item {% if request.endpoint == 'sgep.proyectos' %}active{% endif %}">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span>Proyectos</span>
+            </a>
+            <a href="{{ url_for('sgep.encuestas') }}" class="nav-item {% if request.endpoint in ('sgep.encuestas', 'sgep.encuesta', 'sgep.editar_encuesta') %}active{% endif %}">
+                <i class="fa-solid fa-square-poll-vertical"></i>
+                <span>Encuestas</span>
+            </a>
+            <a href="{{ url_for('sgep.correos') }}" class="nav-item {% if request.endpoint == 'sgep.correos' %}active{% endif %}">
+                <i class="fa-solid fa-envelope"></i>
+                <span>Correos</span>
+            </a>
+            </details>
+            {% if current_user.role == 'admin' %}
+            {% if solo_sgep %}
+            <a href="{{ url_for('admin.users') }}" class="nav-item {% if request.endpoint == 'admin.users' %}active{% endif %}">
+                <i class="fa-solid fa-users-gear"></i>
+                <span>Usuarios</span>
+            </a>
+            {% else %}<div class="sidebar-divider"></div>{% endif %}
+            {% endif %}
+            {% endif %}
+            {% if current_user.role not in ('pm', 'auditor') and not solo_sgep %}
             <a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
                 <i class="fa-solid fa-chart-pie"></i>
                 <span>Dashboard</span>
+            </a>
+            <a href="{{ url_for('admin.riesgo_pagina') }}" class="nav-item {% if request.endpoint in ('admin.riesgo_pagina', 'admin.reporte_pagina') %}active{% endif %}">
+                <i class="fa-solid fa-fire"></i>
+                <span>Mapa de riesgo</span>
+            </a>
+            <a href="{{ url_for('admin.wearables_pagina') }}" class="nav-item {% if request.endpoint == 'admin.wearables_pagina' %}active{% endif %}">
+                <i class="fa-solid fa-heart-pulse"></i>
+                <span>Wearables</span>
             </a>
             {% if current_user.role in ('admin', 'operator') %}
             <a href="{{ url_for('admin.monitor') }}" class="nav-item {% if request.endpoint == 'admin.monitor' %}active{% endif %}">
@@ -42,6 +84,10 @@
             <a href="{{ url_for('admin.users') }}" class="nav-item {% if request.endpoint == 'admin.users' %}active{% endif %}">
                 <i class="fa-solid fa-users-gear"></i>
                 <span>Usuarios</span>
+            </a>
+            <a href="{{ url_for('admin.personas') }}" class="nav-item {% if request.endpoint in ('admin.personas', 'admin.consentimiento') %}active{% endif %}">
+                <i class="fa-solid fa-id-card"></i>
+                <span>Personas</span>
             </a>
             {% endif %}
             <a href="{{ url_for('admin.cameras') }}" class="nav-item {% if request.endpoint == 'admin.cameras' %}active{% endif %}">
@@ -58,14 +104,17 @@
                 <i class="fa-solid fa-clipboard-list"></i>
                 <span>Auditoría</span>
             </a>
+            {% endif %}
         </nav>
 
         <div class="sidebar-footer">
             <div class="sidebar-divider"></div>
+            {% if current_user.role in ('admin', 'operator') and not solo_sgep %}
             <a href="/app" class="nav-item nav-external" target="_blank">
                 <i class="fa-solid fa-helmet-safety"></i>
                 <span>Abrir Detector</span>
             </a>
+            {% endif %}
             <a href="/" class="nav-item nav-external">
                 <i class="fa-solid fa-globe"></i>
                 <span>Ir al Sitio</span>
@@ -86,7 +135,7 @@
                 <button class="mobile-toggle" id="mobile-toggle">
                     <i class="fa-solid fa-bars"></i>
                 </button>
-                <h2 class="page-title">{% block page_title %}Dashboard{% endblock %}</h2>
+                <h1 class="page-title">{% block page_title %}Dashboard{% endblock %}</h1>
             </div>
             <div class="topbar-right">
                 <div class="topbar-user">
@@ -151,6 +200,63 @@
             }, 5000);
         });
     </script>
+
+    {% if current_user.role in ('admin', 'operator', 'viewer') and not solo_sgep %}
+    <!-- Aviso rojo de alertas graves (SOS, hombre muerto, desmayo, caída, pulso) en todas las páginas -->
+    <div id="urgentes" role="alert" aria-live="assertive" hidden
+         style="position:fixed;top:.75rem;left:50%;transform:translateX(-50%);z-index:1000;width:min(640px,calc(100% - 2rem));display:grid;gap:.5rem"></div>
+    <script>
+    (() => {
+        const PUEDE_MARCAR = {{ (current_user.role in ('admin', 'operator')) | tojson }};
+        const CSRF = {{ csrf_token() | tojson }};
+        const caja = document.getElementById('urgentes');
+        const vistas = new Set();
+        const el = (tag, css, texto) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (texto != null) e.textContent = texto; return e; };
+        function pitido() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                [0, .35].forEach(t => { const o = ctx.createOscillator(); o.frequency.value = 880; o.connect(ctx.destination);
+                                        o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + .2); });
+            } catch (e) {}
+        }
+        async function marcar(id, veredicto, fila) {
+            const r = await fetch(`/admin/api/events/${id}/feedback`, {method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify({veredicto})});
+            if (r.ok) { fila.remove(); caja.hidden = !caja.children.length; }
+        }
+        async function revisar() {
+            try {
+                const r = await fetch('/admin/api/alertas-urgentes', {headers: {Accept: 'application/json'}});
+                if (!r.ok) return;
+                const lista = await r.json();
+                if (lista.some(a => !vistas.has(a.id))) pitido();
+                lista.forEach(a => vistas.add(a.id));
+                const extra = lista.length > 3 ? el('div', 'background:#7f1d1d;color:#fff;border-radius:.75rem;padding:.4rem .9rem;font-size:.85rem',
+                                                  `y ${lista.length - 3} alerta${lista.length > 4 ? 's' : ''} más sin atender · Auditoría`) : null;
+                caja.replaceChildren(...lista.slice(0, 3).map(a => {
+                    const f = el('div', 'background:#7f1d1d;border:1px solid #ef4444;color:#fff;border-radius:.75rem;padding:.7rem .9rem;box-shadow:0 8px 30px rgba(0,0,0,.5)');
+                    f.append(el('strong', 'display:block', `🆘 ${a.etiqueta} · ${a.persona || 'Sin identificar'}`));
+                    const linea = [a.camera, a.ubicacion, a.detalle, a.timestamp.slice(11, 19)].filter(Boolean).join(' · ');
+                    f.append(el('div', 'font-size:.85rem;opacity:.9', linea));
+                    if (a.confirmado_por) f.append(el('div', 'font-size:.85rem;font-weight:600', `✅ Confirmado por ${a.confirmado_por}`));
+                    if (PUEDE_MARCAR) {
+                        const b = el('div', 'display:flex;gap:.5rem;margin-top:.5rem');
+                        const real = el('button', 'background:#fff;color:#7f1d1d;border:0;border-radius:.5rem;padding:.35rem .7rem;font-weight:600;cursor:pointer', 'Atendida: fue real');
+                        const falsa = el('button', 'background:transparent;color:#fff;border:1px solid #fff;border-radius:.5rem;padding:.35rem .7rem;cursor:pointer', 'Falsa alarma');
+                        real.onclick = () => marcar(a.id, 'real', f);
+                        falsa.onclick = () => marcar(a.id, 'falsa', f);
+                        b.append(real, falsa); f.append(b);
+                    }
+                    return f;
+                }), ...(extra ? [extra] : []));
+                caja.hidden = !lista.length;
+            } catch (e) {}
+        }
+        revisar();
+        setInterval(revisar, 5000);
+    })();
+    </script>
+    {% endif %}
 
     {% block scripts %}{% endblock %}
 </body>

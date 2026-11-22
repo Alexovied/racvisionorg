@@ -58,8 +58,8 @@ CONF_MODELO = 0.35
 _net, _lock = None, threading.Lock()
 if os.path.exists(MODEL_PATH):
     try:
-        _net = cv2.dnn.readNetFromONNX(MODEL_PATH)
-        print("[+] Detector de chalecos: YOLO (detector_chaleco.onnx)")
+        _net, motor = helmet_detector.cargar_modelo(MODEL_PATH)
+        print(f"[+] Detector de chalecos: YOLO (detector_chaleco.onnx) con {motor}")
     except cv2.error as e:
         print(f"[!] No se pudo cargar detector_chaleco.onnx ({e}); se usa la regla de color")
 
@@ -68,12 +68,22 @@ def disponible():
     return _net is not None
 
 
-def detectar_personas(img):
-    """Chaleco sin el detector de cascos: [{"bbox": persona, "chaleco": True/False}].
-    Lista vacía si no está el modelo (la regla de color sola necesita una cabeza)."""
+def detectar(img):
+    """Detecciones crudas del modelo: [(bbox, puntajes)], clase 0 = persona y 1 = chaleco.
+    Para quien necesita las cajas de persona además del chaleco (motor.py) sin correr la red dos veces."""
     if _net is None:
         return []
-    dets = helmet_detector.correr_yolo(_net, _lock, img, 2, CONF_MODELO, por_clase=True)
+    return helmet_detector.correr_yolo(_net, _lock, img, 2, CONF_MODELO, por_clase=True)
+
+
+def detectar_personas(img, dets=None):
+    """Chaleco sin el detector de cascos: [{"bbox": persona, "chaleco": True/False}].
+    Lista vacía si no está el modelo (la regla de color sola necesita una cabeza).
+    dets: resultado de detectar(img), si ya se corrió."""
+    if _net is None:
+        return []
+    if dets is None:
+        dets = detectar(img)
     personas = [b for b, sc in dets if sc.argmax() == 0]
     chalecos = [b for b, sc in dets if sc.argmax() == 1]
     resultado = []
@@ -92,13 +102,15 @@ def _dentro(punto, caja):
     return x <= punto[0] <= x + w and y <= punto[1] <= y + h
 
 
-def chalecos_por_cabeza(img, cabezas):
+def chalecos_por_cabeza(img, cabezas, dets=None):
     """Para cada caja de cabeza: True / False / None (torso no visible).
     Con el modelo: la persona que contiene esa cabeza tiene o no un chaleco
-    adentro. Si el modelo no encuentra a la persona, se usa la regla de color."""
+    adentro. Si el modelo no encuentra a la persona, se usa la regla de color.
+    dets: resultado de detectar(img), si ya se corrió."""
     if _net is None or not cabezas:
         return [tiene_chaleco(img, c) for c in cabezas]
-    dets = helmet_detector.correr_yolo(_net, _lock, img, 2, CONF_MODELO, por_clase=True)
+    if dets is None:
+        dets = detectar(img)
     personas = [b for b, sc in dets if sc.argmax() == 0]
     chalecos = [b for b, sc in dets if sc.argmax() == 1]
     resultado = []
