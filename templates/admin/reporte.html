@@ -48,7 +48,7 @@
             {% endif %}
             <span class="reporte-nota">
                 {% if not telegram %}Para enviarlo, configurá TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en el servidor. {% endif %}
-                {% if not ia %}Con ANTHROPIC_API_KEY lo redacta Claude con recomendaciones.{% endif %}
+                {% if not ia %}Con GEMINI_API_KEY (gratis) lo redacta una IA con recomendaciones.{% endif %}
                 Con REPORTE_HORA=8 sale solo todos los días a esa hora.
             </span>
         </div>

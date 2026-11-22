@@ -1132,7 +1132,7 @@ def reporte_pagina():
     usar_ia = request.args.get("ia") == "1" and current_user.role == "admin"   # cada llamada cuesta
     texto = riesgo.redactar(r) if usar_ia else riesgo.texto(r)
     return render_template("admin/reporte.html", r=r, texto=texto, telegram=aviso_telegram.configurado(),
-                           ia=bool(os.environ.get("ANTHROPIC_API_KEY")))
+                           ia=riesgo.hay_ia())
 
 
 @admin_bp.route("/reporte/enviar", methods=["POST"])

@@ -4,7 +4,7 @@
 - matriz():      cuándo: día de la semana × hora, para ver los horarios calientes
 - pronostico():  qué horas de mañana tienen más riesgo, según las mismas horas de semanas anteriores
 - reporte():     resumen de un día (totales, cámaras, reincidentes, comparación) y texto para mandarlo,
-                 redactado por Claude si hay ANTHROPIC_API_KEY o por una plantilla si no.
+                 redactado por IA si hay GEMINI_API_KEY (gratis) o ANTHROPIC_API_KEY o por una plantilla si no.
 Todo es Python puro sobre la lista de eventos: no corre modelos ni toca la cámara.
 """
 import json
@@ -185,36 +185,93 @@ def texto(r):
     if p["picos"]:
         horas = [f"{h:02d}:00" for h in sorted(x["hora"] for x in p["picos"])]
         lista = horas[0] if len(horas) == 1 else ", ".join(horas[:-1]) + " y " + horas[-1]
-        lineas.append(f"Mañana ({p['dia']}) ojo a las {lista}: ahí se concentran las alertas.")
+        cuando = "Hoy" if p["fecha"] == datetime.now().date().isoformat() else "Mañana"
+        lineas.append(f"{cuando} ({p['dia']}) ojo a las {lista}: ahí se concentran las alertas.")
     return "\n".join(lineas)
 
 
+SISTEMA = ("Sos el asistente de seguridad e higiene de una obra que usa RAC Vision (cámaras que "
+           "detectan casco, chaleco, zonas prohibidas y caídas). Escribís el reporte diario para el "
+           "jefe de obra, en español rioplatense, por Telegram: máximo 120 palabras, sin markdown, "
+           "con 1 a 3 acciones concretas. Usá solo los datos que te pasan; no inventes. Ojo con las fechas: "
+           "el reporte es del día indicado en 'dia'/'fecha', que normalmente es AYER; nombralo por su día "
+           "('el sábado'), nunca 'hoy' salvo que coincida con la fecha de hoy que te paso. 'pronostico_manana' "
+           "es para el día siguiente al del reporte: si esa fecha es hoy, decí 'hoy', no 'mañana'.")
+# Gemini tiene plan gratis (con límite diario, de sobra para un reporte por día). GEMINI_MODEL lo cambia.
+MODELO_GEMINI = "gemini-flash-latest"
+# Si el modelo está saturado (503), sin cupo (429) o no existe (404), se prueba el siguiente.
+RESPALDOS_GEMINI = ("gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite")
+
+
+def hay_ia():
+    """True si hay una clave para redactar el reporte con IA (Gemini gratis o Claude)."""
+    return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+
+
+def _con_gemini(datos):
+    modelos = [os.environ.get("GEMINI_MODEL") or MODELO_GEMINI]
+    modelos += [m for m in RESPALDOS_GEMINI if m not in modelos]
+    for i, modelo in enumerate(modelos):
+        try:
+            return _gemini(modelo, datos)
+        except RuntimeError as e:
+            if i == len(modelos) - 1 or not str(e).startswith(("Gemini 503", "Gemini 429", "Gemini 404")):
+                raise
+            print(f"[!] {e} — pruebo con {modelos[i + 1]}", flush=True)
+
+
+def _gemini(modelo, datos):
+    import requests
+    r = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
+        headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
+        json={"system_instruction": {"parts": [{"text": SISTEMA}]},
+              "contents": [{"role": "user", "parts": [{"text": datos}]}],
+              "generationConfig": {"maxOutputTokens": 8192}},   # el "pensamiento" del modelo también cuenta
+        timeout=60)
+    if r.status_code != 200:   # sin el cuerpo completo: puede repetir la URL; el mensaje de Google alcanza
+        raise RuntimeError(f"Gemini {r.status_code}: {(r.json().get('error') or {}).get('message', '')[:200]}"
+                           if r.headers.get("content-type", "").startswith("application/json") else f"Gemini {r.status_code}")
+    candidatos = r.json().get("candidates") or [{}]
+    partes = (candidatos[0].get("content") or {}).get("parts") or []
+    escrito = "".join(p.get("text", "") for p in partes if not p.get("thought")).strip()
+    if not escrito:
+        raise RuntimeError(f"Gemini devolvió vacío ({candidatos[0].get('finishReason', 'sin motivo')})")
+    return escrito
+
+
+def _con_claude(datos):
+    import anthropic
+    client = anthropic.Anthropic(timeout=60.0)
+    respuesta = client.beta.messages.create(
+        model=MODELO_IA,
+        max_tokens=2000,
+        output_config={"effort": "low"},
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",   # si el modelo declina, lo sigue otro en la misma llamada
+        system=SISTEMA,
+        messages=[{"role": "user", "content": datos}],
+    )
+    if respuesta.stop_reason == "refusal":
+        return ""
+    return "".join(b.text for b in respuesta.content if b.type == "text").strip()
+
+
 def redactar(r):
-    """Texto del reporte escrito por Claude a partir de los números; sin ANTHROPIC_API_KEY, la plantilla.
+    """Texto del reporte escrito por IA a partir de los números: Gemini si hay GEMINI_API_KEY (gratis),
+    si no Claude con ANTHROPIC_API_KEY; sin ninguna, o si falla, la plantilla.
     Solo se mandan conteos y nombres de cámaras / personas ya guardados: nunca fotos."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not hay_ia():
         return texto(r)
+    hoy = datetime.now().date()
+    datos = (f"Hoy es {DIAS[hoy.weekday()]} {hoy.isoformat()}.\n"
+             "Datos del día:\n" + json.dumps(r, ensure_ascii=False))
     try:
-        import anthropic
-        client = anthropic.Anthropic(timeout=60.0)
-        respuesta = client.beta.messages.create(
-            model=MODELO_IA,
-            max_tokens=2000,
-            output_config={"effort": "low"},
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",   # si el modelo declina, lo sigue otro en la misma llamada
-            system=("Sos el asistente de seguridad e higiene de una obra que usa RAC Vision (cámaras que "
-                    "detectan casco, chaleco, zonas prohibidas y caídas). Escribís el reporte diario para el "
-                    "jefe de obra, en español rioplatense, por Telegram: máximo 120 palabras, sin markdown, "
-                    "con 1 a 3 acciones concretas para mañana. Usá solo los datos que te pasan; no inventes."),
-            messages=[{"role": "user", "content": "Datos del día:\n" + json.dumps(r, ensure_ascii=False)}],
-        )
-        if respuesta.stop_reason == "refusal":
-            return texto(r)
-        escrito = "".join(b.text for b in respuesta.content if b.type == "text").strip()
+        escrito = _con_gemini(datos) if os.environ.get("GEMINI_API_KEY") else _con_claude(datos)
         return escrito or texto(r)
     except Exception as e:  # sin red, clave inválida, cuota: el reporte sale igual con la plantilla
-        print(f"[!] Reporte con IA falló, se usa la plantilla: {e}", flush=True)
+        print(f"[!] Reporte con IA falló, se usa la plantilla: {e if isinstance(e, RuntimeError) else type(e).__name__}",
+              flush=True)
         return texto(r)
 
 

@@ -76,12 +76,14 @@ def test_reporte_sin_alertas():
 
 def test_redactar_sin_clave_usa_la_plantilla(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     r = riesgo.reporte([], datetime(2026, 11, 20).date())
     assert riesgo.redactar(r) == riesgo.texto(r)
 
 
 def test_redactar_con_claude_y_respaldo_si_falla(monkeypatch):
     anthropic = pytest.importorskip("anthropic")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "clave-de-prueba")
     r = riesgo.reporte([], datetime(2026, 11, 20).date())
     respuesta = mock.MagicMock(stop_reason="end_turn", content=[mock.MagicMock(type="text", text="Día tranquilo.")])
@@ -89,8 +91,37 @@ def test_redactar_con_claude_y_respaldo_si_falla(monkeypatch):
         cliente.return_value.beta.messages.create.return_value = respuesta
         assert riesgo.redactar(r) == "Día tranquilo."
         kwargs = cliente.return_value.beta.messages.create.call_args.kwargs
-        assert kwargs["model"] == "claude-opus-5-5" and json.loads(kwargs["messages"][0]["content"].split("\n", 1)[1])["total"] == 0
+        assert kwargs["model"] == "claude-opus-5-5" and json.loads(kwargs["messages"][0]["content"].split("Datos del día:\n", 1)[1])["total"] == 0
         cliente.return_value.beta.messages.create.side_effect = RuntimeError("sin red")
+        assert riesgo.redactar(r) == riesgo.texto(r)
+
+
+def test_redactar_con_gemini_gratis_y_respaldo_si_falla(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "clave-gemini")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "no-se-usa")   # con las dos, va Gemini (gratis)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    r = riesgo.reporte([], datetime(2026, 11, 20).date())
+    ok = mock.MagicMock(status_code=200)
+    ok.json.return_value = {"candidates": [{"content": {"parts": [{"text": "pensando", "thought": True},
+                                                                  {"text": "Día tranquilo."}]}}]}
+    with mock.patch("requests.post", return_value=ok) as post:
+        assert riesgo.redactar(r) == "Día tranquilo."
+        url, kw = post.call_args.args[0], post.call_args.kwargs
+        assert url.endswith("/models/gemini-flash-latest:generateContent")
+        assert kw["headers"] == {"x-goog-api-key": "clave-gemini"} and "clave" not in url
+        assert json.loads(kw["json"]["contents"][0]["parts"][0]["text"].split("Datos del día:\n", 1)[1])["total"] == 0
+        ok.json.return_value = {"candidates": []}            # bloqueado o vacío → plantilla
+        assert riesgo.redactar(r) == riesgo.texto(r)
+        ocupado = mock.MagicMock(status_code=503, headers={"content-type": "application/json"})
+        ocupado.json.return_value = {"error": {"message": "high demand"}}
+        ok.json.return_value = {"candidates": [{"content": {"parts": [{"text": "Con el de respaldo."}]}}]}
+        post.side_effect = [ocupado, ok]                    # saturado → prueba el siguiente modelo
+        assert riesgo.redactar(r) == "Con el de respaldo."
+        assert post.call_args.args[0].endswith("/models/gemini-flash-lite-latest:generateContent")
+        post.side_effect = None
+        post.return_value = ocupado                         # todos saturados → plantilla
+        assert riesgo.redactar(r) == riesgo.texto(r)
+        post.side_effect = RuntimeError("cuota agotada")
         assert riesgo.redactar(r) == riesgo.texto(r)
 
 
@@ -116,8 +147,24 @@ def test_telegram_no_repite_la_misma_alerta_enseguida(telegram):
     e = {"type": "sin_casco", "camera": "Portón"}
     assert aviso_telegram.avisar(e) is True
     assert aviso_telegram.avisar(e) is False                               # misma cámara y tipo: espera
-    assert aviso_telegram.avisar({"type": "sin_chaleco", "camera": "Portón"}) is True
+    assert aviso_telegram.avisar({"type": "zona_prohibida", "camera": "Portón"}) is True
     assert len(telegram) == 2
+
+
+def test_telegram_junta_casco_y_chaleco_en_un_mensaje(telegram, monkeypatch):
+    """Sin casco y sin chaleco de la misma cámara, con segundos de diferencia: un solo mensaje."""
+    monkeypatch.setattr(aviso_telegram, "_pendientes", {})
+    assert aviso_telegram.avisar({"type": "sin_casco", "camera": "Portón", "timestamp": "2026-11-22T18:52:46"}, b"a")
+    assert aviso_telegram.avisar({"type": "sin_chaleco", "camera": "Portón", "timestamp": "2026-11-22T18:52:49"}, b"b")
+    assert aviso_telegram.avisar({"type": "sin_chaleco", "camera": "Taller"})   # otra cámara: aparte
+    assert len(telegram) == 2
+    enviados = []
+    monkeypatch.setattr(aviso_telegram, "_enviar", lambda e, f: enviados.append((e, f)))
+    target, args = telegram[0]
+    target(*args, espera=0)
+    evento, foto = enviados[0]
+    assert evento["tipos"] == ["sin_casco", "sin_chaleco"] and foto == b"b"
+    assert aviso_telegram.leyenda(evento).startswith("⛑️🦺 SIN CASCO Y SIN CHALECO · Portón")
 
 
 def test_telegram_manda_la_foto_en_jpeg(telegram):
