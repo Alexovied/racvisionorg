@@ -1,0 +1,2 @@
+# Los scripts de bash tienen que tener fin de línea LF aunque la PC use CRLF (si no: "set: pipefail\r")
+*.sh text eol=lf
