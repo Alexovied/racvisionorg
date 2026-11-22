@@ -117,6 +117,8 @@ def test_motor_endereza_la_camara_girada(monkeypatch):
 
     def cabezas(img):
         vistas.append(img.shape)
+        if img.shape[0] == 480:
+            return []                    # con la cámara girada el detector no ve la cabeza
         # El detector recibe la imagen enderezada: la cabeza está donde estaría sin giro
         _, M2, _ = cuerpo.enderezar(np.zeros((480, 640, 3), np.uint8), 20)
         cx, cy = cuerpo.mover(cuerpo.mover((320, 135), M), M2)
@@ -126,7 +128,32 @@ def test_motor_endereza_la_camara_girada(monkeypatch):
     info = {}
     caras, _ = motor.analizar(np.zeros((480, 640, 3), np.uint8), {"casco": True, "chaleco": False}, info=info)
     assert info["inclinacion"] == pytest.approx(20, abs=0.5)
-    assert vistas[0][0] > 480                                          # corrió sobre la imagen enderezada
+    assert vistas[0][0] == 480 and vistas[1][0] > 480                  # sin cabezas, prueba enderezada
     assert len(caras) == 1
     x, y, w, h = caras[0]["bbox"]
     assert (x + w / 2, y + h / 2) == pytest.approx(cuerpo.mover((320, 135), M), abs=2)   # vuelve a la original
+
+
+def test_giro_de_un_solo_frame_no_endereza_si_ya_ve_la_cabeza(modelos, monkeypatch):
+    # Alguien que se recuesta o ladea la cabeza cambia el giro medido: si la imagen tal cual ya
+    # encuentra la cabeza, no se endereza (enderezar de más confunde pelo con casco).
+    M = cv2.getRotationMatrix2D((320, 240), -20, 1.0)
+    monkeypatch.setattr(motor.pose, "detectar", lambda img: [DE_FRENTE, cuerpo.mover_cuerpo(DE_FRENTE, M)])
+    monkeypatch.setattr(cuerpo, "inclinacion", lambda cuerpos: 20.0)
+    vistas = []
+    original = motor.helmet_detector.detectar
+    monkeypatch.setattr(motor.helmet_detector, "detectar", lambda img: vistas.append(img.shape) or original(img))
+    caras, _ = motor.analizar(np.zeros((480, 640, 3), np.uint8), {"casco": True, "chaleco": False})
+    assert [c["bbox"] for c in caras] == [CABEZA] and vistas == [(480, 640, 3)]
+
+
+def test_camara_fija_con_giro_estable_endereza_siempre(modelos, monkeypatch):
+    monkeypatch.setattr(cuerpo, "inclinacion", lambda cuerpos: 20.0)
+    vistas = []
+    original = motor.helmet_detector.detectar
+    monkeypatch.setattr(motor.helmet_detector, "detectar", lambda img: vistas.append(img.shape) or original(img))
+    nivel = cuerpo.Nivel()
+    for _ in range(10):
+        nivel.actualizar(20.0)
+    motor.analizar(np.zeros((480, 640, 3), np.uint8), {"casco": True, "chaleco": False}, nivel=nivel)
+    assert len(vistas) == 1 and vistas[0][0] > 480

@@ -101,6 +101,10 @@ class Nivel:
     def __init__(self, n=30):
         self.medidas = deque(maxlen=n)
 
+    def estable(self):
+        """Hay medidas suficientes para confiar en el giro aunque cada frame varíe."""
+        return len(self.medidas) >= 10
+
     def actualizar(self, angulo):
         if angulo is not None:
             self.medidas.append(angulo)

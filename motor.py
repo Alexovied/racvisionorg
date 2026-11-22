@@ -58,6 +58,13 @@ def analizar(img, modos, con_personas=False, conocidos=None, nivel=None, info=No
         info.update(cuerpos=cuerpos, inclinacion=angulo)
     if not angulo:
         return _analizar(img, modos, con_personas, conocidos, cuerpos)
+    if nivel is None or not nivel.estable():
+        # Giro medido en un solo frame: también cambia si la persona ladea la cabeza o se
+        # recuesta, y enderezar de más confunde pelo con casco. Se usa solo si la imagen
+        # tal cual no encuentra a nadie (el caso de la cámara girada que pierde cabezas).
+        caras, personas = _analizar(img, modos, con_personas, conocidos, cuerpos)
+        if caras:
+            return caras, personas
 
     derecha, M, M_inv = cuerpo.enderezar(img, angulo)
     caras, personas = _analizar(derecha, modos, con_personas, conocidos,
