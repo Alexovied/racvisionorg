@@ -408,7 +408,18 @@ class Camara(threading.Thread):
                                 for p in cajas))]
             persona = ", ".join(sorted({c.get("nombre") or "Sin identificar" for c in en_falta})) or None
             conf = max(en_falta[0]["con_casco"], en_falta[0]["sin_casco"]) if k == "casco" and en_falta else 100
-            self.pendientes.append((EVENTOS[k], min(100.0, conf), cam["id"], persona, self.jpg))
+            # Dónde (0 a 1) para el mapa de riesgo: la cabeza en falta, o los pies de la persona en zona / caída
+            alto, ancho = img.shape[:2]
+            if en_falta:
+                x, y, w, h = en_falta[0]["bbox"]
+                pos = [(x + w / 2) / ancho, (y + h / 2) / alto]
+            elif cajas:
+                x, y, w, h = cajas[0]
+                pos = [(x + w / 2) / ancho, (y + h) / alto]
+            else:
+                pos = None
+            pos = [min(1.0, max(0.0, v)) for v in pos] if pos else None
+            self.pendientes.append((EVENTOS[k], min(100.0, conf), cam["id"], persona, self.jpg, pos))
         # Evento "todos con EPP" cuando la cámara vuelve a verde, como hace el monitor del navegador
         if clase and clase != self.alarma:
             self.alarma = clase

@@ -169,7 +169,9 @@
                 if (estado !== 'falta') continue;
                 enviarEvento({ type: 'sin_' + elemento, camera: camId,
                                confidence: Math.min(100, EPP.confianza(caras, elemento, 'falta', MIN_CONFIDENCE)),
-                               persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE), foto: fotoConRecuadros() });
+                               persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE),
+                               pos: EPP.posicion(caras, elemento, MIN_CONFIDENCE, canvas.width, canvas.height),
+                               foto: fotoConRecuadros() });
             }
             // Alarma física y evento "todos con EPP": según el estado combinado de casco y chaleco
             const alarma = seguimiento.alarma();

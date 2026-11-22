@@ -14,6 +14,7 @@ from flask import (
     jsonify, Response, send_file, abort
 )
 import base64
+from datetime import datetime
 import binascii
 import cv2
 import numpy as np
@@ -22,8 +23,10 @@ from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
 )
+import aviso_telegram
 import data_store
 import face_id
+import riesgo
 import motor
 from hardware import enviar_comando_esp32
 
@@ -674,7 +677,15 @@ def datos_de_camara(camera):
     return ("Detector web" if camera == DEFAULT_CAMERA else camera), ""
 
 
-def registrar_evento(event_type, confidence, camera, persona=None, foto=None):
+def _posicion(pos):
+    """[x, y] de 0 a 1 (dónde estaba la persona en la imagen) o None si no vino bien."""
+    if (isinstance(pos, list) and len(pos) == 2
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1 for v in pos)):
+        return [round(float(pos[0]), 3), round(float(pos[1]), 3)]
+    return None
+
+
+def registrar_evento(event_type, confidence, camera, persona=None, foto=None, pos=None):
     """Guarda el evento y avisa: alarma física y webhook. Lo usan la API (el navegador decide)
     y el motor de cámaras del servidor (motor.py). camera: id o nombre de una cámara registrada.
     Las alertas guardan además quién era, dónde fue y una foto del momento (en WebP).
@@ -683,6 +694,8 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None):
     extra = {"ubicacion": ubicacion} if ubicacion else {}
     if event_type in ALERT_TYPES:
         extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
+        if _posicion(pos):
+            extra["pos"] = _posicion(pos)
     foto_webp = None
     if foto and event_type in ALERT_TYPES:
         # La API ya la recodificó en foto_de_alerta(); el JPEG del motor se pasa a WebP acá
@@ -713,6 +726,8 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None):
             n8n_headers["Authorization"] = f"Bearer {N8N_WEBHOOK_TOKEN}"
         # En segundo plano: un n8n lento no frena ni la respuesta ni el análisis de la cámara
         threading.Thread(target=_avisar_n8n, args=(n8n_payload, n8n_headers), daemon=True).start()
+    if event_type in ALERT_TYPES:
+        aviso_telegram.avisar(event, foto_webp)   # sin TELEGRAM_BOT_TOKEN no hace nada
     return event
 
 
@@ -753,7 +768,7 @@ def api_add_event():
 
         persona = data.get("persona") if event_type in ALERT_TYPES else None
         foto = foto_de_alerta(data) if event_type in ALERT_TYPES else None
-        event = registrar_evento(event_type, confidence, camera, persona, foto)
+        event = registrar_evento(event_type, confidence, camera, persona, foto, _posicion(data.get("pos")))
 
         return jsonify({"ok": True, "event": event})
     except HTTPException:
@@ -794,3 +809,96 @@ def api_recent_events():
     limit = max(1, min(100, request.args.get("limit", 10, type=int)))
     events, _ = data_store.get_filtered_events(page=1, per_page=limit)
     return jsonify(events)
+
+
+# ═══════════════════════════════════════
+#  MAPA DE RIESGO Y REPORTE DIARIO (riesgo.py)
+# ═══════════════════════════════════════
+
+@admin_bp.route("/riesgo")
+@login_required
+def riesgo_pagina():
+    camaras = [c for c in data_store.load_cameras()]
+    return render_template("admin/riesgo.html", cameras=camaras, telegram=aviso_telegram.configurado())
+
+
+@admin_bp.route("/api/riesgo")
+@login_required
+def api_riesgo():
+    """Matriz día × hora, pronóstico de mañana, tendencia y puntos de una cámara (por nombre)."""
+    tipo = request.args.get("tipo")
+    tipo = tipo if tipo in ALERT_TYPES else None
+    dias = max(1, min(365, request.args.get("dias", 28, type=int)))
+    camara = request.args.get("camara") or None
+    eventos = data_store.load_events()
+    return jsonify({
+        "matriz": riesgo.matriz(eventos, dias=dias, tipo=tipo, camara=camara),
+        "pronostico": riesgo.pronostico(eventos),
+        "tendencia": riesgo.tendencia(eventos),
+        "puntos": riesgo.puntos(eventos, camara, dias=dias, tipo=tipo) if camara else [],
+    })
+
+
+@admin_bp.route("/reporte")
+@login_required
+def reporte_pagina():
+    try:
+        dia = datetime.strptime(request.args.get("fecha", ""), "%Y-%m-%d").date()
+    except ValueError:
+        dia = None
+    r = riesgo.reporte(data_store.load_events(), dia)
+    # La IA solo se usa a pedido (?ia=1): cada recarga de la página no gasta una llamada
+    texto = riesgo.redactar(r) if request.args.get("ia") == "1" else riesgo.texto(r)
+    return render_template("admin/reporte.html", r=r, texto=texto, telegram=aviso_telegram.configurado(),
+                           ia=bool(os.environ.get("ANTHROPIC_API_KEY")))
+
+
+@admin_bp.route("/reporte/enviar", methods=["POST"])
+@login_required
+@admin_required
+def reporte_enviar():
+    texto = request.form.get("texto", "").strip()
+    if not texto:
+        flash("El reporte está vacío.", "error")
+    elif aviso_telegram.mandar_texto(texto):
+        flash("Reporte enviado por Telegram.", "success")
+    else:
+        flash("No se pudo enviar: revisá TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID.", "error")
+    return redirect(url_for("admin.reporte_pagina", fecha=request.form.get("fecha", "")))
+
+
+def enviar_reporte_del_dia(dia=None):
+    """Arma el reporte de `dia` (ayer por defecto), lo redacta y lo manda por Telegram una sola vez:
+    un archivo marca el día enviado, así varios procesos o un reinicio no lo repiten."""
+    r = riesgo.reporte(data_store.load_events(), dia)
+    marca = os.path.join(data_store.DATA_DIR, f"reporte-{r['fecha']}.enviado")
+    os.makedirs(data_store.DATA_DIR, exist_ok=True)
+    try:
+        fd = os.open(marca, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    os.close(fd)
+    if not aviso_telegram.mandar_texto(riesgo.redactar(r)):
+        os.remove(marca)   # no salió: que se reintente en la próxima vuelta
+        return False
+    return True
+
+
+def iniciar_reporte_diario():
+    """Con REPORTE_HORA=8 (y Telegram configurado) manda el reporte de ayer todos los días a esa hora."""
+    hora = os.environ.get("REPORTE_HORA", "")
+    if not hora.isdecimal() or not aviso_telegram.configurado():
+        return None
+
+    def bucle():
+        while True:
+            if datetime.now().hour >= int(hora):
+                try:
+                    enviar_reporte_del_dia()
+                except Exception as e:
+                    print(f"[!] Reporte diario: {e}", flush=True)
+            time.sleep(300)
+
+    hilo = threading.Thread(target=bucle, daemon=True, name="reporte-diario")
+    hilo.start()
+    return hilo

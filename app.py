@@ -100,10 +100,12 @@ def verificar_csrf():
         abort(403, "Token CSRF inválido o ausente. Recargá la página e intentá de nuevo.")
 
 # Register admin Blueprint & Flask-Login
+import admin
 from admin import admin_bp, init_login, roles_required
 from sgep import sgep_bp
 app.register_blueprint(admin_bp)
 app.register_blueprint(sgep_bp)
+admin.iniciar_reporte_diario()   # reporte por Telegram: solo con REPORTE_HORA y TELEGRAM_* configurados
 init_login(app)
 
 # Inicializar conexión con ESP32 (falla silenciosamente si no está conectado)

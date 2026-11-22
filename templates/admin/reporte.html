@@ -1,0 +1,57 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Reporte diario{% endblock %}
+{% block page_title %}Reporte diario{% endblock %}
+
+{% block head %}
+<style>
+    .reporte-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; margin-bottom: 1.25rem; }
+    .reporte-kpi { background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .8rem 1rem; }
+    .reporte-kpi .n { font-size: 1.6rem; font-weight: 700; color: var(--text); }
+    .reporte-kpi .t { font-size: .8rem; color: var(--text-muted); }
+    .reporte-texto { width: 100%; min-height: 220px; background: var(--bg-2); color: var(--text); border: 1px solid var(--border);
+                     border-radius: var(--radius-sm); padding: 1rem; font: inherit; line-height: 1.5; resize: vertical; }
+    .reporte-acciones { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; align-items: center; }
+    .reporte-nota { color: var(--text-muted); font-size: .8rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Resumen del {{ r.dia }} {{ r.fecha }}. Se puede mandar por Telegram al jefe de obra.</p>
+    <form method="GET" class="filter-form" style="margin:0">
+        <input type="date" name="fecha" value="{{ r.fecha }}" aria-label="Día del reporte" class="form-input" onchange="this.form.submit()">
+    </form>
+</div>
+
+<div class="reporte-kpis">
+    <div class="reporte-kpi"><div class="n">{{ r.total }}</div><div class="t">alertas en el día</div></div>
+    <div class="reporte-kpi"><div class="n">{{ r.mismo_dia_semana_anterior }}</div><div class="t">el {{ r.dia }} anterior</div></div>
+    <div class="reporte-kpi"><div class="n">{{ '%02d:00' % r.hora_pico.hora if r.hora_pico else '—' }}</div><div class="t">hora pico</div></div>
+    <div class="reporte-kpi"><div class="n">{{ r.reincidentes | length }}</div><div class="t">reincidentes (2+ alertas)</div></div>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header">
+        <h2><i class="fa-solid fa-file-lines"></i> Texto del reporte</h2>
+        {% if ia %}
+        <a href="{{ url_for('admin.reporte_pagina', fecha=r.fecha, ia=1) }}" class="card-link"><i class="fa-solid fa-wand-magic-sparkles"></i> Redactar con IA</a>
+        {% endif %}
+    </div>
+    <form method="POST" action="{{ url_for('admin.reporte_enviar') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="fecha" value="{{ r.fecha }}">
+        <textarea name="texto" class="reporte-texto" aria-label="Texto del reporte">{{ texto }}</textarea>
+        <div class="reporte-acciones">
+            {% if current_user.role == 'admin' and telegram %}
+            <button type="submit" class="btn-action"><i class="fa-brands fa-telegram"></i> Enviar por Telegram</button>
+            {% endif %}
+            <span class="reporte-nota">
+                {% if not telegram %}Para enviarlo, configurá TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en el servidor. {% endif %}
+                {% if not ia %}Con ANTHROPIC_API_KEY lo redacta Claude con recomendaciones.{% endif %}
+                Con REPORTE_HORA=8 sale solo todos los días a esa hora.
+            </span>
+        </div>
+    </form>
+</div>
+{% endblock %}

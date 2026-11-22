@@ -148,8 +148,9 @@ def test_persona_en_zona_registra_evento_con_foto(camara, monkeypatch):
     for _ in range(3):
         hilo._procesar(np.zeros((480, 640, 3), np.uint8))
     assert [e[0] for e in eventos] == ["zona_prohibida"]
-    tipo, conf, cam_id, persona, foto = eventos[0]
+    tipo, conf, cam_id, persona, foto, pos = eventos[0]
     assert cam_id == hilo.cam["id"] and foto[:2] == b"\xff\xd8"     # JPEG del frame con recuadros
+    assert pos == [140 / 640, 400 / 480]                            # los pies de la persona, para el mapa de riesgo
     assert hilo.estado == {"clase": "alerta", "titulo": "ZONA PROHIBIDA"}
 
 
