@@ -81,6 +81,57 @@ def tendencia(eventos, ahora=None):
     return t
 
 
+TURNOS = (("Mañana", 6, 14), ("Tarde", 14, 22), ("Noche", 22, 6))
+CORRECCION_MAX = timedelta(minutes=30)   # una vuelta a verde más tarde ya no cuenta como corrección
+
+
+def turno(t):
+    for nombre, desde, hasta in TURNOS:
+        if (desde <= t.hour < hasta) if desde < hasta else (t.hour >= desde or t.hour < hasta):
+            return nombre
+
+
+def kpis(eventos, ahora=None, dias=30):
+    """Indicadores HSE para auditoría (ISO 45001) de los últimos `dias`:
+    - por turno: alertas, por tipo y minutos hasta la corrección (mediana del tiempo entre la alerta
+      y el siguiente "todos con EPP" de la misma cámara, si llega en menos de 30 min)
+    - racha de días sin alertas y alertas por día."""
+    ahora = ahora or datetime.now()
+    desde = ahora - timedelta(days=dias)
+    verdes = {}
+    for e in eventos:
+        if e.get("type") == "con_casco":
+            try:
+                verdes.setdefault(e.get("camera"), []).append(datetime.fromisoformat(e["timestamp"]))
+            except (KeyError, TypeError, ValueError):
+                pass
+    for v in verdes.values():
+        v.sort()
+    filas = {n: {"turno": n, "alertas": 0, "por_tipo": Counter(), "correcciones": []} for n, _, _ in TURNOS}
+    por_dia = Counter()
+    for t, e in _alertas(eventos, desde, ahora):
+        f = filas[turno(t)]
+        f["alertas"] += 1
+        f["por_tipo"][e["type"]] += 1
+        por_dia[t.date().isoformat()] += 1
+        siguiente = next((v for v in verdes.get(e.get("camera"), []) if v > t), None)
+        if siguiente and siguiente - t <= CORRECCION_MAX:
+            f["correcciones"].append((siguiente - t).total_seconds() / 60)
+    for f in filas.values():
+        c = sorted(f.pop("correcciones"))
+        f["correccion_min"] = round(c[len(c) // 2], 1) if c else None
+        f["corregidas"] = len(c)
+        f["por_tipo"] = dict(f["por_tipo"])
+    racha, d = 0, ahora.date()
+    while racha < dias and not por_dia.get((d - timedelta(days=racha)).isoformat()):
+        racha += 1
+    return {"dias": dias, "total": sum(por_dia.values()), "turnos": list(filas.values()),
+            "dias_sin_alertas": racha,
+            "por_dia": [{"fecha": (desde.date() + timedelta(days=i + 1)).isoformat(),
+                         "alertas": por_dia.get((desde.date() + timedelta(days=i + 1)).isoformat(), 0)}
+                        for i in range(dias)]}
+
+
 def reporte(eventos, dia=None):
     """Resumen de un día (date): lo que se manda a la mañana siguiente."""
     dia = dia or (datetime.now() - timedelta(days=1)).date()

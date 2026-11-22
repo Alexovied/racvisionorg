@@ -876,7 +876,29 @@ def api_riesgo():
         "pronostico": riesgo.pronostico(eventos),
         "tendencia": riesgo.tendencia(eventos),
         "puntos": riesgo.puntos(eventos, camara, dias=dias, tipo=tipo) if camara else [],
+        "kpis": riesgo.kpis(eventos, dias=dias),
     })
+
+
+@admin_bp.route("/riesgo/kpis.csv")
+@login_required
+def riesgo_kpis_csv():
+    """Indicadores por turno y alertas por día, para adjuntar a una auditoría ISO 45001."""
+    dias = max(1, min(365, request.args.get("dias", 30, type=int)))
+    k = riesgo.kpis(data_store.load_events(), dias=dias)
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow([f"RAC Vision - indicadores de los últimos {dias} días", f"días sin alertas: {k['dias_sin_alertas']}"])
+    w.writerow(["Turno", "Alertas", *[EVENT_LABELS[t] for t in ALERT_TYPES], "Corregidas", "Corrección (min, mediana)"])
+    for f in k["turnos"]:
+        w.writerow([f["turno"], f["alertas"], *[f["por_tipo"].get(t, 0) for t in ALERT_TYPES], f["corregidas"],
+                    "" if f["correccion_min"] is None else f["correccion_min"]])
+    w.writerow([])
+    w.writerow(["Fecha", "Alertas"])
+    for d in k["por_dia"]:
+        w.writerow([d["fecha"], d["alertas"]])
+    return Response(out.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=rac_kpis_{dias}d.csv"})
 
 
 @admin_bp.route("/reporte")
