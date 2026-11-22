@@ -210,12 +210,17 @@ def _con_gemini(datos):
         headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
         json={"system_instruction": {"parts": [{"text": SISTEMA}]},
               "contents": [{"role": "user", "parts": [{"text": datos}]}],
-              "generationConfig": {"maxOutputTokens": 2000}},
+              "generationConfig": {"maxOutputTokens": 8192}},   # el "pensamiento" del modelo también cuenta
         timeout=60)
-    r.raise_for_status()
+    if r.status_code != 200:   # sin el cuerpo completo: puede repetir la URL; el mensaje de Google alcanza
+        raise RuntimeError(f"Gemini {r.status_code}: {(r.json().get('error') or {}).get('message', '')[:200]}"
+                           if r.headers.get("content-type", "").startswith("application/json") else f"Gemini {r.status_code}")
     candidatos = r.json().get("candidates") or [{}]
     partes = (candidatos[0].get("content") or {}).get("parts") or []
-    return "".join(p.get("text", "") for p in partes if not p.get("thought")).strip()
+    escrito = "".join(p.get("text", "") for p in partes if not p.get("thought")).strip()
+    if not escrito:
+        raise RuntimeError(f"Gemini devolvió vacío ({candidatos[0].get('finishReason', 'sin motivo')})")
+    return escrito
 
 
 def _con_claude(datos):
@@ -246,7 +251,8 @@ def redactar(r):
         escrito = _con_gemini(datos) if os.environ.get("GEMINI_API_KEY") else _con_claude(datos)
         return escrito or texto(r)
     except Exception as e:  # sin red, clave inválida, cuota: el reporte sale igual con la plantilla
-        print(f"[!] Reporte con IA falló, se usa la plantilla: {type(e).__name__}", flush=True)
+        print(f"[!] Reporte con IA falló, se usa la plantilla: {e if isinstance(e, RuntimeError) else type(e).__name__}",
+              flush=True)
         return texto(r)
 
 

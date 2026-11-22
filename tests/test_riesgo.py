@@ -101,7 +101,7 @@ def test_redactar_con_gemini_gratis_y_respaldo_si_falla(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "no-se-usa")   # con las dos, va Gemini (gratis)
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
     r = riesgo.reporte([], datetime(2026, 11, 20).date())
-    ok = mock.MagicMock()
+    ok = mock.MagicMock(status_code=200)
     ok.json.return_value = {"candidates": [{"content": {"parts": [{"text": "pensando", "thought": True},
                                                                   {"text": "Día tranquilo."}]}}]}
     with mock.patch("requests.post", return_value=ok) as post:
