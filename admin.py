@@ -308,7 +308,11 @@ def personas():
             if any(img is None for img in imagenes):
                 flash("Uno de los archivos no es una imagen válida (usá JPG o PNG).", "error")
             else:
-                utiles, sin_cara = face_id.registrar(nombre, imagenes, current_user.username)
+                try:
+                    utiles, sin_cara = face_id.registrar(nombre, imagenes, current_user.username)
+                except RuntimeError as e:   # archivo cifrado sin la clave: no se pisa a nadie
+                    flash(f"No se pudo registrar: {e}.", "error")
+                    return redirect(url_for("admin.personas"))
                 if utiles >= face_id.MIN_FOTOS:
                     aviso = f" {sin_cara} foto(s) no se usaron porque no se veía la cara." if sin_cara else ""
                     flash(f"'{nombre}' quedó registrada con {utiles} fotos.{aviso}", "success")
@@ -325,7 +329,12 @@ def personas():
 @admin_required
 def borrar_persona():
     nombre = request.form.get("nombre", "")
-    if face_id.borrar(nombre):
+    try:
+        borrada = face_id.borrar(nombre)
+    except RuntimeError as e:
+        flash(f"No se pudo borrar: {e}.", "error")
+        return redirect(url_for("admin.personas"))
+    if borrada:
         flash(f"Se borraron los datos de reconocimiento de '{nombre}'.", "success")
     else:
         flash("Esa persona no está registrada.", "error")
@@ -669,13 +678,17 @@ CALIDAD_WEBP = 80
 
 
 def anonimizar(foto):
-    """JPEG de la foto con las caras pixeladas (modo anónimo), o None si no es una imagen.
-    Se agranda la caja de cada cara para tapar también pelo y orejas."""
+    """JPEG de la foto con las caras pixeladas (modo anónimo), o None si no es una imagen o si no
+    se encontró ninguna cara: ante la duda no se guarda la foto (una cara de perfil o tapada que el
+    detector no ve quedaría nítida). Se agranda la caja de cada cara para tapar también pelo y orejas."""
     img = cv2.imdecode(np.frombuffer(foto, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         return None
     H, W = img.shape[:2]
-    for x, y, w, h in face_detector.detect_faces(img):
+    caras = face_detector.detect_faces(img)
+    if not caras:
+        return None
+    for x, y, w, h in caras:
         x0, y0 = max(0, int(x - 0.3 * w)), max(0, int(y - 0.4 * h))
         x1, y1 = min(W, int(x + 1.3 * w)), min(H, int(y + 1.3 * h))
         if x1 - x0 < 2 or y1 - y0 < 2:
@@ -1082,7 +1095,29 @@ def api_riesgo():
         "pronostico": riesgo.pronostico(eventos),
         "tendencia": riesgo.tendencia(eventos),
         "puntos": riesgo.puntos(eventos, camara, dias=dias, tipo=tipo) if camara else [],
+        "kpis": riesgo.kpis(eventos, dias=dias),
     })
+
+
+@admin_bp.route("/riesgo/kpis.csv")
+@login_required
+def riesgo_kpis_csv():
+    """Indicadores por turno y alertas por día, para adjuntar a una auditoría ISO 45001."""
+    dias = max(1, min(365, request.args.get("dias", 30, type=int)))
+    k = riesgo.kpis(data_store.load_events(), dias=dias)
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow([f"RAC Vision - indicadores de los últimos {dias} días", f"días sin alertas: {k['dias_sin_alertas']}"])
+    w.writerow(["Turno", "Alertas", *[EVENT_LABELS[t] for t in ALERT_TYPES], "Corregidas", "Corrección (min, mediana)"])
+    for f in k["turnos"]:
+        w.writerow([f["turno"], f["alertas"], *[f["por_tipo"].get(t, 0) for t in ALERT_TYPES], f["corregidas"],
+                    "" if f["correccion_min"] is None else f["correccion_min"]])
+    w.writerow([])
+    w.writerow(["Fecha", "Alertas"])
+    for d in k["por_dia"]:
+        w.writerow([d["fecha"], d["alertas"]])
+    return Response(out.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=rac_kpis_{dias}d.csv"})
 
 
 @admin_bp.route("/reporte")

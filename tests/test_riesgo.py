@@ -214,3 +214,26 @@ def test_reporte_diario_con_lock_viejo_igual_sale(tmp_data, monkeypatch):
     os.utime(lock, (0, 0))                                                   # de un proceso que murió
     assert admin.enviar_reporte_del_dia(datetime(2026, 11, 20).date()) is True
     assert not os.path.exists(lock)
+
+
+def test_kpis_por_turno_y_tiempo_de_correccion():
+    eventos = [ev("sin_casco", datetime(2026, 11, 20, 9, 0)),
+               ev("con_casco", datetime(2026, 11, 20, 9, 4)),            # corregida en 4 min
+               ev("sin_chaleco", datetime(2026, 11, 20, 15, 0)),
+               ev("con_casco", datetime(2026, 11, 20, 16, 0)),           # 60 min: no cuenta
+               ev("hombre_caido", datetime(2026, 11, 20, 23, 30), camara="Galpón")]
+    k = riesgo.kpis(eventos, AHORA, dias=7)
+    t = {f["turno"]: f for f in k["turnos"]}
+    assert (t["Mañana"]["alertas"], t["Mañana"]["correccion_min"], t["Mañana"]["corregidas"]) == (1, 4.0, 1)
+    assert (t["Tarde"]["alertas"], t["Tarde"]["correccion_min"]) == (1, None)
+    assert t["Noche"]["por_tipo"] == {"hombre_caido": 1}
+    assert k["total"] == 3 and k["dias_sin_alertas"] == 2                # 21 y 22 sin alertas
+    assert len(k["por_dia"]) == 7 and k["por_dia"][-1]["fecha"] == "2026-11-22"
+
+
+def test_csv_de_kpis(operator_client):
+    data_store.append_event("sin_casco", 90, "Portón")
+    r = operator_client.get("/admin/riesgo/kpis.csv?dias=7")
+    texto = r.get_data(as_text=True)
+    assert r.status_code == 200 and "Turno,Alertas" in texto and "Fecha,Alertas" in texto
+    assert operator_client.get("/admin/api/riesgo").get_json()["kpis"]["total"] == 1

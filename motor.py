@@ -292,6 +292,7 @@ class Camara(threading.Thread):
         self.lente, self.t_lente = None, 0.0
         self.vigia_lente = salud.Vigia()
         self.vigia_senal = salud.Vigia(60)
+        self.exigia = True            # si en el cuadro anterior se exigía EPP (horario de la cámara)
 
     def _abrir(self):
         if self.cam["type"] == "usb":
@@ -324,14 +325,16 @@ class Camara(threading.Thread):
             cap = None
             try:  # un error de OpenCV (driver, URL rara) no debe matar el hilo: se reintenta igual
                 cap = self._abrir()
+                t_abierta = time.monotonic()
                 while not self.parar.is_set():
                     ok, img = cap.read()
                     if not ok:
                         break
                     self.crudo = img
-                    if espera != 5:
+                    # Volvió la señal (y se sostiene 5 s: un stream que da un cuadro y muere no cuenta)
+                    if espera != 5 and time.monotonic() - t_abierta >= 5:
                         espera = 5
-                        self.vigia_senal.ver(None, 0)   # volvió la señal: el próximo corte avisa de nuevo
+                        self.vigia_senal.ver(None, 0)   # el próximo corte avisa de nuevo
             except Exception:
                 traceback.print_exc()
             finally:
@@ -393,6 +396,14 @@ class Camara(threading.Thread):
         # Fuera del horario de la cámara (ej. sin turno de noche) no se exige casco ni chaleco;
         # zonas prohibidas y caídas siguen siempre
         exige = en_horario(cam.get("horario"), datetime.now())
+        if self.exigia and not exige:
+            # Terminó el horario: las ventanas de casco y chaleco arrancan de cero mañana y, si la
+            # cámara estaba en alerta, se apaga la alarma (si no, la baliza queda en rojo toda la noche)
+            self.seg.ventanas["casco"], self.seg.ventanas["chaleco"] = Ventana(), Ventana()
+            if self.alarma == "alerta":
+                self.alarma = None
+                self.pendientes.append(("con_casco", 100, cam["id"]))
+        self.exigia = exige
         modos = {"casco": exige and bool(cfg["detectar_casco"]), "chaleco": exige and bool(cfg["detectar_chaleco"])}
         caida = bool(cfg["detectar_caida"])
         exentas = [np.array([[x * ancho, y * alto] for x, y in z], np.int32) for z in cam.get("exentas") or []]

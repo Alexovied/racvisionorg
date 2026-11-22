@@ -22,7 +22,9 @@ SEGUNDOS = 30
 def lente(img):
     gris = cv2.cvtColor(cv2.resize(img, (320, 240), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY)
     media, desvio = cv2.meanStdDev(gris)
-    if media[0][0] < OSCURO or desvio[0][0] < PAREJO:
+    # Tapada: imagen pareja (tela, cinta). Oscura sola no alcanza: una escena de noche tiene poca luz
+    # pero conserva contraste; negra y casi sin contraste, sí es una lente tapada
+    if desvio[0][0] < PAREJO or (media[0][0] < OSCURO and desvio[0][0] < 2 * PAREJO):
         return "tapada"
     if cv2.Laplacian(gris, cv2.CV_64F).var() < NITIDEZ:
         return "desenfocada"

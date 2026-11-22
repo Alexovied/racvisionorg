@@ -28,6 +28,11 @@
     .tend .t { font-size: .8rem; color: var(--text-muted); }
     .tend .var { font-size: .8rem; margin-left: .35rem; }
     .sube { color: var(--red); } .baja { color: var(--green); } .igual { color: var(--text-muted); }
+    .tabla-kpis-wrap { overflow-x: auto; }
+    .tabla-kpis { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .tabla-kpis th, .tabla-kpis td { padding: .5rem .6rem; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .tabla-kpis th:first-child, .tabla-kpis td:first-child { text-align: left; }
+    .tabla-kpis th { color: var(--text-muted); font-weight: 500; }
     #tooltip-matriz { position: fixed; pointer-events: none; background: var(--card-bg-solid); border: 1px solid var(--border-hover);
                       border-radius: 8px; padding: .35rem .6rem; font-size: .8rem; color: var(--text); display: none; z-index: 50; }
 </style>
@@ -108,6 +113,22 @@
         <p class="riesgo-desc" id="pron-desc">Alertas esperadas por hora según las últimas 4 semanas.</p>
         <div style="height: 220px"><canvas id="pron-chart" role="img" aria-label="Alertas esperadas por hora para mañana"></canvas></div>
         <div class="picos" id="picos"></div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2><i class="fa-solid fa-clipboard-check"></i> Indicadores por turno</h2>
+            <a href="#" class="card-link" id="kpis-csv"><i class="fa-solid fa-file-csv"></i> CSV para auditoría</a>
+        </div>
+        <p class="riesgo-desc" id="kpis-desc"></p>
+        <div class="tabla-kpis-wrap">
+            <table class="tabla-kpis">
+                <thead><tr><th scope="col">Turno</th><th scope="col">Alertas</th><th scope="col">Sin casco</th>
+                    <th scope="col">Sin chaleco</th><th scope="col">Zona</th><th scope="col">Caída</th>
+                    <th scope="col" title="Mediana de minutos entre la alerta y la vuelta a verde de esa cámara">Corrección</th></tr></thead>
+                <tbody id="kpis-filas"></tbody>
+            </table>
+        </div>
     </div>
 
     <div class="admin-card">
@@ -234,6 +255,21 @@
         ctx.globalCompositeOperation = 'source-over';
     }
 
+    function pintarKpis(k) {
+        $('kpis-desc').textContent = `${k.total} alertas en ${k.dias} días · ${k.dias_sin_alertas} día${k.dias_sin_alertas === 1 ? '' : 's'} seguidos sin alertas.`;
+        const tb = $('kpis-filas');
+        tb.innerHTML = '';
+        for (const f of k.turnos) {
+            const tr = document.createElement('tr');
+            const celdas = [f.turno, f.alertas, f.por_tipo.sin_casco || 0, f.por_tipo.sin_chaleco || 0,
+                            f.por_tipo.zona_prohibida || 0, f.por_tipo.hombre_caido || 0,
+                            f.correccion_min == null ? '—' : `${f.correccion_min} min`];
+            celdas.forEach((v, i) => { const td = document.createElement(i ? 'td' : 'th'); if (!i) td.scope = 'row'; td.textContent = v; tr.append(td); });
+            tb.append(tr);
+        }
+        $('kpis-csv').href = `{{ url_for('admin.riesgo_kpis_csv') }}?dias=${k.dias}`;
+    }
+
     async function actualizar() {
         const sel = $('f-camara');
         const q = new URLSearchParams({tipo: $('f-tipo').value, dias: $('f-dias').value, camara: sel.value});
@@ -243,6 +279,7 @@
         pintarMatriz(d.matriz);
         pintarPronostico(d.pronostico);
         pintarTendencia(d.tendencia);
+        pintarKpis(d.kpis);
         pintarEscena(d.puntos, sel.selectedOptions[0]);
     }
     $('filtros').addEventListener('change', actualizar);

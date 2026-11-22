@@ -28,6 +28,7 @@ def _conectar():
     if tls:
         c.tls_set()
     c.reconnect_delay_set(min_delay=1, max_delay=60)
+    c.max_queued_messages_set(1000)   # broker caído: no se acumulan eventos sin límite en memoria
     c.connect_async(os.environ["MQTT_HOST"], int(os.environ.get("MQTT_PORT", 8883 if tls else 1883)), keepalive=60)
     c.loop_start()
     return c
