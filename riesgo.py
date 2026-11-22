@@ -17,7 +17,10 @@ import data_store
 ALERTAS = data_store.ALERT_TYPES
 DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 NOMBRES = {"sin_casco": "sin casco", "sin_chaleco": "sin chaleco",
-           "zona_prohibida": "en zona prohibida", "hombre_caido": "hombre caído"}
+           "zona_prohibida": "en zona prohibida", "hombre_caido": "hombre caído",
+           "boton_sos": "botón de pánico", "hombre_muerto": "hombre muerto sin respuesta",
+           "posible_desmayo": "posible desmayo", "ritmo_cardiaco": "ritmo cardíaco anormal",
+           "wearable_sin_senal": "wearable sin señal"}
 MODELO_IA = "claude-opus-5-5"
 
 

@@ -240,7 +240,9 @@ def reset_config():
 # ═══════════════════════════════════════
 
 # Infracciones: guardan persona y foto, disparan la alarma y cuentan como alerta en el panel
-ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido")
+ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido",
+               # de los wearables (wearables.py)
+               "boton_sos", "hombre_muerto", "posible_desmayo", "ritmo_cardiaco", "wearable_sin_senal")
 
 def load_events():
     return _load_json("events.json", [])
@@ -296,6 +298,28 @@ def append_event(event_type, confidence, camera="webcam", foto_webp=None, **extr
                 os.remove(alert_photo_path(event["id"]))
             raise
         return event
+
+def get_event(event_id):
+    for e in load_events():
+        if e.get("id") == event_id:
+            return e
+    return None
+
+def update_event(event_id, **campos):
+    """Agrega o cambia campos de un evento guardado. Devuelve el evento o None si no existe."""
+    with _lock:
+        events = load_events()
+        for e in events:
+            if e.get("id") == event_id:
+                e.update(campos)
+                _save_json("events.json", events)
+                return e
+    return None
+
+def set_feedback(event_id, veredicto, usuario):
+    """Marca una alerta como "real" o "falsa" (lo usa aprendizaje.py)."""
+    return update_event(event_id, feedback={"veredicto": veredicto, "usuario": usuario,
+                                            "fecha": datetime.now().isoformat(timespec="seconds")})
 
 def get_filtered_events(event_type=None, camera=None, date_from=None, date_to=None, page=1, per_page=20):
     events = load_events()

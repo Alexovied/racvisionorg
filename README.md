@@ -101,6 +101,20 @@ python camara.py
 
 ---
 
+## ❤️ Wearables: pulso, caídas, botón de pánico y hombre muerto
+
+Cada trabajador puede llevar una pulsera o arnés (ESP32 + MAX30102 + MPU6050 + botón) que manda su pulso,
+movimiento y caídas al panel. El panel avisa en todas las páginas, por Telegram y con la sirena cuando hay
+botón de pánico, hombre muerto sin respuesta, posible desmayo, ritmo cardíaco anormal o el equipo se queda sin señal,
+y cruza las caídas con la cámara de la zona para confirmarlas.
+
+* Panel → **Wearables**: registrar equipos (cada uno con su token) y verlos en vivo.
+* [`firmware/wearable_rac/`](firmware/wearable_rac/LEEME.md): firmware, circuito para Wokwi y lista de materiales.
+* `python simulador_wearable.py --token rac_XXXX --escenario desmayo`: probar sin hardware.
+* **Aprendizaje:** en el aviso rojo y en Auditoría cada alerta se marca como real o falsa. Con eso el sistema
+  ajusta los umbrales de pulso de cada trabajador, muestra qué tipos de alerta son confiables y sugiere la
+  confianza mínima de las cámaras. `python aprendizaje.py carpeta/` exporta las fotos marcadas para reentrenar.
+
 ## 🧠 Arquitectura de la Red Neuronal
 
 La red convolucional implementada en [ea.py](file:///c:/Users/Alex/Desktop/ae/ea.py) consta de la siguiente estructura secuencial:
