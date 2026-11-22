@@ -23,6 +23,11 @@ TITULOS = {"sin_casco": "⛑️ SIN CASCO", "sin_chaleco": "🦺 SIN CHALECO",
            "camara_desenfocada": "🌫️ CÁMARA DESENFOCADA"}
 _ultimo = {}
 _lock = threading.Lock()
+# Casco y chaleco se detectan por separado y saltan con segundos de diferencia: se esperan JUNTAR
+# segundos por cámara y salen en un solo mensaje ("SIN CASCO Y SIN CHALECO") con la foto más nueva.
+EPP = ("sin_casco", "sin_chaleco")
+JUNTAR = 5
+_pendientes = {}
 
 
 def configurado():
@@ -41,7 +46,10 @@ def _url(metodo):
 
 def leyenda(evento):
     t = evento.get("timestamp", "")[11:19]
-    partes = [f"{TITULOS.get(evento['type'], evento['type'])} · {evento.get('camera', '')}"]
+    tipos = evento.get("tipos") or [evento["type"]]
+    titulo = (f"⛑️🦺 {' Y '.join(TITULOS[k].split(' ', 1)[1] for k in EPP if k in tipos)}" if len(tipos) > 1
+              else TITULOS.get(evento["type"], evento["type"]))
+    partes = [f"{titulo} · {evento.get('camera', '')}"]
     if evento.get("ubicacion"):
         partes.append(f"📍 {evento['ubicacion']}")
     if evento.get("detalle"):
@@ -86,8 +94,28 @@ def avisar(evento, foto=None):
         if ahora - _ultimo.get(clave, -ESPERA) < ESPERA:
             return False
         _ultimo[clave] = ahora
+        camara = evento.get("camera")
+        if evento.get("type") in EPP:
+            p = _pendientes.get(camara)
+            if p:   # ya hay un aviso de EPP esperando en esta cámara: se suma a ese
+                if evento["type"] not in p["tipos"]:
+                    p["tipos"].append(evento["type"])
+                p["evento"], p["foto"] = evento, foto or p["foto"]
+                return True
+            _pendientes[camara] = {"evento": evento, "foto": foto, "tipos": [evento["type"]]}
+            threading.Thread(target=_soltar, args=(camara,), daemon=True).start()
+            return True
     threading.Thread(target=_enviar, args=(evento, foto), daemon=True).start()
     return True
+
+
+def _soltar(camara, espera=None):
+    """Espera JUNTAR segundos y manda en un solo mensaje lo que faltó en esa cámara."""
+    time.sleep(JUNTAR if espera is None else espera)
+    with _lock:
+        p = _pendientes.pop(camara, None)
+    if p:
+        _enviar({**p["evento"], "tipos": p["tipos"]}, p["foto"])
 
 
 def mandar_texto(texto):

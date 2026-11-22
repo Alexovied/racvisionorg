@@ -116,8 +116,24 @@ def test_telegram_no_repite_la_misma_alerta_enseguida(telegram):
     e = {"type": "sin_casco", "camera": "Portón"}
     assert aviso_telegram.avisar(e) is True
     assert aviso_telegram.avisar(e) is False                               # misma cámara y tipo: espera
-    assert aviso_telegram.avisar({"type": "sin_chaleco", "camera": "Portón"}) is True
+    assert aviso_telegram.avisar({"type": "zona_prohibida", "camera": "Portón"}) is True
     assert len(telegram) == 2
+
+
+def test_telegram_junta_casco_y_chaleco_en_un_mensaje(telegram, monkeypatch):
+    """Sin casco y sin chaleco de la misma cámara, con segundos de diferencia: un solo mensaje."""
+    monkeypatch.setattr(aviso_telegram, "_pendientes", {})
+    assert aviso_telegram.avisar({"type": "sin_casco", "camera": "Portón", "timestamp": "2026-11-22T18:52:46"}, b"a")
+    assert aviso_telegram.avisar({"type": "sin_chaleco", "camera": "Portón", "timestamp": "2026-11-22T18:52:49"}, b"b")
+    assert aviso_telegram.avisar({"type": "sin_chaleco", "camera": "Taller"})   # otra cámara: aparte
+    assert len(telegram) == 2
+    enviados = []
+    monkeypatch.setattr(aviso_telegram, "_enviar", lambda e, f: enviados.append((e, f)))
+    target, args = telegram[0]
+    target(*args, espera=0)
+    evento, foto = enviados[0]
+    assert evento["tipos"] == ["sin_casco", "sin_chaleco"] and foto == b"b"
+    assert aviso_telegram.leyenda(evento).startswith("⛑️🦺 SIN CASCO Y SIN CHALECO · Portón")
 
 
 def test_telegram_manda_la_foto_en_jpeg(telegram):
