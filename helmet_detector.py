@@ -1,8 +1,9 @@
 """Detector de cabezas con y sin casco (YOLOv8 exportado a ONNX).
 
 Encuentra cabezas desde cualquier ángulo (de frente, de costado, de espaldas
-o con la cara tapada) y dice si tienen casco. Corre con cv2.dnn, así que no
-hace falta PyTorch ni Ultralytics en el servidor.
+o con la cara tapada) y dice si tienen casco. Corre con OpenVINO (Intel) y,
+si no está instalado o falla, con cv2.dnn; no hace falta PyTorch ni
+Ultralytics en el servidor.
 
 El modelo se entrena con entrenamiento/detector_casco_colab.ipynb y se copia
 como detector_casco.onnx en la raíz del proyecto. Si el archivo no está,
@@ -20,12 +21,38 @@ CONF_THRESHOLD = 0.35   # mismo umbral con el que el notebook mide aciertos
 NMS_THRESHOLD  = 0.45
 CLASES = ("casco", "sin_casco")
 
+try:
+    import openvino
+    _core = openvino.Core()
+except Exception as e:  # sin OpenVINO se usa cv2.dnn
+    print(f"[!] OpenVINO no disponible ({e}); los YOLO corren con cv2.dnn")
+    _core = None
+
+
+# Dispositivo de OpenVINO: CPU (servidor) o GPU (gráfica integrada Intel), ver benchmark_inferencia.py
+DEVICE = os.environ.get("OPENVINO_DEVICE", "CPU")
+
+
+def cargar_modelo(path, int8=True, device=None):
+    """Compila el modelo con OpenVINO (la versión INT8 de cuantizar.py si existe); si no se
+    puede, carga el ONNX con cv2.dnn. Devuelve (red, "OpenVINO INT8" | "OpenVINO" | "cv2.dnn").
+    cv2.dnn lanza cv2.error si el archivo no sirve."""
+    if _core is not None:
+        ir = path.replace(".onnx", "_int8.xml")
+        usar = ir if int8 and os.path.exists(ir) else path
+        try:
+            return _core.compile_model(usar, device or DEVICE), "OpenVINO INT8" if usar == ir else "OpenVINO"
+        except Exception as e:
+            print(f"[!] OpenVINO no pudo compilar {os.path.basename(usar)} ({e}); se usa cv2.dnn")
+    return cv2.dnn.readNetFromONNX(path), "cv2.dnn"
+
+
 _net = None
-_lock = threading.Lock()  # cv2.dnn.Net no es seguro entre hilos
+_lock = threading.Lock()  # ni cv2.dnn.Net ni el CompiledModel de OpenVINO son seguros entre hilos
 if os.path.exists(MODEL_PATH):
     try:
-        _net = cv2.dnn.readNetFromONNX(MODEL_PATH)
-        print("[+] Detector de cascos: YOLO (detector_casco.onnx)")
+        _net, motor = cargar_modelo(MODEL_PATH)
+        print(f"[+] Detector de cascos: YOLO (detector_casco.onnx) con {motor}")
     except cv2.error as e:
         print(f"[!] No se pudo cargar detector_casco.onnx ({e})")
 
@@ -45,17 +72,21 @@ def _letterbox(img):
     return canvas, r, pad_x, pad_y
 
 
-def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=False):
-    """Corre un YOLOv8 exportado a ONNX y devuelve [(bbox [x, y, w, h], puntajes por clase)].
+def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=False, puntos=False):
+    """Corre un YOLOv8 exportado a ONNX (red de cargar_modelo) y devuelve [(bbox [x, y, w, h], puntajes por clase)].
     por_clase=False: NMS sin distinguir clase (una cabeza es "casco" o "sin_casco").
-    por_clase=True: cada clase aparte (una persona y su chaleco se superponen)."""
+    por_clase=True: cada clase aparte (una persona y su chaleco se superponen).
+    puntos=True (modelos de pose): cada resultado trae además los puntos del cuerpo, (N, 3): x, y, confianza."""
     h_img, w_img = img.shape[:2]
     canvas, r, pad_x, pad_y = _letterbox(img)
     blob = cv2.dnn.blobFromImage(canvas, 1 / 255.0, (INPUT_SIZE, INPUT_SIZE), swapRB=True)
 
     with lock:
-        net.setInput(blob)
-        out = net.forward()
+        if hasattr(net, "setInput"):  # cv2.dnn.Net
+            net.setInput(blob)
+            out = net.forward()
+        else:                         # openvino.CompiledModel (copia la salida)
+            out = net(blob)[0]
 
     # YOLOv8: (1, 4 + clases, N) → (N, 4 + clases); cajas en cx, cy, w, h del canvas
     preds = out[0].T
@@ -82,7 +113,13 @@ def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=Fals
         x0, y0 = max(0, int(bx)), max(0, int(by))
         x1, y1 = min(w_img, int(bx + bw_i)), min(h_img, int(by + bh_i))
         if x1 > x0 and y1 > y0:
-            resultados.append(([x0, y0, x1 - x0, y1 - y0], scores[i]))
+            if puntos:  # lo que sigue a los puntajes: x, y, confianza de cada punto, en el canvas
+                kp = preds[i, 4 + n_clases:].reshape(-1, 3).copy()
+                kp[:, 0] = (kp[:, 0] - pad_x) / r
+                kp[:, 1] = (kp[:, 1] - pad_y) / r
+                resultados.append(([x0, y0, x1 - x0, y1 - y0], scores[i], kp))
+            else:
+                resultados.append(([x0, y0, x1 - x0, y1 - y0], scores[i]))
     return resultados
 
 

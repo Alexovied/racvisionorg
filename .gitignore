@@ -40,3 +40,14 @@ detector_casco.pt
 # Fotos para el alta de personas (datos biométricos, no se suben)
 personas/
 personas_prueba/
+
+# Datos del SGEP corriendo solo (sgep_local.py)
+data_sgep/
+
+# Secretos y paquetes locales: credenciales, claves privadas, zips de deploy
+credenciales*.txt
+*.pem
+monitor-run/
+*.zip
+# Scripts de vista previa con SECRET_KEY y ADMIN_PASSWORD fijos
+.claude/

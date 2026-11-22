@@ -122,7 +122,7 @@
 <div class="dashboard-row">
     <div class="admin-card chart-card">
         <div class="admin-card-header">
-            <h3><i class="fa-solid fa-chart-bar"></i> Detecciones por Hora (24h)</h3>
+            <h2><i class="fa-solid fa-chart-bar"></i> Detecciones por Hora (24h)</h2>
         </div>
         <div class="chart-wrapper">
             <canvas id="detections-chart"></canvas>
@@ -131,7 +131,7 @@
 
     <div class="admin-card events-card">
         <div class="admin-card-header">
-            <h3><i class="fa-solid fa-clock-rotate-left"></i> Últimos Eventos</h3>
+            <h2><i class="fa-solid fa-clock-rotate-left"></i> Últimos Eventos</h2>
             <a href="{{ url_for('admin.audit') }}" class="card-link">Ver todos <i class="fa-solid fa-arrow-right"></i></a>
         </div>
         <div class="events-list" id="live-events-list">
@@ -141,7 +141,7 @@
                     <div class="event-left">
                         <i class="fa-solid {{ 'fa-circle-exclamation' if event.type != 'con_casco' else 'fa-circle-check' }}"></i>
                         <div>
-                            <span class="event-type">{{ {'sin_casco': 'Sin Casco', 'sin_chaleco': 'Sin Chaleco'}.get(event.type, 'Con Casco') }}</span>
+                            <span class="event-type">{{ EVENT_LABELS.get(event.type, 'Con Casco') }}</span>
                             <span class="event-camera">{{ event.camera }}</span>
                         </div>
                     </div>
@@ -182,7 +182,7 @@
                     barPercentage: 0.7
                 },
                 {
-                    label: 'Sin Casco',
+                    label: 'Alertas',
                     data: {{ stats.sin_casco_data | tojson }},
                     backgroundColor: 'rgba(239, 68, 68, 0.6)',
                     borderColor: '#EF4444',
@@ -251,17 +251,20 @@
         return ts.substring(11, 19);
     }
 
+    // El nombre de la cámara lo escribe un operador: va escapado, si no es XSS contra el admin
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
     function buildEventHTML(event) {
         const isDanger = event.type !== 'con_casco';
         const cls   = isDanger ? 'event-danger' : 'event-success';
         const icon  = isDanger ? 'fa-circle-exclamation' : 'fa-circle-check';
-        const label = { sin_casco: 'Sin Casco', sin_chaleco: 'Sin Chaleco' }[event.type] || 'Con Casco';
+        const label = {{ EVENT_LABELS | tojson }}[event.type] || 'Con Casco';
         return `<div class="event-item ${cls} event-item-new">
             <div class="event-left">
                 <i class="fa-solid ${icon}"></i>
                 <div>
                     <span class="event-type">${label}</span>
-                    <span class="event-camera">${event.camera || 'webcam'}</span>
+                    <span class="event-camera">${esc(event.camera || 'webcam')}</span>
                 </div>
             </div>
             <div class="event-right">

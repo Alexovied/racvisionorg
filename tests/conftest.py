@@ -72,11 +72,26 @@ def flask_app():
 
 
 @pytest.fixture(autouse=True)
+def sin_intentos_de_login():
+    """El contador de contraseñas malas es global: cada test arranca sin bloqueos."""
+    import admin
+    admin._intentos.clear()
+
+
+@pytest.fixture(autouse=True)
 def tmp_data(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     monkeypatch.setattr(data_store, "DATA_DIR", str(data_dir))
     assert data_store.DATA_DIR != _REAL_DATA_DIR
     return data_dir
+
+
+@pytest.fixture(autouse=True)
+def sin_modelo_de_pose(monkeypatch):
+    """Los tests con cabezas simuladas no tienen cuerpos: sin esto, si detector_pose.onnx está
+    en la carpeta, motor.analizar descartaría esas cabezas. test_cuerpo.py lo prende a mano."""
+    import pose
+    monkeypatch.setattr(pose, "_net", None)
 
 
 @pytest.fixture

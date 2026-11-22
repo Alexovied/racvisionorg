@@ -1,0 +1,70 @@
+/* SGEP-Dashboard: complementa admin.css (mismos tokens de color) */
+.sg-input, .sg-form input:not([type=checkbox]):not([type=hidden]), .sg-form select, .sg-form textarea {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.6rem 0.8rem;
+    font-family: var(--font);
+    font-size: 0.9rem;
+    color: var(--text);
+}
+.sg-form select option { background: var(--card-bg-solid); }
+.sg-input:focus-visible, .sg-form :is(input, select, textarea):focus-visible {
+    outline: 2px solid var(--orange);
+    outline-offset: 1px;
+}
+.sg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.9rem; align-items: end; }
+.sg-stack { display: grid; gap: 1.25rem; }
+/* sin esto, una tabla ancha estira la columna de la grilla y la página scrollea de costado */
+.sg-stack > *, .sg-row-2 > *, .sg-row-3 > *, .sg-grid > * { min-width: 0; }
+.sg-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.sg-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+@media (max-width: 1024px) { .sg-row-2, .sg-row-3 { grid-template-columns: 1fr; } }
+.sg-kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.sg-check { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: var(--text); }
+.sg-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.sg-muted { color: var(--text-muted); font-size: 0.85rem; }
+.sg-link { word-break: break-all; color: var(--orange2); }
+
+/* Semáforo */
+.sg-luz { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; text-transform: capitalize; }
+.sg-luz::before { content: ""; width: 0.75rem; height: 0.75rem; border-radius: 50%; background: currentColor; }
+.sg-verde { color: var(--green); }
+.sg-amarillo { color: var(--yellow); }
+.sg-rojo { color: var(--red); }
+.sg-gris { color: var(--text-dim); }
+
+/* Mapa de calor */
+.sg-calor { border-collapse: collapse; width: 100%; font-size: 0.8rem; }
+.sg-calor th, .sg-calor td { padding: 0.45rem; text-align: center; border: 1px solid var(--border); }
+.sg-calor th:first-child, .sg-calor td:first-child { text-align: left; white-space: nowrap; }
+.sg-calor td.v { color: #0b0f17; font-weight: 600; }
+
+/* Constructor de encuestas */
+.sg-paleta { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.sg-chip {
+    padding: 0.45rem 0.8rem; border-radius: 999px; border: 1px dashed var(--border-hover);
+    background: rgba(255, 255, 255, 0.04); color: var(--text); font-family: var(--font); cursor: grab;
+}
+.sg-lista { display: grid; gap: 0.75rem; min-height: 4rem; padding: 0.5rem; border: 2px dashed transparent; border-radius: var(--radius-sm); }
+.sg-lista.sobre { border-color: var(--orange); }
+.sg-pregunta { background: var(--card-bg-solid); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.9rem; }
+.sg-pregunta.arrastrando { opacity: 0.4; }
+.sg-pregunta-head { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.6rem; }
+.sg-asa { cursor: grab; color: var(--text-dim); padding: 0 0.25rem; }
+
+/* Encuesta pública */
+.sg-publica { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+.sg-publica fieldset { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem; margin-bottom: 1rem; }
+.sg-publica legend { padding: 0 0.4rem; font-weight: 600; }
+.sg-escala { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.sg-escala label {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 2.6rem; min-height: 2.6rem;
+    border: 1px solid var(--border-hover); border-radius: 0.5rem; cursor: pointer;
+}
+.sg-escala input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.sg-escala input:checked + span { color: #fff; }
+.sg-escala label:has(input:checked) { background: var(--orange); border-color: var(--orange); }
+.sg-escala label:has(input:focus-visible) { outline: 2px solid var(--orange2); outline-offset: 2px; }
+.sg-error { background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); padding: 0.8rem; border-radius: var(--radius-sm); margin-bottom: 1rem; }

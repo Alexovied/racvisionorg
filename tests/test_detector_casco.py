@@ -1,5 +1,6 @@
 """Detector de cabezas con y sin casco (helmet_detector.py) y su uso en /predict."""
 import base64
+import os
 from unittest import mock
 
 import cv2
@@ -66,7 +67,7 @@ def test_predict_usa_detector_de_cabezas_si_esta_disponible(flask_app, operator_
     assert r.status_code == 200
     assert r.get_json() == {"has_face": True, "modos": {"casco": True, "chaleco": True},
                             "faces": [{"con_casco": 25.0, "sin_casco": 75.0, "bbox": [10, 20, 30, 40],
-                                       "nombre": None, "chaleco": False}]}
+                                       "nombre": None, "chaleco": False}], "inclinacion": 0.0}
     crop_head.assert_not_called()
 
 
@@ -107,3 +108,28 @@ def test_config_vieja_sin_claves_nuevas_activa_las_dos(tmp_data):
     data_store.save_config({"min_confidence": 60})
     cfg = data_store.load_config()
     assert (cfg["detectar_casco"], cfg["detectar_chaleco"], cfg["min_confidence"]) == (True, True, 60)
+
+
+def test_openvino_y_cv2_dan_las_mismas_detecciones():
+    if not helmet_detector.disponible():
+        pytest.skip("falta detector_casco.onnx")
+    img = cv2.imread(os.path.join(os.path.dirname(helmet_detector.MODEL_PATH), "con_casco", "1.jpg"))
+    img = img if img is not None else np.random.default_rng(0).integers(0, 255, (480, 640, 3), dtype=np.uint8)
+    cv_net = cv2.dnn.readNetFromONNX(helmet_detector.MODEL_PATH)
+    a = helmet_detector.correr_yolo(cv_net, helmet_detector._lock, img, 2)
+    fp32, _ = helmet_detector.cargar_modelo(helmet_detector.MODEL_PATH, int8=False)
+    b = helmet_detector.correr_yolo(fp32, helmet_detector._lock, img, 2)
+    assert len(a) == len(b)
+    assert np.allclose([bb for bb, _ in a], [bb for bb, _ in b], atol=3)
+    # INT8 (cuantizar.py): mismas cabezas y clases, cajas a menos del 1 % del tamaño de la foto
+    c = helmet_detector.correr_yolo(helmet_detector._net, helmet_detector._lock, img, 2)
+    assert [s.argmax() for _, s in a] == [s.argmax() for _, s in c]
+    assert np.allclose([bb for bb, _ in a], [bb for bb, _ in c], atol=0.01 * max(img.shape[:2]))
+
+
+def test_cargar_modelo_vuelve_a_cv2_si_openvino_falla(monkeypatch):
+    core = mock.MagicMock()
+    core.compile_model.side_effect = RuntimeError("sin plugin CPU")
+    monkeypatch.setattr(helmet_detector, "_core", core)
+    monkeypatch.setattr(helmet_detector.cv2.dnn, "readNetFromONNX", lambda p: "red-cv2")
+    assert helmet_detector.cargar_modelo("x.onnx") == ("red-cv2", "cv2.dnn")

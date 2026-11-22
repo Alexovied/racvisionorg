@@ -267,16 +267,18 @@
             opacity: 0.8;
         }
     </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='accesibilidad.css') }}">
+    <script src="{{ url_for('static', filename='accesibilidad.js') }}"></script>
 </head>
 <body>
     <div class="bg-glow g1"></div>
     <div class="bg-glow g2"></div>
 
-    <div class="login-container">
+    <div class="login-container" role="main" id="contenido">
         <div class="login-card">
             <div class="login-header">
                 <div class="login-logo">
-                    <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC">
+                    <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision">
                     <div class="login-logo-divider"></div>
                     <span class="login-logo-text">Panel Admin</span>
                 </div>
@@ -294,6 +296,7 @@
             {% endwith %}
 
             <form method="POST" action="{{ url_for('admin.login') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="username">Usuario</label>
                     <div class="input-wrapper">
@@ -318,6 +321,7 @@
 
             <div class="login-footer">
                 <a href="/"><i class="fa-solid fa-arrow-left"></i> Volver al inicio</a>
+                <p style="margin-top:14px; font-size:12px; color:#777; line-height:1.6">Al ingresar aceptás los <a href="/terminos">términos</a> y la <a href="/privacidad">política de privacidad</a>. La demo analiza la imagen de tu cámara y solo guarda una foto si hay una alerta.</p>
             </div>
         </div>
     </div>

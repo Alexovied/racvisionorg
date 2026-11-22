@@ -5,6 +5,7 @@
 
 {% block head %}
 <style>
+    .mon-nodo { color: var(--text-muted); font-size: .85rem; white-space: nowrap; }
     .monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.25rem; }
     .mon-card { padding: 0; overflow: hidden; }
     .mon-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.9rem 1.1rem; }
@@ -15,7 +16,7 @@
     .mon-state.ok { background: var(--green); color: #fff; }
     .mon-state.alerta { background: var(--red); color: #fff; }
     .mon-video { position: relative; aspect-ratio: 4 / 3; background: #05080e; }
-    .mon-video video, .mon-video canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+    .mon-video video, .mon-video img, .mon-video canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
     .mon-video .mon-idle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
                            color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 1rem; }
     .mon-card.alerta .mon-video { box-shadow: inset 0 0 0 3px var(--red); }
@@ -26,13 +27,18 @@
     /* La lista desplegable la dibuja el sistema: sin esto, texto claro sobre fondo blanco */
     .mon-foot select option { background: var(--card-bg-solid); color: var(--text); }
     .mon-foot .btn-action { padding: 0.5rem 0.9rem; font-size: 0.82rem; }
+    .mon-horario { padding-top: 0; align-items: center; flex-wrap: wrap; font-size: .82rem; color: var(--text-muted); }
+    .mon-horario input { background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: .3rem .4rem; margin-left: .3rem; color-scheme: dark; }
+    .mon-horario .mon-nota { font-size: .75rem; }
+    .mon-foot .btn-action:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
     @media (max-width: 480px) { .monitor-grid { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="section-header">
-    <p class="section-desc">Cada cámara activa se analiza en vivo. Elegí qué dispositivo usa cada una y tocá Iniciar.</p>
+    <p class="section-desc">Cada cámara activa se analiza en vivo. En las webcam, elegí el dispositivo y tocá Iniciar. Las cámaras USB / IP las analiza el servidor todo el tiempo: ahí podés dibujar zonas prohibidas o zonas donde no se exige EPP (oficina, pasillo seguro), elegir en qué horario se exige y Guardar.</p>
+    <span class="mon-nodo" id="mon-nodo" title="Equipo que analiza las cámaras del servidor" aria-live="polite"></span>
     {% if cameras %}
     <button class="btn-action btn-create" id="btn-todas"><i class="fa-solid fa-play"></i> Iniciar todas</button>
     {% endif %}
@@ -41,7 +47,7 @@
 {% if cameras %}
 <div class="monitor-grid">
     {% for cam in cameras %}
-    <div class="admin-card mon-card" data-cam-id="{{ cam.id }}" data-cam-type="{{ cam.type }}">
+    <div class="admin-card mon-card" data-cam-id="{{ cam.id }}" data-cam-type="{{ cam.type }}" data-zonas='{{ cam.zonas | default([]) | tojson }}' data-exentas='{{ cam.exentas | default([]) | tojson }}' data-horario='{{ cam.horario | default(none) | tojson }}'>
         <div class="mon-head">
             <div>
                 <div class="mon-name">{{ cam.name }}</div>
@@ -49,18 +55,37 @@
             </div>
             <span class="mon-state">DETENIDA</span>
         </div>
+        {% if cam.type == 'webcam' %}
         <div class="mon-video">
             <video autoplay playsinline muted></video>
             <canvas></canvas>
-            <div class="mon-idle">
-                {% if cam.type == 'webcam' %}Cámara detenida{% else %}Las cámaras IP todavía no se pueden ver desde el navegador{% endif %}
-            </div>
+            <div class="mon-idle">Cámara detenida</div>
         </div>
-        {% if cam.type == 'webcam' %}
         <div class="mon-foot">
             <select aria-label="Dispositivo de {{ cam.name }}"></select>
             <button class="btn-action btn-create mon-start"><i class="fa-solid fa-play"></i> Iniciar</button>
-            <button class="btn-action btn-cancel mon-stop" disabled><i class="fa-solid fa-stop"></i></button>
+            <button class="btn-action btn-cancel mon-stop" aria-label="Detener" disabled><i class="fa-solid fa-stop"></i></button>
+        </div>
+        {% else %}
+        {# Cámara USB / IP: la analiza el servidor (motor.py); acá se ve el resultado y se dibujan las zonas #}
+        <div class="mon-video">
+            <img alt="Video de {{ cam.name }}" style="visibility: hidden">
+            <canvas width="640" height="480"></canvas>
+            <div class="mon-idle">Conectando…</div>
+        </div>
+        <div class="mon-foot">
+            <select class="mon-zona-tipo" aria-label="Tipo de zona de {{ cam.name }}">
+                <option value="zonas">Prohibida</option>
+                <option value="exentas">Sin EPP exigido</option>
+            </select>
+            <button class="btn-action btn-create mon-zona"><i class="fa-solid fa-draw-polygon"></i> Nueva zona</button>
+            <button class="btn-action btn-cancel mon-zona-borrar">Borrar zonas</button>
+            <button class="btn-action btn-create mon-zona-guardar" disabled>Guardar</button>
+        </div>
+        <div class="mon-foot mon-horario">
+            <label>EPP exigido de <input type="time" class="mon-desde" aria-label="Desde"></label>
+            <label>a <input type="time" class="mon-hasta" aria-label="Hasta"></label>
+            <span class="mon-nota">vacío = siempre</span>
         </div>
         {% endif %}
     </div>
@@ -80,6 +105,7 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='epp.js') }}"></script>
 <script>
+    const CSRF = document.querySelector('meta[name="csrf-token"]').content;
     // Mismas reglas que el detector de /app (static/epp.js): casco y chaleco con ventanas separadas.
     let MIN_CONFIDENCE = 51, scanRateMs = 100;
     fetch('/admin/api/config').then(r => r.json()).then(cfg => {
@@ -129,7 +155,7 @@
         }
 
         function enviarEvento(evento) {
-            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                 body: JSON.stringify(evento) }).catch(() => {});
         }
 
@@ -137,7 +163,7 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 3; ctx.font = '600 15px Outfit, sans-serif';
             for (const c of caras) {
-                const et = EPP.etiqueta(c, MIN_CONFIDENCE);
+                const et = EPP.etiqueta(c, MIN_CONFIDENCE, caras.length === 1 ? seguimiento.ventanas.chaleco.estado : null);
                 if (!et) continue;
                 const [x, y, w, h] = c.bbox;
                 ctx.strokeStyle = ctx.fillStyle = et.color;
@@ -157,14 +183,16 @@
                 if (estado !== 'falta') continue;
                 enviarEvento({ type: 'sin_' + elemento, camera: camId,
                                confidence: Math.min(100, EPP.confianza(caras, elemento, 'falta', MIN_CONFIDENCE)),
-                               persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE), foto: fotoConRecuadros() });
+                               persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE),
+                               pos: EPP.posicion(caras, elemento, MIN_CONFIDENCE, canvas.width, canvas.height),
+                               foto: fotoConRecuadros() });
             }
             // Alarma física y evento "todos con EPP": según el estado combinado de casco y chaleco
             const alarma = seguimiento.alarma();
             if (alarma && alarma !== ultimaAlarma) {
                 ultimaAlarma = alarma;
                 if (alarma === 'con_casco') enviarEvento({ type: 'con_casco', confidence: 100, camera: camId });
-                fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                     body: JSON.stringify({ state: alarma }) }).catch(() => {});
             }
             const r = seguimiento.resumen();
@@ -177,7 +205,7 @@
                 if (video.videoWidth) {
                     capCtx.drawImage(video, 0, 0, captura.width, captura.height);
                     try {
-                        const r = await fetch('/predict', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        const r = await fetch('/predict', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                             body: JSON.stringify({ image: captura.toDataURL('image/jpeg', 0.75) }) });
                         if (r.status === 401) { location.href = '/admin/login?next=/admin/monitor'; return; }
                         if (activo && r.ok) procesar(await r.json());
@@ -226,6 +254,110 @@
         btnStop.addEventListener('click', detener);
         return { iniciar, poblarSelect };
     }
+
+    // Cámara USB / IP: el servidor la analiza (motor.py). Se pide su último frame, uno detrás de otro,
+    // y encima se dibujan las zonas de exclusión mientras se editan.
+    function crearMonitorServidor(card) {
+        const camId = card.dataset.camId;
+        const img = card.querySelector('img'), canvas = card.querySelector('canvas'), ctx = canvas.getContext('2d');
+        const idle = card.querySelector('.mon-idle'), chip = card.querySelector('.mon-state');
+        const btnZona = card.querySelector('.mon-zona'), btnBorrar = card.querySelector('.mon-zona-borrar'),
+              btnGuardar = card.querySelector('.mon-zona-guardar');
+        // zonas: prohibidas (amarillo). exentas: donde no se exige EPP (celeste). actual: la que se está dibujando
+        const capas = { zonas: JSON.parse(card.dataset.zonas), exentas: JSON.parse(card.dataset.exentas || '[]') };
+        const COLORES = { zonas: ['#FACC15', 'rgba(250, 204, 21, 0.18)'], exentas: ['#38BDF8', 'rgba(56, 189, 248, 0.18)'] };
+        const tipo = card.querySelector('.mon-zona-tipo');
+        const desde = card.querySelector('.mon-desde'), hasta = card.querySelector('.mon-hasta');
+        const horario = JSON.parse(card.dataset.horario || 'null');
+        if (horario) { desde.value = horario.desde; hasta.value = horario.hasta; }
+        let actual = null, capaActual = 'zonas';
+
+        // Video continuo (MJPEG): una sola conexión; si se corta o todavía no hay señal, se reintenta
+        const pedir = () => { img.src = `/admin/api/cameras/${camId}/video?t=${Date.now()}`; };
+        img.onload = () => { idle.style.display = 'none'; img.style.visibility = ''; };
+        img.onerror = () => { idle.style.display = ''; img.style.visibility = 'hidden'; setTimeout(pedir, 2000); };
+        pedir();
+
+        function dibujarZonas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 2;
+            const todas = [...capas.zonas.map(z => [z, 'zonas']), ...capas.exentas.map(z => [z, 'exentas']),
+                           ...(actual ? [[actual, capaActual]] : [])];
+            for (const [z, capa] of todas) {
+                [ctx.strokeStyle, ctx.fillStyle] = COLORES[capa];
+                ctx.beginPath();
+                z.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * canvas.width, y * canvas.height));
+                if (z !== actual) { ctx.closePath(); ctx.fill(); }
+                ctx.stroke();
+                if (z === actual) {  // esquinas ya marcadas, bien visibles
+                    ctx.fillStyle = COLORES[capa][0];
+                    for (const [x, y] of z) ctx.fillRect(x * canvas.width - 4, y * canvas.height - 4, 8, 8);
+                }
+            }
+        }
+
+        canvas.addEventListener('click', e => {
+            if (!actual || actual.length >= 20) return;  // el servidor acepta hasta 20 puntos por zona
+            const r = canvas.getBoundingClientRect(), u = v => Math.min(1, Math.max(0, v));
+            actual.push([u((e.clientX - r.left) / r.width), u((e.clientY - r.top) / r.height)]);
+            dibujarZonas();
+        });
+        btnZona.addEventListener('click', () => {
+            if (!actual) {
+                capaActual = tipo.value;
+                if (capas[capaActual].length >= 10) return alert('Máximo 10 zonas de cada tipo por cámara');
+                actual = []; btnZona.textContent = 'Cerrar zona'; canvas.style.cursor = 'crosshair'; return;
+            }
+            if (actual.length >= 3) { capas[capaActual].push(actual); btnGuardar.disabled = false; }
+            actual = null; btnZona.innerHTML = '<i class="fa-solid fa-draw-polygon"></i> Nueva zona'; canvas.style.cursor = '';
+            dibujarZonas();
+        });
+        btnBorrar.addEventListener('click', () => {
+            capas[tipo.value] = []; if (actual) actual = []; btnGuardar.disabled = false; dibujarZonas();  // borra las del tipo elegido
+        });
+        [desde, hasta].forEach(i => i.addEventListener('change', () => { btnGuardar.disabled = false; }));
+        btnGuardar.addEventListener('click', async () => {
+            if (actual) btnZona.click();  // una zona a medio dibujar se cierra antes de guardar
+            if (!desde.value !== !hasta.value) return alert('Completá las dos horas del horario, o dejá las dos vacías para exigir EPP siempre.');
+            const horario = desde.value && hasta.value ? { desde: desde.value, hasta: hasta.value } : null;
+            const r = await fetch(`/admin/api/cameras/${camId}/zonas`, { method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify({ zonas: capas.zonas, exentas: capas.exentas, horario }) });
+            if (r.ok) btnGuardar.disabled = true;
+            else alert((await r.json().catch(() => ({}))).error || 'No se pudieron guardar las zonas');
+        });
+        dibujarZonas();
+
+        // e: estado de esta cámara en /admin/api/motor (undefined si el servidor no la está analizando)
+        let sinSenal = false;
+        return { camId, estado(e) {
+            // El video continuo no avisa cuando se corta: se oculta al perder la señal y se vuelve a pedir al recuperarla
+            const cortado = !e || !!e.error;
+            if (cortado) { idle.style.display = ''; img.style.visibility = 'hidden'; } else if (sinSenal) pedir();
+            sinSenal = cortado;
+            const [clase, texto] = !e ? [null, 'SERVIDOR SIN MOTOR'] : e.error ? [null, e.error.toUpperCase()]
+                : e.lente ? ['alerta', 'LENTE ' + e.lente.toUpperCase()] : [e.clase, e.titulo];
+            chip.className = 'mon-state' + (clase === 'ok' ? ' ok' : clase === 'alerta' ? ' alerta' : '');
+            chip.textContent = texto;
+            chip.title = e && !e.error ? `${e.fps} fps` : '';
+            card.classList.toggle('alerta', clase === 'alerta');
+            if (!e || e.error) idle.textContent = e ? e.error : 'Este servidor no analiza cámaras: se enciende con «python app.py».';
+        } };
+    }
+
+    const servidor = [...document.querySelectorAll('.mon-card:not([data-cam-type="webcam"])')].map(crearMonitorServidor);
+    if (servidor.length) setInterval(async () => {
+        try {
+            const r = await fetch('/admin/api/motor');
+            if (r.status === 401) { location.href = '/admin/login?next=/admin/monitor'; return; }
+            if (!r.ok) return;
+            const estados = await r.json();
+            servidor.forEach(m => m.estado(estados[m.camId]));
+            const n = estados._nodo;
+            if (n) document.getElementById('mon-nodo').textContent = [n.cpu != null && `CPU ${Math.round(n.cpu)} %`,
+                n.memoria != null && `RAM ${Math.round(n.memoria)} %`, n.temperatura != null && `${n.temperatura} °C`].filter(Boolean).join(' · ');
+        } catch (e) { console.error(e); }
+    }, 700);
 
     const monitores = [...document.querySelectorAll('.mon-card[data-cam-type="webcam"]')].map(crearMonitor);
     cargarDispositivos().then(() => monitores.forEach(m => m.poblarSelect())).catch(() => {});

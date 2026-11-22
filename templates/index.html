@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Safety Helmet Detector - Dashboard</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>RAC Vision — Detector de casco y chaleco</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='accesibilidad.css') }}">
+    <script src="{{ url_for('static', filename='accesibilidad.js') }}"></script>
 </head>
 <body>
     <div class="glow-bg"></div>
@@ -17,16 +20,16 @@
         <!-- HEADER -->
         <header>
             <div class="logo">
-                <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Logo" class="logo-img">
+                <img src="{{ url_for('static', filename='logo_rac.png') }}" alt="RAC Vision" class="logo-img">
                 <div class="logo-divider"></div>
                 <div>
-                    <h1>DETECTOR DE CASCOS DE SEGURIDAD AI</h1>
+                    <h1>DETECTOR DE CASCO Y CHALECO CON IA</h1>
                     <p>Monitoreo inteligente en tiempo real y seguridad industrial</p>
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 1rem;">
-                <a href="/admin" style="display: flex; align-items: center; gap: 0.4rem; background: rgba(232,117,26,0.12); color: #E8751A; padding: 0.4rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(232,117,26,0.2); transition: background 0.2s;" onmouseover="this.style.background='rgba(232,117,26,0.2)'" onmouseout="this.style.background='rgba(232,117,26,0.12)'">
-                    <i class="fa-solid fa-gear"></i> Admin
+                <a href="{{ '/admin' if current_user.is_authenticated else '/admin/login' }}" style="display: flex; align-items: center; gap: 0.4rem; background: rgba(232,117,26,0.12); color: #E8751A; padding: 0.4rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(232,117,26,0.2); transition: background 0.2s;" onmouseover="this.style.background='rgba(232,117,26,0.2)'" onmouseout="this.style.background='rgba(232,117,26,0.12)'">
+                    <i class="fa-solid fa-gear"></i> {{ 'Admin' if current_user.is_authenticated else 'Ingresar' }}
                 </a>                <div class="status-indicator">
                     <span class="pulse-dot idle" id="system-pulse"></span>
                     <span id="system-status-text">Listo</span>
@@ -34,8 +37,11 @@
             </div>
         </header>
 
+        {% if not registra %}
+        <p class="demo-aviso"><i class="fa-solid fa-circle-info"></i> Modo demostración: el video se analiza en vivo y no se guarda nada (ni eventos, ni fotos).</p>
+        {% endif %}
         <!-- DASHBOARD GRID -->
-        <div class="dashboard-grid">
+        <div class="dashboard-grid" role="main" id="contenido">
             <!-- COLUMNA IZQUIERDA: WEBCAM FEED -->
             <section class="card webcam-card">
                 <div class="card-header">
@@ -58,6 +64,10 @@
                     <button class="btn btn-danger" id="btn-stop" disabled>
                         <i class="fa-solid fa-stop"></i> Detener
                     </button>
+                    <label class="btn" id="btn-archivo" title="Sin cámara: probá con un video de una obra o una foto">
+                        <i class="fa-solid fa-film"></i> Probar con un video
+                        <input type="file" id="archivo" accept="video/*,image/*" hidden>
+                    </label>
                 </div>
             </section>
 
@@ -65,7 +75,7 @@
             <section class="right-column">
                 <!-- CARD DE ESTADO ACTUAL -->
                 <div class="card status-card info-card" id="status-panel">
-                    <div class="status-content">
+                    <div class="status-content" role="status" aria-live="polite" aria-atomic="true">
                         <h3 class="status-title">Estado de Seguridad</h3>
                         <div class="status-value" id="current-state-text">Buscando personas...</div>
                         <p class="status-desc" id="current-desc-text">Inicia la cámara para empezar a monitorear.</p>
@@ -98,6 +108,38 @@
                             <div class="progress-bar bar-sin" id="bar-sin" style="width: 0%"></div>
                         </div>
                     </div>
+                    <div class="metric-group" id="grupo-chaleco">
+                        <div class="metric-label">
+                            <span>Con Chaleco</span>
+                            <strong id="chaleco-val">—</strong>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar bar-chaleco" id="bar-chaleco" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-group" id="grupo-caida">
+                        <div class="metric-label">
+                            <span>Persona caída</span>
+                            <strong id="caida-val">No</strong>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar bar-caida" id="bar-caida" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CARD: PROBAR EL RECONOCIMIENTO FACIAL -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-id-badge"></i> Probar reconocimiento facial</h2>
+                    </div>
+                    <p class="status-desc">Con la cámara encendida, escribí tu nombre y sacate 3 fotos de frente. Quedan solo en la memoria del servidor por 30 minutos: no se guardan en disco.</p>
+                    <div class="controls">
+                        <input class="campo" id="cara-nombre" maxlength="40" placeholder="Tu nombre" aria-label="Tu nombre">
+                        <button class="btn btn-primary" id="btn-cara"><i class="fa-solid fa-camera"></i> Tomar foto (0/3)</button>
+                        <button class="btn btn-danger" id="btn-cara-borrar"><i class="fa-solid fa-user-slash"></i> Borrar</button>
+                    </div>
+                    <p class="cara-msg" id="cara-msg" role="status" aria-live="polite"></p>
                 </div>
 
                 <!-- CARD DE HISTORIAL/LOG -->
@@ -123,6 +165,7 @@
     <!-- Script de lógica -->
     <script src="{{ url_for('static', filename='epp.js') }}"></script>
     <script>
+        const CSRF = document.querySelector('meta[name="csrf-token"]').content;
         const video = document.getElementById('webcam');
         const overlay = document.getElementById('overlay');
         const captureCanvas = document.getElementById('capture-canvas');
@@ -168,32 +211,24 @@
         let activeInterval = null;
         let isDetecting = false;   // flag para cancelar ciclos async en vuelo
 
-        // Config values — loaded dynamically from admin panel, with sensible defaults
-        let MIN_CONFIDENCE = 51;
-        let scanRateMs = 100;
+        // Configuración del panel (la arma el servidor: la página es pública y no llama a la API del panel)
+        const MIN_CONFIDENCE = {{ cfg.min_confidence | tojson }};
+        const scanRateMs = {{ cfg.scan_rate_ms | tojson }};
+        const CAIDA_ACTIVA = {{ cfg.detectar_caida | tojson }}, CAIDA_SEGUNDOS = {{ cfg.caida_segundos | tojson }};
+        // Solo con sesión de operador se registran eventos y se acciona la alarma
+        const REGISTRA = {{ registra | tojson }};
 
         // Casco y chaleco: una ventana de votos para cada uno (static/epp.js)
         const seguimiento = EPP.seguimiento();
         let ultimaAlarma = null;
         // ────────────────────────────────────────────────────────────────────────
 
-        // Si la sesión venció, la API responde 401: volver al login y luego a /app.
-        function redirectToLogin() {
-            window.location.href = '/admin/login?next=' + encodeURIComponent('/app');
-        }
-
-        // Fetch config from admin panel API
-        fetch('/admin/api/config')
-            .then(r => {
-                if (r.status === 401) { redirectToLogin(); throw new Error('401'); }
-                return r.json();
-            })
-            .then(cfg => {
-                if (cfg.min_confidence) MIN_CONFIDENCE = cfg.min_confidence;
-                if (cfg.scan_rate_ms) scanRateMs = cfg.scan_rate_ms;
-                console.log('[Config] Loaded:', cfg);
-            })
-            .catch(() => console.log('[Config] Using defaults'));
+        // Hombre caído: se le pide al servidor dos veces por segundo (es una pasada de red más)
+        // y acá se cuenta cuánto tiempo seguido lleva alguien acostado.
+        const chalecoVal = document.getElementById('chaleco-val'), barChaleco = document.getElementById('bar-chaleco');
+        const caidaVal = document.getElementById('caida-val'), barCaida = document.getElementById('bar-caida');
+        document.getElementById('grupo-caida').style.display = CAIDA_ACTIVA ? '' : 'none';
+        let tPedidoCaida = 0, caidoDesde = null, caidoVisto = 0, caidoAvisado = false, acostados = [];
 
         function setupCanvasSize() {
             overlay.width = video.videoWidth || 640;
@@ -202,10 +237,66 @@
             captureCanvas.height = overlay.height;
         }
 
+        // Sin webcam (o para mostrarlo con un video de obra): se analiza un video o una foto del visitante.
+        // No sale de su navegador salvo los cuadros que se mandan a /predict, igual que con la cámara.
+        let espejo = true, urlArchivo = null;
+        const contenedor = document.querySelector('.video-container');
+        document.getElementById('archivo').addEventListener('change', e => {
+            const archivo = e.target.files[0];
+            if (!archivo) return;
+            stopWebcam();
+            urlArchivo = URL.createObjectURL(archivo);
+            espejo = false;
+            video.classList.add('sin-espejo');
+            if (archivo.type.startsWith('image/')) {
+                // Una foto: se la pasa a video de un cuadro con un canvas, así usa el mismo circuito
+                const img = new Image();
+                img.onload = () => {
+                    const c = document.createElement('canvas');
+                    c.width = img.naturalWidth; c.height = img.naturalHeight;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    const pista = c.captureStream(1);
+                    const repintar = setInterval(() => { if (!localStream) clearInterval(repintar); else c.getContext('2d').drawImage(img, 0, 0); }, 500);
+                    localStream = pista;
+                    video.srcObject = pista;
+                    arrancarArchivo();
+                };
+                img.src = urlArchivo;
+            } else {
+                localStream = { getTracks: () => [], getVideoTracks: () => [] };
+                video.srcObject = null;
+                video.src = urlArchivo;
+                video.loop = true;
+                arrancarArchivo();
+            }
+            e.target.value = '';
+        });
+
+        function arrancarArchivo() {
+            video.onloadedmetadata = () => {
+                // El recuadro toma la proporción del archivo: así no se recorta y las cajas caen en su lugar
+                contenedor.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+                video.play();
+                setupCanvasSize();
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300);
+                btnStart.disabled = false;
+                btnStop.disabled = false;
+                systemPulse.className = "pulse-dot active";
+                systemStatusText.innerText = "Analizando archivo";
+                isDetecting = true;
+                detectLoop();
+            };
+        }
+
         async function startWebcam() {
+            espejo = true;
+            video.classList.remove('sin-espejo');
+            contenedor.style.aspectRatio = '';
+            if (urlArchivo) stopWebcam();   // venía analizando un archivo: se corta del todo antes de abrir la cámara
             try {
                 // Resetear buffer de suavizado del backend al iniciar
-                fetch('/reset_buffer', { method: 'POST' }).catch(() => {});
+                fetch('/reset_buffer', { method: 'POST', headers: { 'X-CSRFToken': CSRF } }).catch(() => {});
                 loadingOverlay.innerHTML = '<i class="fa-solid fa-spinner spinner"></i><p>Solicitando acceso a la cámara...</p>';
                 const elegida = cameraSelect.value;
                 localStream = await navigator.mediaDevices.getUserMedia({
@@ -236,7 +327,7 @@
                 };
             } catch (err) {
                 console.error("Error al acceder a la cámara:", err);
-                loadingOverlay.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-danger"></i><p>Error de acceso a la cámara. Revisa los permisos.</p>';
+                loadingOverlay.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-danger"></i><p>' + ({NotAllowedError: 'Permiso de cámara denegado. Habilitalo en el candado de la barra de direcciones.', NotReadableError: 'La cámara está en uso por otra pestaña o app. Cerrala y reintentá.', OverconstrainedError: 'La cámara elegida ya no está disponible. Elegí otra.', NotFoundError: 'No se encontró ninguna cámara.'}[err.name] || 'Error de acceso a la cámara (' + err.name + ').') + '</p>';
             }
         }
 
@@ -253,8 +344,9 @@
                 localStream = null;
             }
             video.srcObject = null;
+            if (urlArchivo) { video.pause(); video.removeAttribute('src'); video.load(); URL.revokeObjectURL(urlArchivo); urlArchivo = null; }
             // Resetear buffer de suavizado del backend al detener
-            fetch('/reset_buffer', { method: 'POST' }).catch(() => {});
+            fetch('/reset_buffer', { method: 'POST', headers: { 'X-CSRFToken': CSRF } }).catch(() => {});
             
             overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
             loadingOverlay.style.display = 'flex';
@@ -282,6 +374,9 @@
             statusIcon.className = "fa-solid fa-user-gear pulse-icon";
             seguimiento.reset();
             ultimaAlarma = null;
+            chalecoVal.innerText = '—'; barChaleco.style.width = '0%';
+            caidaVal.innerText = 'No'; barCaida.style.width = '0%';
+            caidoDesde = null; caidoAvisado = false; acostados = [];
         }
 
         // Loop secuencial de detección:
@@ -305,22 +400,25 @@
             if (overlay.width !== video.videoWidth) setupCanvasSize();
 
             captureCtx.save();
-            captureCtx.translate(captureCanvas.width, 0);
-            captureCtx.scale(-1, 1);
+            if (espejo) {  // la webcam se ve (y se analiza) espejada; un video o una foto, tal cual
+                captureCtx.translate(captureCanvas.width, 0);
+                captureCtx.scale(-1, 1);
+            }
             captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
             captureCtx.restore();
 
             // JPEG calidad 0.75: buen balance tamaño/calidad (era 0.85 → ~15% más pesado)
             const base64Image = captureCanvas.toDataURL('image/jpeg', 0.75);
 
+            const pedirCaida = CAIDA_ACTIVA && Date.now() - tPedidoCaida >= 500;
+            if (pedirCaida) tPedidoCaida = Date.now();
             try {
                 const response = await fetch('/predict', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: base64Image })
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                    body: JSON.stringify({ image: base64Image, caida: pedirCaida })
                 });
 
-                if (response.status === 401) { isDetecting = false; redirectToLogin(); return; }
                 if (!isDetecting) return;
                 if (!response.ok) throw new Error('Error en la respuesta de la API');
                 const data = await response.json();
@@ -336,7 +434,7 @@
             ultimasCaras = faces;
 
             faces.forEach(face => {
-                const et = EPP.etiqueta(face, MIN_CONFIDENCE);
+                const et = EPP.etiqueta(face, MIN_CONFIDENCE, faces.length === 1 ? seguimiento.ventanas.chaleco.estado : null);
                 if (!et || !face.bbox) return;
                 const [x, y, w, h] = face.bbox;
                 overlayCtx.strokeStyle = et.color;
@@ -354,9 +452,42 @@
                 overlayCtx.fillText(et.texto, x + 5, ty + 19);
             });
 
+            // Persona caída: recuadro, cuenta de segundos y aviso al llegar al tiempo configurado
+            if (data.acostados) {
+                acostados = data.acostados;
+                if (acostados.length) { caidoDesde = caidoDesde ?? Date.now(); caidoVisto = Date.now(); }
+            }
+            // Más de 2 s sin verlo acostado (o sin respuesta sobre caídas): se corta la cuenta
+            if (caidoDesde && Date.now() - caidoVisto > 2000) { caidoDesde = null; caidoAvisado = false; acostados = []; }
+            const segCaido = caidoDesde ? (Date.now() - caidoDesde) / 1000 : 0;
+            const hayCaido = segCaido >= CAIDA_SEGUNDOS;
+            caidaVal.innerText = !caidoDesde ? 'No' : hayCaido ? 'SÍ' : `${Math.floor(segCaido)} s de ${CAIDA_SEGUNDOS}`;
+            barCaida.style.width = `${Math.min(100, 100 * segCaido / CAIDA_SEGUNDOS)}%`;
+            overlayCtx.lineWidth = 4; overlayCtx.font = "bold 16px Outfit, sans-serif";
+            for (const [x, y, w, h] of acostados) {
+                const texto = hayCaido ? 'PERSONA CAÍDA' : 'ACOSTADO';
+                overlayCtx.strokeStyle = overlayCtx.fillStyle = '#EF4444';
+                overlayCtx.strokeRect(x, y, w, h);
+                overlayCtx.fillRect(x - 2, Math.min(y + h, overlay.height - 26), overlayCtx.measureText(texto).width + 14, 26);
+                overlayCtx.fillStyle = '#FFFFFF';
+                overlayCtx.fillText(texto, x + 5, Math.min(y + h, overlay.height - 26) + 19);
+            }
+            if (hayCaido && !caidoAvisado) {
+                caidoAvisado = true;
+                addLog(new Date().toLocaleTimeString(), 'Persona caída', 100, 'log-danger');
+            }
+
+            // Chaleco: de las personas a las que se les ve el torso, cuántas lo llevan
+            const conTorso = faces.filter(f => f.chaleco === true || f.chaleco === false);
+            document.getElementById('grupo-chaleco').style.display = seguimiento.modos.chaleco ? '' : 'none';
+            const pctChaleco = conTorso.length ? 100 * conTorso.filter(f => f.chaleco).length / conTorso.length : 0;
+            chalecoVal.innerText = conTorso.length ? `${pctChaleco.toFixed(0)}%` : '—';
+            barChaleco.style.width = `${pctChaleco}%`;
+
             // Barras de confianza del casco (se ocultan si la detección de casco está apagada)
             const conCasco = faces.filter(f => f.con_casco != null);
-            document.querySelector('.metrics-card').style.display = seguimiento.modos.casco ? '' : 'none';
+            for (const id of ['bar-con', 'bar-sin'])
+                document.getElementById(id).closest('.metric-group').style.display = seguimiento.modos.casco ? '' : 'none';
             const avg = k => conCasco.length ? conCasco.reduce((a, f) => a + f[k], 0) / conCasco.length : 0;
             probConVal.innerText = `${avg('con_casco').toFixed(1)}%`;
             probSinVal.innerText = `${avg('sin_casco').toFixed(1)}%`;
@@ -377,11 +508,23 @@
             if (alarma && alarma !== ultimaAlarma) {
                 ultimaAlarma = alarma;
                 if (alarma === 'con_casco') enviarEvento({ type: 'con_casco', confidence: 100, camera: CAMERA_NAME });
-                fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ state: alarma }) }).catch(() => {});
+                if (REGISTRA && !urlArchivo) fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                                      body: JSON.stringify({ state: alarma }) }).then(sesionVencida).catch(() => {});
             }
 
             const r = seguimiento.resumen();
+            if (hayCaido) {
+                statusPanel.className = "card status-card danger-card";
+                statusIcon.className = "fa-solid fa-triangle-exclamation alarm-icon";
+                currentStateText.innerText = 'ALERTA: PERSONA CAÍDA';
+                currentDescText.innerText = `Lleva ${Math.floor(segCaido)} segundos en el suelo.`;
+                return;
+            }
+            if (!r.clase && currentStateText.innerText === 'ALERTA: PERSONA CAÍDA') {  // ya se levantó
+                statusPanel.className = "card status-card info-card";
+                statusIcon.className = "fa-solid fa-user-gear pulse-icon";
+                currentStateText.innerText = 'Analizando…';
+            }
             if (!faces.length && !r.clase) {
                 statusPanel.className = "card status-card info-card";
                 currentStateText.innerText = "Buscando personas...";
@@ -400,10 +543,17 @@
             currentDescText.innerText = r.detalle;
         }
 
+        // Con operador: si la sesión se cerró, el detector no puede registrar ni accionar la alarma.
+        // Se vuelve al login en vez de seguir "monitoreando" sin guardar nada.
+        function sesionVencida(r) {
+            if (r.status === 401 || r.status === 403) { isDetecting = false; location.href = '/admin/login?next=' + encodeURIComponent('/app'); }
+        }
+
         function enviarEvento(evento) {
             // La auditoría también despacha la alarma física en admin.py
-            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                         body: JSON.stringify(evento) }).catch(() => {});
+            if (!REGISTRA || urlArchivo) return;  // modo demostración o un archivo de prueba: no se guarda nada
+            fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                                         body: JSON.stringify(evento) }).then(sesionVencida).catch(() => {});
         }
 
         // Alerta de un elemento: quiénes estaban en falta y una foto del frame con los recuadros
@@ -415,6 +565,7 @@
             enviarEvento({ type: 'sin_' + elemento, camera: CAMERA_NAME,
                            confidence: Math.min(100, EPP.confianza(caras, elemento, 'falta', MIN_CONFIDENCE)),
                            persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE),
+                           pos: EPP.posicion(caras, elemento, MIN_CONFIDENCE, f.width, f.height),
                            foto: f.toDataURL('image/jpeg', 0.8) });
         }
 
@@ -458,6 +609,33 @@
             `;
             logList.appendChild(placeholder);
         };
+
+        // Cara de prueba: 3 fotos del video, que el servidor guarda solo en memoria por media hora
+        const btnCara = document.getElementById('btn-cara'), caraMsg = document.getElementById('cara-msg');
+        const caraNombre = document.getElementById('cara-nombre');
+        let fotosCara = [];
+        const rotuloCara = () => { btnCara.innerHTML = `<i class="fa-solid fa-camera"></i> Tomar foto (${fotosCara.length}/3)`; };
+        btnCara.addEventListener('click', async () => {
+            if (!isDetecting) { caraMsg.innerText = 'Primero iniciá la cámara.'; return; }
+            if (!caraNombre.value.trim()) { caraMsg.innerText = 'Escribí tu nombre.'; caraNombre.focus(); return; }
+            fotosCara.push(captureCanvas.toDataURL('image/jpeg', 0.85));
+            rotuloCara();
+            if (fotosCara.length < 3) { caraMsg.innerText = 'Girá apenas la cabeza y tomá otra.'; return; }
+            caraMsg.innerText = 'Procesando…';
+            const fotos = fotosCara; fotosCara = []; rotuloCara();
+            try {
+                const r = await fetch('/api/demo/cara', { method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                    body: JSON.stringify({ nombre: caraNombre.value.trim(), fotos }) });
+                const d = await r.json();
+                caraMsg.innerText = r.ok ? `Listo, ${d.nombre}: te va a reconocer durante ${d.minutos} minutos.` : d.error;
+            } catch (e) { caraMsg.innerText = 'No se pudo enviar. Probá de nuevo.'; }
+        });
+        document.getElementById('btn-cara-borrar').addEventListener('click', async () => {
+            fotosCara = []; rotuloCara();
+            const r = await fetch('/api/demo/cara', { method: 'DELETE', headers: { 'X-CSRFToken': CSRF } }).catch(() => null);
+            caraMsg.innerText = r && r.ok ? 'Tu cara de prueba se borró.' : 'No se pudo borrar. Probá de nuevo.';
+        });
 
         btnStart.addEventListener('click', startWebcam);
         btnStop.addEventListener('click', stopWebcam);

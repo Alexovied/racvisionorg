@@ -47,6 +47,7 @@
                             </button>
                             {% if user.id != current_user.id %}
                             <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" onsubmit="return confirm('¿Eliminar el usuario {{ user.username }}?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn-icon btn-delete" title="Eliminar">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
@@ -65,10 +66,11 @@
 <div class="modal-overlay" id="create-modal">
     <div class="modal-card">
         <div class="modal-header">
-            <h3><i class="fa-solid fa-user-plus"></i> <span id="modal-title">Nuevo Usuario</span></h3>
-            <button class="modal-close" onclick="closeModal('create')"><i class="fa-solid fa-xmark"></i></button>
+            <h2><i class="fa-solid fa-user-plus"></i> <span id="modal-title">Nuevo Usuario</span></h2>
+            <button class="modal-close" aria-label="Cerrar" onclick="closeModal('create')"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <form method="POST" action="{{ url_for('admin.users') }}" id="user-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" id="form-action" value="create">
             <input type="hidden" name="user_id" id="form-user-id" value="">
             
@@ -95,6 +97,8 @@
                         <option value="admin">Admin — Acceso total</option>
                         <option value="operator" selected>Operador — Dashboard + Auditoría</option>
                         <option value="viewer">Visualizador — Solo dashboard</option>
+                        <option value="pm">PM — Gestiona proyectos y encuestas (SGEP)</option>
+                        <option value="auditor">Auditor — Solo lectura del SGEP</option>
                     </select>
                     <i class="fa-solid fa-chevron-down"></i>
                 </div>

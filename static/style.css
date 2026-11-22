@@ -173,7 +173,7 @@ header p {
 
 .badge {
     background: rgba(229, 91, 19, 0.15);
-    color: var(--accent-orange);
+    color: #FF8A4C;   /* contraste AA sobre el fondo de la tarjeta */
     padding: 0.3rem 0.75rem;
     border-radius: 0.5rem;
     font-size: 0.75rem;
@@ -197,6 +197,10 @@ header p {
     height: 100%;
     object-fit: cover;
     transform: scaleX(-1); /* Espejar para vista natural */
+}
+
+#webcam.sin-espejo {
+    transform: none; /* un video o una foto se ven como son */
 }
 
 #overlay {
@@ -510,7 +514,7 @@ header p {
     align-items: center;
     gap: 0.5rem;
     height: 100%;
-    color: rgba(255, 255, 255, 0.15);
+    color: #9CA3AF;
     font-size: 0.85rem;
     padding: 2rem 0;
 }
@@ -575,3 +579,42 @@ header p {
 .log-danger i {
     color: var(--accent-red);
 }
+
+/* CELULAR: sin scroll lateral (WCAG 1.4.10) */
+body { overflow-x: clip; }
+.glow-bg { max-width: 100vw; }
+@media (max-width: 640px) { .glow-bg { left: 0; width: 100%; } }
+.dashboard-grid > * { min-width: 0; }
+@media (max-width: 640px) {
+    .container { padding: 1rem 0.9rem; }
+    header { flex-wrap: wrap; gap: 0.9rem; padding-bottom: 1.2rem; margin-bottom: 1.2rem; }
+    .logo { flex-wrap: wrap; }
+    .logo-img { height: 34px; }
+    .logo-divider { display: none; }
+    header h1 { font-size: 1.15rem; }
+    header p { font-size: 0.8rem; }
+    .dashboard-grid { gap: 1rem; }
+    .card { padding: 1rem; }
+    .controls { flex-wrap: wrap; gap: 0.6rem; }
+    .controls > * { flex: 1 1 100%; }
+}
+
+/* Selector de cámara y campos del detector: mismos colores que el resto, no los del sistema */
+select.btn, .campo {
+    background: rgba(255, 255, 255, 0.06);
+    color: #F1F5F9;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-family: inherit;
+    color-scheme: dark;
+    min-width: 0;
+}
+select.btn { justify-content: flex-start; padding-right: 2rem; cursor: pointer; }
+select.btn option { background: #111827; color: #F1F5F9; }
+select.btn:focus-visible, .campo:focus-visible { outline: 2px solid #E8751A; outline-offset: 2px; }
+.campo { flex: 1; padding: 0.8rem 1rem; border-radius: 0.75rem; font-size: 0.95rem; }
+.campo::placeholder { color: #94A3B8; }
+.bar-chaleco { background: linear-gradient(90deg, #FACC15, #F59E0B); }
+.bar-caida { background: linear-gradient(90deg, #F97316, #EF4444); }
+.demo-aviso { margin: 0 0 1rem; padding: 0.6rem 0.9rem; border-radius: 0.6rem; font-size: 0.85rem;
+              background: rgba(232, 117, 26, 0.1); border: 1px solid rgba(232, 117, 26, 0.25); color: #FDBA74; }
+.cara-msg { margin-top: 0.75rem; font-size: 0.85rem; color: #94A3B8; min-height: 1.2em; }

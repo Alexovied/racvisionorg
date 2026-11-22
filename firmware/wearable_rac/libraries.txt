@@ -1,0 +1,2 @@
+# Solo con SIMULAR_PULSO en 0 (sensor de pulso real)
+SparkFun MAX3010x Pulse and Proximity Sensor Library

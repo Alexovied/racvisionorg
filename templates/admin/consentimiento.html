@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consentimiento para reconocimiento facial — RAC Vision</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Georgia, "Times New Roman", serif; color: #111; background: #e9e9e9; margin: 0; line-height: 1.55; }
+        .barra { font-family: system-ui, sans-serif; background: #111; color: #fff; padding: 12px 20px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+        .barra p { margin: 0; font-size: 14px; }
+        .barra button { font: 700 14px system-ui, sans-serif; background: #E8751A; color: #111; border: 0; padding: 10px 18px; border-radius: 4px; cursor: pointer; min-height: 44px; }
+        .hoja { background: #fff; max-width: 800px; margin: 24px auto; padding: 48px 56px; box-shadow: 0 4px 20px rgba(0,0,0,.15); }
+        h1 { font-size: 21px; text-align: center; margin: 0 0 4px; }
+        .sub { text-align: center; font-size: 13px; margin: 0 0 24px; color: #444; }
+        h2 { font-size: 15px; margin: 22px 0 6px; }
+        p, li { font-size: 14px; }
+        ol, ul { padding-left: 22px; }
+        .campo { display: inline-block; min-width: 230px; border-bottom: 1px solid #111; }
+        .campo.corto { min-width: 120px; }
+        .opciones p { margin: 8px 0; }
+        .casilla { display: inline-block; width: 15px; height: 15px; border: 1.5px solid #111; vertical-align: -2px; margin-right: 6px; }
+        .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 46px; }
+        .firmas div { border-top: 1px solid #111; padding-top: 6px; font-size: 13px; text-align: center; }
+        .legal { font-size: 11.5px; color: #333; margin-top: 26px; }
+        @media (max-width: 640px) { .hoja { padding: 28px 20px; margin: 0; } .firmas { grid-template-columns: 1fr; } }
+        @media print { body { background: #fff; } .barra { display: none; } .hoja { box-shadow: none; margin: 0; max-width: none; padding: 0; } @page { margin: 18mm; } }
+    </style>
+</head>
+<body>
+<div class="barra">
+    <p>Imprimí dos copias: una para la persona y otra para la empresa. Guardá la firmada antes de registrarla en el panel.</p>
+    <button type="button" onclick="window.print()">Imprimir</button>
+</div>
+<main class="hoja">
+    <h1>Consentimiento para el uso de reconocimiento facial</h1>
+    <p class="sub">Sistema RAC Vision · Ley 25.326 de Protección de los Datos Personales</p>
+
+    <p>Yo, <span class="campo"></span>, DNI <span class="campo corto"></span>, trabajador/a de
+       <span class="campo"></span> (en adelante, "la Empresa"), CUIT <span class="campo corto"></span>,
+       declaro que me informaron lo siguiente y que lo entendí:</p>
+
+    <h2>1. Qué se hace con mi cara</h2>
+    <p>La Empresa usa el sistema RAC Vision para controlar el uso de casco y chaleco reflectante con cámaras. De manera opcional, el sistema puede reconocer quién es cada persona para que las alertas de seguridad indiquen su nombre.</p>
+    <p>Para eso se toman entre 3 y 10 fotos de mi cara. A partir de ellas se calcula un conjunto de números (un "embedding") que representa rasgos de la cara. <strong>Las fotos no se guardan</strong>: solo se conservan esos números, mi nombre y la fecha de registro. Estos datos son <strong>datos biométricos</strong> y se tratan como datos sensibles.</p>
+
+    <h2>2. Para qué se usa y para qué no</h2>
+    <ul>
+        <li>Solo para identificar a la persona en las alertas de seguridad (falta de casco o de chaleco).</li>
+        <li>No se usa para controlar horarios, medir el rendimiento ni aplicar sanciones automáticas. Cualquier decisión la toma una persona.</li>
+        <li>Cuando hay una alerta, se guarda una foto de ese momento con mi nombre, la cámara y la hora. Se conservan las últimas 5000 alertas.</li>
+    </ul>
+
+    <h2>3. Mis derechos</h2>
+    <ul>
+        <li><strong>Es voluntario.</strong> Puedo negarme sin ninguna consecuencia laboral: el control de casco y chaleco funciona igual sin identificarme.</li>
+        <li>Puedo retirar este consentimiento cuando quiera. En ese caso se borran mis datos de reconocimiento.</li>
+        <li>Puedo pedir acceso, corrección o supresión de mis datos (artículos 14 a 16 de la Ley 25.326) a la Empresa o a RAC Vision (alex@racvision.org).</li>
+        <li>Los datos se guardan en un servidor ubicado en los Estados Unidos, con medidas de seguridad. Mi consentimiento incluye esa transferencia internacional (artículo 12 de la Ley 25.326).</li>
+    </ul>
+
+    <h2>4. Mi decisión</h2>
+    <div class="opciones">
+        <p><span class="casilla"></span><strong>Acepto</strong> que se registre mi cara para el reconocimiento facial, en las condiciones descriptas.</p>
+        <p><span class="casilla"></span><strong>No acepto.</strong> Entiendo que esto no tiene ninguna consecuencia para mí.</p>
+    </div>
+
+    <p>Lugar y fecha: <span class="campo"></span></p>
+
+    <div class="firmas">
+        <div>Firma de la persona<br>Aclaración</div>
+        <div>Firma y aclaración del responsable de la Empresa</div>
+    </div>
+
+    <p class="legal">LA AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA, en su carácter de Órgano de Control de la Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales. Política de privacidad completa: racvision.org/privacidad.</p>
+</main>
+</body>
+</html>

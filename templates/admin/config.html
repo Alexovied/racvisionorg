@@ -9,6 +9,7 @@
 </div>
 
 <form method="POST" action="{{ url_for('admin.config') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="save">
 
     <div class="config-grid">
@@ -18,12 +19,16 @@
                 <i class="fa-solid fa-helmet-safety"></i>
             </div>
             <div class="config-info">
-                <h4>Detecciones activas</h4>
+                <h2>Detecciones activas</h2>
                 <p>Casco y chaleco funcionan por separado: se pueden usar juntos o uno solo. Al menos uno tiene que quedar activo.</p>
             </div>
             <div class="config-control" style="flex-direction: column; align-items: flex-start; gap: .5rem;">
                 <label><input type="checkbox" name="detectar_casco" {% if config.detectar_casco %}checked{% endif %}> Casco</label>
                 <label><input type="checkbox" name="detectar_chaleco" {% if config.detectar_chaleco %}checked{% endif %}> Chaleco reflectante</label>
+                <label><input type="checkbox" name="detectar_caida" {% if config.detectar_caida %}checked{% endif %}> Hombre caído (solo cámaras USB / IP del servidor)</label>
+                <label><input type="checkbox" name="modo_anonimo" {% if config.modo_anonimo %}checked{% endif %}> Modo anónimo: sin reconocimiento facial y con las caras pixeladas en las fotos</label>
+                <label>Alertar si sigue en el suelo
+                    <input type="number" name="caida_segundos" min="3" max="120" value="{{ config.caida_segundos }}" required style="width: 5rem;"> segundos</label>
             </div>
         </div>
 
@@ -33,12 +38,12 @@
                 <i class="fa-solid fa-bullseye"></i>
             </div>
             <div class="config-info">
-                <h4>Umbral de Confianza Mínima</h4>
+                <h2 id="t-confianza">Umbral de Confianza Mínima</h2>
                 <p>Porcentaje mínimo de certeza para considerar una detección válida. Valores más altos = menos falsos positivos.</p>
             </div>
             <div class="config-control">
                 <div class="input-wrapper" style="flex: 1;">
-                    <input type="number" name="min_confidence" id="input-confidence"
+                    <input type="number" name="min_confidence" id="input-confidence" aria-labelledby="t-confianza"
                         min="50" max="99" value="{{ config.min_confidence }}" required
                         style="padding-left: 0.85rem;">
                 </div>
@@ -52,12 +57,12 @@
                 <i class="fa-solid fa-check-double"></i>
             </div>
             <div class="config-info">
-                <h4>Frames de Confirmación</h4>
+                <h2 id="t-confirmacion">Frames de Confirmación</h2>
                 <p>Cantidad de frames consecutivos con el mismo resultado antes de confirmar una detección. Más frames = más estable.</p>
             </div>
             <div class="config-control">
                 <div class="input-wrapper" style="flex: 1;">
-                    <input type="number" name="confirm_threshold" id="input-confirm"
+                    <input type="number" name="confirm_threshold" id="input-confirm" aria-labelledby="t-confirmacion"
                         min="1" max="20" value="{{ config.confirm_threshold }}" required
                         style="padding-left: 0.85rem;">
                 </div>
@@ -71,12 +76,12 @@
                 <i class="fa-solid fa-gauge-high"></i>
             </div>
             <div class="config-info">
-                <h4>Intervalo de Escaneo</h4>
+                <h2 id="t-escaneo">Intervalo de Escaneo</h2>
                 <p>Milisegundos entre cada análisis de frame. Menor valor = más rápido pero más carga de CPU.</p>
             </div>
             <div class="config-control">
                 <div class="input-wrapper" style="flex: 1;">
-                    <input type="number" name="scan_rate_ms" id="input-scan"
+                    <input type="number" name="scan_rate_ms" id="input-scan" aria-labelledby="t-escaneo"
                         min="50" max="1000" step="50" value="{{ config.scan_rate_ms }}" required
                         style="padding-left: 0.85rem;">
                 </div>
@@ -90,12 +95,12 @@
                 <i class="fa-solid fa-brain"></i>
             </div>
             <div class="config-info">
-                <h4>Modelo Activo</h4>
+                <h2 id="t-modelo">Modelo Activo</h2>
                 <p>Selecciona el archivo de modelo Keras a utilizar para las predicciones. Requiere reinicio del servidor.</p>
             </div>
             <div class="config-control">
                 <div class="select-wrapper select-compact">
-                    <select name="active_model" id="select-model">
+                    <select name="active_model" id="select-model" aria-labelledby="t-modelo">
                         {% for m in models %}
                         <option value="{{ m }}" {% if m == config.active_model %}selected{% endif %}>{{ m }}</option>
                         {% endfor %}
@@ -115,6 +120,7 @@
 
 <!-- RESET FORM (separate) -->
 <form method="POST" action="{{ url_for('admin.config') }}" class="config-reset-form" onsubmit="return confirm('¿Restaurar todos los valores por defecto?')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="reset">
     <button type="submit" class="btn-action btn-reset">
         <i class="fa-solid fa-rotate-left"></i> Restaurar Valores por Defecto
