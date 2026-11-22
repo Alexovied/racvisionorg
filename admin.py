@@ -26,6 +26,7 @@ from flask_login import (
 import aviso_mqtt
 import aviso_telegram
 import data_store
+import face_detector
 import face_id
 import riesgo
 import salud
@@ -502,6 +503,7 @@ def config():
                 cfg["detectar_casco"] = request.form.get("detectar_casco") == "on"
                 cfg["detectar_chaleco"] = request.form.get("detectar_chaleco") == "on"
                 cfg["detectar_caida"] = request.form.get("detectar_caida") == "on"
+                cfg["modo_anonimo"] = request.form.get("modo_anonimo") == "on"
                 cfg["caida_segundos"] = max(3, min(120, int(request.form.get("caida_segundos", 10))))
                 if not (cfg["detectar_casco"] or cfg["detectar_chaleco"]):
                     flash("Tiene que quedar activa al menos una detección (casco o chaleco).", "error")
@@ -658,6 +660,24 @@ def validate_event_payload(data):
 CALIDAD_WEBP = 80
 
 
+def anonimizar(foto):
+    """JPEG de la foto con las caras pixeladas (modo anónimo), o None si no es una imagen.
+    Se agranda la caja de cada cara para tapar también pelo y orejas."""
+    img = cv2.imdecode(np.frombuffer(foto, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    H, W = img.shape[:2]
+    for x, y, w, h in face_detector.detect_faces(img):
+        x0, y0 = max(0, int(x - 0.3 * w)), max(0, int(y - 0.4 * h))
+        x1, y1 = min(W, int(x + 1.3 * w)), min(H, int(y + 1.3 * h))
+        if x1 - x0 < 2 or y1 - y0 < 2:
+            continue
+        chica = cv2.resize(img[y0:y1, x0:x1], (8, 8), interpolation=cv2.INTER_LINEAR)
+        img[y0:y1, x0:x1] = cv2.resize(chica, (x1 - x0, y1 - y0), interpolation=cv2.INTER_NEAREST)
+    ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    return jpg.tobytes() if ok else None
+
+
 def a_webp(imagen):
     """Bytes WebP de una imagen (bytes JPEG/PNG/WebP o matriz de OpenCV), o None si no se puede.
     Siempre se vuelve a codificar: nunca se guardan bytes tal cual llegan."""
@@ -708,6 +728,9 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
     foto: bytes de imagen; el motor manda el JPEG del cuadro y acá se pasa a WebP."""
     camera, ubicacion = datos_de_camara(camera)
     extra = {"ubicacion": ubicacion} if ubicacion else {}
+    if data_store.load_config().get("modo_anonimo"):   # nadie con nombre y caras pixeladas en la foto
+        persona = None
+        foto = anonimizar(foto) if foto else None
     if event_type in ALERT_TYPES:
         extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
         if _posicion(pos):

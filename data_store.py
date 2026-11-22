@@ -223,6 +223,8 @@ DEFAULT_CONFIG = {
     # Solo para cámaras que analiza el servidor (motor.py)
     "detectar_caida": True,
     "caida_segundos": 10,
+    # Modo anónimo: sin reconocimiento facial y con las caras pixeladas en las fotos de las alertas
+    "modo_anonimo": False,
 }
 
 def load_config():

@@ -398,7 +398,8 @@ class Camara(threading.Thread):
         exentas = [np.array([[x * ancho, y * alto] for x, y in z], np.int32) for z in cam.get("exentas") or []]
 
         info = {}
-        caras, personas = analizar(img, modos, con_personas=bool(zonas) or caida, nivel=self.nivel, info=info)
+        caras, personas = analizar(img, modos, con_personas=bool(zonas) or caida, nivel=self.nivel, info=info,
+                                   conocidos=[] if cfg.get("modo_anonimo") else None)   # [] = no identificar a nadie
         # Zonas exentas (oficina, pasillo seguro): ahí no se juzga el EPP de nadie
         exenta = lambda c: any(cv2.pointPolygonTest(z, (c["bbox"][0] + c["bbox"][2] / 2, c["bbox"][1] + c["bbox"][3] / 2),
                                                     False) >= 0 for z in exentas)
