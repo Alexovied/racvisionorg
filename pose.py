@@ -1,8 +1,10 @@
 """Pose de las personas (YOLOv8n-pose exportado a ONNX): 17 puntos del cuerpo por persona.
 
 El motor de cámaras lo usa para el hombre caído: mide la inclinación del torso
-(hombros → caderas) en vez de mirar solo la forma de la caja. Si detector_pose.onnx
-no está, `disponible()` devuelve False y motor.py sigue con la regla de la caja.
+(hombros → caderas) en vez de mirar solo la forma de la caja. Y cuerpo.py lo usa para
+descartar cabezas sin cuerpo (un casco sobre la mesa) y enderezar una cámara girada.
+Si detector_pose.onnx no está, `disponible()` devuelve False y motor.py sigue como antes:
+regla de la caja, todas las cabezas cuentan y no se corrige el giro.
 """
 import math
 import os
@@ -39,9 +41,10 @@ def detectar(img):
             helmet_detector.correr_yolo(_net, _lock, img, 1, CONF_PERSONA, puntos=True)]
 
 
-def torso_caido(puntos):
+def torso_caido(puntos, inclinacion=0.0):
     """True si el torso está acostado o cabeza abajo; False si está derecho;
-    None si no se ven bien los hombros y las caderas (muy cerca de la cámara, tapado)."""
+    None si no se ven bien los hombros y las caderas (muy cerca de la cámara, tapado).
+    inclinacion: grados que está girada la cámara (horario), ver cuerpo.inclinacion()."""
     if min(puntos[i][2] for i in HOMBROS + CADERAS) < CONF_PUNTO:
         return None
     hx, hy = (puntos[5][0] + puntos[6][0]) / 2, (puntos[5][1] + puntos[6][1]) / 2
@@ -49,4 +52,5 @@ def torso_caido(puntos):
     # Ángulo entre el torso y la vertical: 0° de pie, 90° acostado, más de 90° cabeza abajo.
     # shortcut: alguien tirado a lo largo del eje de la cámara se ve "vertical" en la imagen;
     # para eso hace falta saber la altura de la cámara o una segunda cámara.
-    return math.degrees(math.atan2(abs(cx - hx), cy - hy)) > ANGULO_CAIDO
+    angulo = math.degrees(math.atan2(hx - cx, cy - hy)) - inclinacion
+    return abs((angulo + 180) % 360 - 180) > ANGULO_CAIDO

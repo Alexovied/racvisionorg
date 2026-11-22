@@ -67,7 +67,7 @@ def test_predict_usa_detector_de_cabezas_si_esta_disponible(flask_app, operator_
     assert r.status_code == 200
     assert r.get_json() == {"has_face": True, "modos": {"casco": True, "chaleco": True},
                             "faces": [{"con_casco": 25.0, "sin_casco": 75.0, "bbox": [10, 20, 30, 40],
-                                       "nombre": None, "chaleco": False}]}
+                                       "nombre": None, "chaleco": False}], "inclinacion": 0.0}
     crop_head.assert_not_called()
 
 

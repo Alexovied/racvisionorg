@@ -19,6 +19,7 @@ from collections import deque
 import cv2
 import numpy as np
 
+import cuerpo
 import data_store
 import epp
 import face_id
@@ -35,11 +36,40 @@ ROJO, VERDE, AMARILLO = (68, 68, 239), (129, 185, 16), (0, 200, 255)  # BGR
 registrar_evento = None
 
 
-def analizar(img, modos, con_personas=False, conocidos=None):
+def analizar(img, modos, con_personas=False, conocidos=None, nivel=None, info=None):
     """Detecciones de un frame: (caras, personas).
     caras: lo que /predict devuelve en "faces". personas: cajas [x, y, w, h] de cuerpo entero,
     solo si con_personas (cuesta una pasada del modelo de chalecos aunque no haya cabezas).
-    conocidos: caras contra las que identificar (por defecto, las dadas de alta)."""
+    conocidos: caras contra las que identificar (por defecto, las dadas de alta).
+    nivel: cuerpo.Nivel de la cámara (inclinación promediada); sin él se mide en este frame.
+    info: si es un dict, se completa con "cuerpos" (esqueletos de pose, en la imagen original)
+    e "inclinacion" (grados que se enderezó la imagen), para no volver a correr la pose.
+
+    Con el modelo de pose: solo cuentan las cabezas que tienen un cuerpo (un casco apoyado en
+    una mesa no es una persona) y, si la cámara está girada, se endereza la imagen antes de
+    buscar cascos y chalecos. Las cajas devueltas son siempre de la imagen original."""
+    cuerpos = pose.detectar(img) if pose.disponible() and (modos["casco"] or modos["chaleco"] or con_personas) else None
+    angulo = cuerpo.inclinacion(cuerpos) if cuerpos else None
+    if nivel is not None:
+        angulo = nivel.actualizar(angulo)
+    if angulo is None or abs(angulo) < cuerpo.INCLINACION_MIN:
+        angulo = 0.0
+    if info is not None:
+        info.update(cuerpos=cuerpos, inclinacion=angulo)
+    if not angulo:
+        return _analizar(img, modos, con_personas, conocidos, cuerpos)
+
+    derecha, M, M_inv = cuerpo.enderezar(img, angulo)
+    caras, personas = _analizar(derecha, modos, con_personas, conocidos,
+                                [cuerpo.mover_cuerpo(c, M) for c in cuerpos or []] if cuerpos is not None else None)
+    for c in caras:
+        c["bbox"] = cuerpo.volver_cabeza(c["bbox"], M_inv, img.shape)
+    return caras, [cuerpo.volver_persona(p, M_inv, img.shape) for p in personas]
+
+
+def _analizar(img, modos, con_personas, conocidos, cuerpos):
+    """analizar() sobre una imagen ya derecha. cuerpos: esqueletos de esa imagen, o None sin
+    modelo de pose (entonces no se filtran las cabezas, como antes)."""
     dets = epp.detectar(img) if con_personas else None
     personas = [b for b, sc in dets or [] if sc.argmax() == 0]
 
@@ -52,6 +82,10 @@ def analizar(img, modos, con_personas=False, conocidos=None):
     # Detector de cabezas (YOLO): ve el casco desde cualquier ángulo, aunque
     # la persona esté de espaldas o se tape la cara.
     cabezas = helmet_detector.detectar(img)
+    if cuerpos is not None:
+        # Solo las cabezas con un cuerpo debajo: un casco sobre la mesa no es una persona
+        alto = img.shape[0]
+        cabezas = [c for c in cabezas if cuerpo.es_persona(c["bbox"], cuerpos, alto)]
     chalecos = epp.chalecos_por_cabeza(img, [c["bbox"] for c in cabezas], dets) if modos["chaleco"] else []
     caras = []
     for i, c in enumerate(cabezas):
@@ -94,12 +128,16 @@ def _acostada(p, cabezas, ancho, alto):
                    for c in cabezas)
 
 
-def acostados(img, personas, caras, modos):
+def acostados(img, personas, caras, modos, cuerpos=None, inclinacion=0.0):
     """Cajas de las personas acostadas. Con modelo de pose decide el torso (acostado o cabeza
-    abajo); si no se ven hombros y caderas, o no hay modelo, decide la forma de la caja."""
+    abajo); si no se ven hombros y caderas, o no hay modelo, decide la forma de la caja.
+    cuerpos / inclinacion: lo que dejó analizar() en `info`, para no correr la pose otra vez
+    y medir el torso respecto de la vertical real aunque la cámara esté girada."""
     alto, ancho = img.shape[:2]
     if personas and pose.disponible():
-        candidatos = [(caja, pose.torso_caido(puntos)) for caja, puntos in pose.detectar(img)]
+        if cuerpos is None:
+            cuerpos = pose.detectar(img)
+        candidatos = [(caja, pose.torso_caido(puntos, inclinacion)) for caja, puntos in cuerpos]
     else:
         candidatos = [(p, None) for p in personas]
     caidos = [caja for caja, torso in candidatos if torso]
@@ -229,6 +267,7 @@ class Camara(threading.Thread):
         self.crudo = None             # último frame leído de la cámara, sin dibujar
         self.pintar = None            # dibuja sobre un frame los recuadros del último análisis
         self.caidos, self.t_pose = [], 0.0
+        self.nivel = cuerpo.Nivel()   # inclinación de esta cámara, promediada entre frames
         self.estado = {"clase": None, "titulo": "CONECTANDO"}
 
     def _abrir(self):
@@ -301,7 +340,8 @@ class Camara(threading.Thread):
         modos = {"casco": bool(cfg["detectar_casco"]), "chaleco": bool(cfg["detectar_chaleco"])}
         caida = bool(cfg["detectar_caida"])
 
-        caras, personas = analizar(img, modos, con_personas=bool(zonas) or caida)
+        info = {}
+        caras, personas = analizar(img, modos, con_personas=bool(zonas) or caida, nivel=self.nivel, info=info)
         estados = [_evaluar(c, cfg["min_confidence"]) for c in caras]
         votos = {k: _peor([e[k] for e in estados]) for k in modos if modos[k]}
         # En zona: el punto de apoyo de la persona (centro del borde de abajo de su caja) cae en un polígono
@@ -310,11 +350,13 @@ class Camara(threading.Thread):
         if zonas:
             votos["zona"] = "falta" if en_zona else "ok"
         # Hombre caído: se mide en segundos, así que con modelo de pose se revisa dos veces por
-        # segundo y no en cada frame, para no frenar el casco y el chaleco.
+        # segundo y no en cada frame. Si casco o chaleco están prendidos la pose ya corrió en
+        # analizar() (info["cuerpos"]); si no, es una pasada más de la red.
         if not caida:
             self.caidos = []
         elif not pose.disponible() or ahora - self.t_pose >= 0.5:
-            self.caidos, self.t_pose = acostados(img, personas, caras, modos), ahora
+            self.caidos, self.t_pose = acostados(img, personas, caras, modos, info.get("cuerpos"),
+                                                 info.get("inclinacion", 0.0)), ahora
         caidos = self.caidos
 
         nuevas = self.seg.procesar(votos, bool(caidos), int(cfg["confirm_threshold"]),
