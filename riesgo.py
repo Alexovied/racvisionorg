@@ -185,14 +185,18 @@ def texto(r):
     if p["picos"]:
         horas = [f"{h:02d}:00" for h in sorted(x["hora"] for x in p["picos"])]
         lista = horas[0] if len(horas) == 1 else ", ".join(horas[:-1]) + " y " + horas[-1]
-        lineas.append(f"Mañana ({p['dia']}) ojo a las {lista}: ahí se concentran las alertas.")
+        cuando = "Hoy" if p["fecha"] == datetime.now().date().isoformat() else "Mañana"
+        lineas.append(f"{cuando} ({p['dia']}) ojo a las {lista}: ahí se concentran las alertas.")
     return "\n".join(lineas)
 
 
 SISTEMA = ("Sos el asistente de seguridad e higiene de una obra que usa RAC Vision (cámaras que "
            "detectan casco, chaleco, zonas prohibidas y caídas). Escribís el reporte diario para el "
            "jefe de obra, en español rioplatense, por Telegram: máximo 120 palabras, sin markdown, "
-           "con 1 a 3 acciones concretas para mañana. Usá solo los datos que te pasan; no inventes.")
+           "con 1 a 3 acciones concretas. Usá solo los datos que te pasan; no inventes. Ojo con las fechas: "
+           "el reporte es del día indicado en 'dia'/'fecha', que normalmente es AYER; nombralo por su día "
+           "('el sábado'), nunca 'hoy' salvo que coincida con la fecha de hoy que te paso. 'pronostico_manana' "
+           "es para el día siguiente al del reporte: si esa fecha es hoy, decí 'hoy', no 'mañana'.")
 # Gemini tiene plan gratis (con límite diario, de sobra para un reporte por día). GEMINI_MODEL lo cambia.
 MODELO_GEMINI = "gemini-flash-latest"
 # Si el modelo está saturado (503), sin cupo (429) o no existe (404), se prueba el siguiente.
@@ -259,7 +263,9 @@ def redactar(r):
     Solo se mandan conteos y nombres de cámaras / personas ya guardados: nunca fotos."""
     if not hay_ia():
         return texto(r)
-    datos = "Datos del día:\n" + json.dumps(r, ensure_ascii=False)
+    hoy = datetime.now().date()
+    datos = (f"Hoy es {DIAS[hoy.weekday()]} {hoy.isoformat()}.\n"
+             "Datos del día:\n" + json.dumps(r, ensure_ascii=False))
     try:
         escrito = _con_gemini(datos) if os.environ.get("GEMINI_API_KEY") else _con_claude(datos)
         return escrito or texto(r)

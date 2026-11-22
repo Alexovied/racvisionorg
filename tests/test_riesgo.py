@@ -91,7 +91,7 @@ def test_redactar_con_claude_y_respaldo_si_falla(monkeypatch):
         cliente.return_value.beta.messages.create.return_value = respuesta
         assert riesgo.redactar(r) == "Día tranquilo."
         kwargs = cliente.return_value.beta.messages.create.call_args.kwargs
-        assert kwargs["model"] == "claude-opus-5-5" and json.loads(kwargs["messages"][0]["content"].split("\n", 1)[1])["total"] == 0
+        assert kwargs["model"] == "claude-opus-5-5" and json.loads(kwargs["messages"][0]["content"].split("Datos del día:\n", 1)[1])["total"] == 0
         cliente.return_value.beta.messages.create.side_effect = RuntimeError("sin red")
         assert riesgo.redactar(r) == riesgo.texto(r)
 
@@ -109,7 +109,7 @@ def test_redactar_con_gemini_gratis_y_respaldo_si_falla(monkeypatch):
         url, kw = post.call_args.args[0], post.call_args.kwargs
         assert url.endswith("/models/gemini-flash-latest:generateContent")
         assert kw["headers"] == {"x-goog-api-key": "clave-gemini"} and "clave" not in url
-        assert json.loads(kw["json"]["contents"][0]["parts"][0]["text"].split("\n", 1)[1])["total"] == 0
+        assert json.loads(kw["json"]["contents"][0]["parts"][0]["text"].split("Datos del día:\n", 1)[1])["total"] == 0
         ok.json.return_value = {"candidates": []}            # bloqueado o vacío → plantilla
         assert riesgo.redactar(r) == riesgo.texto(r)
         ocupado = mock.MagicMock(status_code=503, headers={"content-type": "application/json"})
