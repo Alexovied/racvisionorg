@@ -34,7 +34,7 @@
 <div class="admin-card">
     <div class="admin-card-header">
         <h2><i class="fa-solid fa-file-lines"></i> Texto del reporte</h2>
-        {% if ia %}
+        {% if ia and current_user.role == 'admin' %}
         <a href="{{ url_for('admin.reporte_pagina', fecha=r.fecha, ia=1) }}" class="card-link"><i class="fa-solid fa-wand-magic-sparkles"></i> Redactar con IA</a>
         {% endif %}
     </div>

@@ -848,7 +848,8 @@ def reporte_pagina():
         dia = None
     r = riesgo.reporte(data_store.load_events(), dia)
     # La IA solo se usa a pedido (?ia=1): cada recarga de la página no gasta una llamada
-    texto = riesgo.redactar(r) if request.args.get("ia") == "1" else riesgo.texto(r)
+    usar_ia = request.args.get("ia") == "1" and current_user.role == "admin"   # cada llamada cuesta
+    texto = riesgo.redactar(r) if usar_ia else riesgo.texto(r)
     return render_template("admin/reporte.html", r=r, texto=texto, telegram=aviso_telegram.configurado(),
                            ia=bool(os.environ.get("ANTHROPIC_API_KEY")))
 
@@ -867,27 +868,47 @@ def reporte_enviar():
     return redirect(url_for("admin.reporte_pagina", fecha=request.form.get("fecha", "")))
 
 
+_textos_reporte = {}   # fecha → texto ya redactado: si Telegram falla, el reintento no vuelve a pagar la IA
+
+
 def enviar_reporte_del_dia(dia=None):
-    """Arma el reporte de `dia` (ayer por defecto), lo redacta y lo manda por Telegram una sola vez:
-    un archivo marca el día enviado, así varios procesos o un reinicio no lo repiten."""
+    """Arma el reporte de `dia` (ayer por defecto), lo redacta y lo manda por Telegram una sola vez.
+    Un .lock (O_EXCL) evita que dos procesos lo manden a la vez y el .enviado se escribe recién
+    cuando Telegram lo aceptó: si el proceso muere a mitad, se reintenta en la próxima vuelta."""
     r = riesgo.reporte(data_store.load_events(), dia)
-    marca = os.path.join(data_store.DATA_DIR, f"reporte-{r['fecha']}.enviado")
     os.makedirs(data_store.DATA_DIR, exist_ok=True)
+    marca = os.path.join(data_store.DATA_DIR, f"reporte-{r['fecha']}.enviado")
+    lock = marca + ".lock"
+    if os.path.exists(marca):
+        return False
     try:
-        fd = os.open(marca, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        if time.time() - os.path.getmtime(lock) > 600:   # lock de un proceso que murió
+            os.remove(lock)
+    except OSError:
+        pass
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
         return False
     os.close(fd)
-    if not aviso_telegram.mandar_texto(riesgo.redactar(r)):
-        os.remove(marca)   # no salió: que se reintente en la próxima vuelta
-        return False
-    return True
+    try:
+        if r["fecha"] not in _textos_reporte:
+            _textos_reporte[r["fecha"]] = riesgo.redactar(r)
+        if not aviso_telegram.mandar_texto(_textos_reporte[r["fecha"]]):
+            return False
+        open(marca, "w").close()
+        _textos_reporte.pop(r["fecha"], None)
+        return True
+    finally:
+        os.remove(lock)
 
 
 def iniciar_reporte_diario():
-    """Con REPORTE_HORA=8 (y Telegram configurado) manda el reporte de ayer todos los días a esa hora."""
+    """Con REPORTE_HORA=8 (y Telegram configurado) manda el reporte de ayer todos los días a esa hora.
+    shortcut: arranca un hilo por proceso; con varios workers el .lock y el .enviado en data/ evitan
+    duplicados mientras compartan la carpeta. Con varios contenedores, pasarlo a un cron aparte."""
     hora = os.environ.get("REPORTE_HORA", "")
-    if not hora.isdecimal() or not aviso_telegram.configurado():
+    if not (hora.isdecimal() and 0 <= int(hora) <= 23) or not aviso_telegram.configurado():
         return None
 
     def bucle():
@@ -896,7 +917,7 @@ def iniciar_reporte_diario():
                 try:
                     enviar_reporte_del_dia()
                 except Exception as e:
-                    print(f"[!] Reporte diario: {e}", flush=True)
+                    print(f"[!] Reporte diario: {aviso_telegram.sin_token(e)}", flush=True)
             time.sleep(300)
 
     hilo = threading.Thread(target=bucle, daemon=True, name="reporte-diario")

@@ -24,6 +24,12 @@ def configurado():
     return bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
 
 
+def sin_token(e):
+    """Texto de un error sin el token: los errores de requests traen la URL completa (bot<TOKEN>)."""
+    texto, token = str(e), os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    return texto.replace(token, "***") if token else texto
+
+
 def _url(metodo):
     return f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/{metodo}"
 
@@ -33,7 +39,7 @@ def leyenda(evento):
     partes = [f"{TITULOS.get(evento['type'], evento['type'])} · {evento.get('camera', '')}"]
     if evento.get("ubicacion"):
         partes.append(f"📍 {evento['ubicacion']}")
-    partes.append(f"👤 {evento.get('persona') or 'Sin identificar'} · {evento.get('confidence', 0):.0f}% · {t}")
+    partes.append(f"👤 {evento.get('persona') or 'Sin identificar'} · {float(evento.get('confidence') or 0):.0f}% · {t}")
     return "\n".join(partes)
 
 
@@ -54,7 +60,7 @@ def _enviar(evento, foto):
         if r.status_code >= 400:
             print(f"[!] Telegram respondió {r.status_code}: {r.text[:200]}", flush=True)
     except Exception as e:
-        print(f"[!] Telegram no recibió la alerta: {e}", flush=True)
+        print(f"[!] Telegram no recibió la alerta: {sin_token(e)}", flush=True)
 
 
 def avisar(evento, foto=None):
@@ -79,7 +85,9 @@ def mandar_texto(texto):
     try:
         r = requests.post(_url("sendMessage"), data={"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": texto[:4000]},
                           timeout=15)
+        if r.status_code >= 400:
+            print(f"[!] Telegram respondió {r.status_code} al reporte: {r.text[:200]}", flush=True)
         return r.status_code < 400
     except requests.RequestException as e:
-        print(f"[!] Telegram no recibió el reporte: {e}", flush=True)
+        print(f"[!] Telegram no recibió el reporte: {sin_token(e)}", flush=True)
         return False

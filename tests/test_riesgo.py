@@ -199,3 +199,18 @@ def test_reporte_diario_que_no_salio_se_reintenta(tmp_data, monkeypatch):
     dia = datetime(2026, 11, 20).date()
     assert admin.enviar_reporte_del_dia(dia) is False
     assert not os.path.exists(os.path.join(data_store.DATA_DIR, "reporte-2026-11-20.enviado"))
+
+
+def test_errores_de_telegram_no_muestran_el_token(telegram):
+    err = ConnectionError("HTTPSConnectionPool: Max retries with url: /bot123:abc/sendPhoto")
+    assert "123:abc" not in aviso_telegram.sin_token(err) and "***" in aviso_telegram.sin_token(err)
+
+
+def test_reporte_diario_con_lock_viejo_igual_sale(tmp_data, monkeypatch):
+    monkeypatch.setattr(aviso_telegram, "mandar_texto", lambda t: True)
+    os.makedirs(data_store.DATA_DIR, exist_ok=True)
+    lock = os.path.join(data_store.DATA_DIR, "reporte-2026-11-20.enviado.lock")
+    open(lock, "w").close()
+    os.utime(lock, (0, 0))                                                   # de un proceso que murió
+    assert admin.enviar_reporte_del_dia(datetime(2026, 11, 20).date()) is True
+    assert not os.path.exists(lock)
