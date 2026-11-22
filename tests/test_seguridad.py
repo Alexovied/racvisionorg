@@ -239,3 +239,11 @@ def test_login_se_bloquea_tras_cinco_contrasenas_malas(client):
         assert client.post("/admin/login", data={"username": "u2", "password": "mala"}).status_code == 200
     # Ya bloqueado: ni la contraseña correcta entra hasta que pase la ventana
     assert client.post("/admin/login", data={"username": "u2", "password": "clave-u2"}).status_code == 429
+
+
+def test_entorno_de_desarrollo_no_se_indexa_y_se_marca(monkeypatch):
+    import app as modulo
+    cliente = modulo.app.test_client()
+    assert "X-Robots-Tag" not in cliente.get("/admin/login").headers   # producción: sin cambios
+    monkeypatch.setattr(modulo, "ENTORNO", "desarrollo")
+    assert cliente.get("/admin/login").headers["X-Robots-Tag"] == "noindex, nofollow"
