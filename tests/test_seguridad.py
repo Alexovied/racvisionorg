@@ -231,3 +231,11 @@ def test_csrf_rechaza_post_sin_token_y_acepta_con_token(flask_app, monkeypatch):
 def test_cookie_de_sesion_samesite_lax(flask_app):
     assert flask_app.app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
     assert flask_app.app.config["SESSION_COOKIE_SECURE"] is True  # con gunicorn (producción)
+
+
+def test_login_se_bloquea_tras_cinco_contrasenas_malas(client):
+    data_store.create_user("u2", "clave-u2", role="operator")
+    for _ in range(5):
+        assert client.post("/admin/login", data={"username": "u2", "password": "mala"}).status_code == 200
+    # Ya bloqueado: ni la contraseña correcta entra hasta que pase la ventana
+    assert client.post("/admin/login", data={"username": "u2", "password": "clave-u2"}).status_code == 429

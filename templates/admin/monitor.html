@@ -5,6 +5,7 @@
 
 {% block head %}
 <style>
+    .mon-nodo { color: var(--text-muted); font-size: .85rem; white-space: nowrap; }
     .monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.25rem; }
     .mon-card { padding: 0; overflow: hidden; }
     .mon-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.9rem 1.1rem; }
@@ -26,6 +27,9 @@
     /* La lista desplegable la dibuja el sistema: sin esto, texto claro sobre fondo blanco */
     .mon-foot select option { background: var(--card-bg-solid); color: var(--text); }
     .mon-foot .btn-action { padding: 0.5rem 0.9rem; font-size: 0.82rem; }
+    .mon-horario { padding-top: 0; align-items: center; flex-wrap: wrap; font-size: .82rem; color: var(--text-muted); }
+    .mon-horario input { background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: .3rem .4rem; margin-left: .3rem; color-scheme: dark; }
+    .mon-horario .mon-nota { font-size: .75rem; }
     .mon-foot .btn-action:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
     @media (max-width: 480px) { .monitor-grid { grid-template-columns: 1fr; } }
 </style>
@@ -33,7 +37,8 @@
 
 {% block content %}
 <div class="section-header">
-    <p class="section-desc">Cada cámara activa se analiza en vivo. En las webcam, elegí el dispositivo y tocá Iniciar. Las cámaras USB / IP las analiza el servidor todo el tiempo: ahí podés dibujar zonas prohibidas (Nueva zona, un clic por esquina, Cerrar zona y Guardar).</p>
+    <p class="section-desc">Cada cámara activa se analiza en vivo. En las webcam, elegí el dispositivo y tocá Iniciar. Las cámaras USB / IP las analiza el servidor todo el tiempo: ahí podés dibujar zonas prohibidas o zonas donde no se exige EPP (oficina, pasillo seguro), elegir en qué horario se exige y Guardar.</p>
+    <span class="mon-nodo" id="mon-nodo" title="Equipo que analiza las cámaras del servidor" aria-live="polite"></span>
     {% if cameras %}
     <button class="btn-action btn-create" id="btn-todas"><i class="fa-solid fa-play"></i> Iniciar todas</button>
     {% endif %}
@@ -42,7 +47,7 @@
 {% if cameras %}
 <div class="monitor-grid">
     {% for cam in cameras %}
-    <div class="admin-card mon-card" data-cam-id="{{ cam.id }}" data-cam-type="{{ cam.type }}" data-zonas='{{ cam.zonas | default([]) | tojson }}'>
+    <div class="admin-card mon-card" data-cam-id="{{ cam.id }}" data-cam-type="{{ cam.type }}" data-zonas='{{ cam.zonas | default([]) | tojson }}' data-exentas='{{ cam.exentas | default([]) | tojson }}' data-horario='{{ cam.horario | default(none) | tojson }}'>
         <div class="mon-head">
             <div>
                 <div class="mon-name">{{ cam.name }}</div>
@@ -69,9 +74,18 @@
             <div class="mon-idle">Conectando…</div>
         </div>
         <div class="mon-foot">
+            <select class="mon-zona-tipo" aria-label="Tipo de zona de {{ cam.name }}">
+                <option value="zonas">Prohibida</option>
+                <option value="exentas">Sin EPP exigido</option>
+            </select>
             <button class="btn-action btn-create mon-zona"><i class="fa-solid fa-draw-polygon"></i> Nueva zona</button>
             <button class="btn-action btn-cancel mon-zona-borrar">Borrar zonas</button>
             <button class="btn-action btn-create mon-zona-guardar" disabled>Guardar</button>
+        </div>
+        <div class="mon-foot mon-horario">
+            <label>EPP exigido de <input type="time" class="mon-desde" aria-label="Desde"></label>
+            <label>a <input type="time" class="mon-hasta" aria-label="Hasta"></label>
+            <span class="mon-nota">vacío = siempre</span>
         </div>
         {% endif %}
     </div>
@@ -169,7 +183,9 @@
                 if (estado !== 'falta') continue;
                 enviarEvento({ type: 'sin_' + elemento, camera: camId,
                                confidence: Math.min(100, EPP.confianza(caras, elemento, 'falta', MIN_CONFIDENCE)),
-                               persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE), foto: fotoConRecuadros() });
+                               persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE),
+                               pos: EPP.posicion(caras, elemento, MIN_CONFIDENCE, canvas.width, canvas.height),
+                               foto: fotoConRecuadros() });
             }
             // Alarma física y evento "todos con EPP": según el estado combinado de casco y chaleco
             const alarma = seguimiento.alarma();
@@ -247,7 +263,14 @@
         const idle = card.querySelector('.mon-idle'), chip = card.querySelector('.mon-state');
         const btnZona = card.querySelector('.mon-zona'), btnBorrar = card.querySelector('.mon-zona-borrar'),
               btnGuardar = card.querySelector('.mon-zona-guardar');
-        let zonas = JSON.parse(card.dataset.zonas), actual = null;  // actual: zona que se está dibujando
+        // zonas: prohibidas (amarillo). exentas: donde no se exige EPP (celeste). actual: la que se está dibujando
+        const capas = { zonas: JSON.parse(card.dataset.zonas), exentas: JSON.parse(card.dataset.exentas || '[]') };
+        const COLORES = { zonas: ['#FACC15', 'rgba(250, 204, 21, 0.18)'], exentas: ['#38BDF8', 'rgba(56, 189, 248, 0.18)'] };
+        const tipo = card.querySelector('.mon-zona-tipo');
+        const desde = card.querySelector('.mon-desde'), hasta = card.querySelector('.mon-hasta');
+        const horario = JSON.parse(card.dataset.horario || 'null');
+        if (horario) { desde.value = horario.desde; hasta.value = horario.hasta; }
+        let actual = null, capaActual = 'zonas';
 
         // Video continuo (MJPEG): una sola conexión; si se corta o todavía no hay señal, se reintenta
         const pedir = () => { img.src = `/admin/api/cameras/${camId}/video?t=${Date.now()}`; };
@@ -257,14 +280,17 @@
 
         function dibujarZonas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.lineWidth = 2; ctx.strokeStyle = '#FACC15'; ctx.fillStyle = 'rgba(250, 204, 21, 0.18)';
-            for (const z of [...zonas, ...(actual ? [actual] : [])]) {
+            ctx.lineWidth = 2;
+            const todas = [...capas.zonas.map(z => [z, 'zonas']), ...capas.exentas.map(z => [z, 'exentas']),
+                           ...(actual ? [[actual, capaActual]] : [])];
+            for (const [z, capa] of todas) {
+                [ctx.strokeStyle, ctx.fillStyle] = COLORES[capa];
                 ctx.beginPath();
                 z.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * canvas.width, y * canvas.height));
                 if (z !== actual) { ctx.closePath(); ctx.fill(); }
                 ctx.stroke();
                 if (z === actual) {  // esquinas ya marcadas, bien visibles
-                    ctx.fillStyle = '#FACC15';
+                    ctx.fillStyle = COLORES[capa][0];
                     for (const [x, y] of z) ctx.fillRect(x * canvas.width - 4, y * canvas.height - 4, 8, 8);
                 }
             }
@@ -278,18 +304,25 @@
         });
         btnZona.addEventListener('click', () => {
             if (!actual) {
-                if (zonas.length >= 10) return alert('Máximo 10 zonas por cámara');
+                capaActual = tipo.value;
+                if (capas[capaActual].length >= 10) return alert('Máximo 10 zonas de cada tipo por cámara');
                 actual = []; btnZona.textContent = 'Cerrar zona'; canvas.style.cursor = 'crosshair'; return;
             }
-            if (actual.length >= 3) { zonas.push(actual); btnGuardar.disabled = false; }
+            if (actual.length >= 3) { capas[capaActual].push(actual); btnGuardar.disabled = false; }
             actual = null; btnZona.innerHTML = '<i class="fa-solid fa-draw-polygon"></i> Nueva zona'; canvas.style.cursor = '';
             dibujarZonas();
         });
-        btnBorrar.addEventListener('click', () => { zonas = []; if (actual) actual = []; btnGuardar.disabled = false; dibujarZonas(); });
+        btnBorrar.addEventListener('click', () => {
+            capas[tipo.value] = []; if (actual) actual = []; btnGuardar.disabled = false; dibujarZonas();  // borra las del tipo elegido
+        });
+        [desde, hasta].forEach(i => i.addEventListener('change', () => { btnGuardar.disabled = false; }));
         btnGuardar.addEventListener('click', async () => {
             if (actual) btnZona.click();  // una zona a medio dibujar se cierra antes de guardar
+            if (!desde.value !== !hasta.value) return alert('Completá las dos horas del horario, o dejá las dos vacías para exigir EPP siempre.');
+            const horario = desde.value && hasta.value ? { desde: desde.value, hasta: hasta.value } : null;
             const r = await fetch(`/admin/api/cameras/${camId}/zonas`, { method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF }, body: JSON.stringify({ zonas }) });
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify({ zonas: capas.zonas, exentas: capas.exentas, horario }) });
             if (r.ok) btnGuardar.disabled = true;
             else alert((await r.json().catch(() => ({}))).error || 'No se pudieron guardar las zonas');
         });
@@ -302,7 +335,8 @@
             const cortado = !e || !!e.error;
             if (cortado) { idle.style.display = ''; img.style.visibility = 'hidden'; } else if (sinSenal) pedir();
             sinSenal = cortado;
-            const [clase, texto] = !e ? [null, 'SERVIDOR SIN MOTOR'] : e.error ? [null, e.error.toUpperCase()] : [e.clase, e.titulo];
+            const [clase, texto] = !e ? [null, 'SERVIDOR SIN MOTOR'] : e.error ? [null, e.error.toUpperCase()]
+                : e.lente ? ['alerta', 'LENTE ' + e.lente.toUpperCase()] : [e.clase, e.titulo];
             chip.className = 'mon-state' + (clase === 'ok' ? ' ok' : clase === 'alerta' ? ' alerta' : '');
             chip.textContent = texto;
             chip.title = e && !e.error ? `${e.fps} fps` : '';
@@ -319,6 +353,9 @@
             if (!r.ok) return;
             const estados = await r.json();
             servidor.forEach(m => m.estado(estados[m.camId]));
+            const n = estados._nodo;
+            if (n) document.getElementById('mon-nodo').textContent = [n.cpu != null && `CPU ${Math.round(n.cpu)} %`,
+                n.memoria != null && `RAM ${Math.round(n.memoria)} %`, n.temperatura != null && `${n.temperatura} °C`].filter(Boolean).join(' · ');
         } catch (e) { console.error(e); }
     }, 700);
 
