@@ -1,6 +1,6 @@
 """Latencia media por frame de los YOLO de casco y chaleco: cv2.dnn vs OpenVINO (FP32 e INT8, CPU y GPU Intel).
 
-Uso: python benchmark_inferencia.py [carpeta_de_imagenes] [n_imagenes]
+Uso: python herramientas/benchmark_inferencia.py [carpeta_de_imagenes] [n_imagenes]
 Mide correr_yolo completo (letterbox + inferencia + NMS), como en producción.
 """
 import glob
@@ -12,11 +12,13 @@ import time
 import cv2
 import numpy as np
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # los módulos de la app están en la raíz
+
 import helmet_detector
 
-RAIZ = os.path.dirname(os.path.abspath(__file__))
-MODELOS = {"casco": os.path.join(RAIZ, "detector_casco.onnx"),
-           "chaleco": os.path.join(RAIZ, "detector_chaleco.onnx")}
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELOS = {"casco": os.path.join(RAIZ, "modelos_app", "detector_casco.onnx"),
+           "chaleco": os.path.join(RAIZ, "modelos_app", "detector_chaleco.onnx")}
 
 
 def imagenes(carpeta, n):

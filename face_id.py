@@ -24,7 +24,7 @@ import face_detector
 import helmet_detector  # Core y dispositivo de OpenVINO
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE, "face_recognition_sface_2021dec.onnx")
+MODEL_PATH = os.path.join(BASE, "modelos_app", "face_recognition_sface_2021dec.onnx")
 
 # Similitud coseno mínima para dar un nombre. OpenCV sugiere 0.363, pero en las
 # fotos del proyecto una misma persona dio 0.54-0.77 y personas distintas hasta

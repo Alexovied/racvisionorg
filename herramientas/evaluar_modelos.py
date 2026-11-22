@@ -1,6 +1,6 @@
 """Precisión y latencia de casco y chaleco con fotos propias del equipo, con el pipeline de producción.
 
-Uso: python evaluar_modelos.py
+Uso: python herramientas/evaluar_modelos.py
 - Casco: el mismo 30 % de con_casco/ y sin_casco/ que entrenamiento/detector_casco_colab.ipynb
   dejó afuera del entrenamiento (random.seed(1)), así que son fotos que el modelo nunca vio.
 - Chaleco: fotos de personas/ y personas_prueba/ ("chaleco_*" = con chaleco, el resto sin chaleco)
@@ -16,10 +16,13 @@ from collections import Counter
 import cv2
 import numpy as np
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # los módulos de la app están en la raíz
+
 import epp
 import helmet_detector
 
-RAIZ = os.path.dirname(os.path.abspath(__file__))
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def fotos_prueba_casco():

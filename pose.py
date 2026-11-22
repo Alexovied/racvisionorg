@@ -14,7 +14,7 @@ import cv2
 
 import helmet_detector
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "detector_pose.onnx")
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_app", "detector_pose.onnx")
 CONF_PERSONA = 0.35
 CONF_PUNTO = 0.5          # por debajo, el punto no se ve bien y no se usa
 ANGULO_CAIDO = 50         # grados del torso respecto de la vertical

@@ -21,7 +21,7 @@ on:
                                                                                                 pip install tensorflow==2.15.1 keras==2.15.0 numpy==1.26.4
                                                                                                       - name: Convert model
         run: |
-                  python convert_model.py
+                  python herramientas/convert_model.py
                         - name: Commit and push TFLite model
                                 run: |
                                           git config --global user.name 'github-actions[bot]'

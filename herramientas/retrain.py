@@ -15,10 +15,10 @@ EPOCHS_HEAD     = 30
 EPOCHS_FINETUNE = 40
 LR_HEAD         = 1e-3
 LR_FINETUNE     = 5e-6
-DATA_DIR        = Path(__file__).parent
+DATA_DIR        = Path(__file__).resolve().parent.parent
 CON_DIR         = DATA_DIR / "con_casco"
 SIN_DIR         = DATA_DIR / "sin_casco"
-OUTPUT_MODEL    = DATA_DIR / "modelo.keras"
+OUTPUT_MODEL    = DATA_DIR / "modelos_app" / "modelo.keras"
 OUTPUT_BACKUP   = DATA_DIR / "modelos" / "modelo_backup_pre_retrain.keras"
 AUGMENT_FACTOR  = 6
 

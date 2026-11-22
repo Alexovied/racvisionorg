@@ -496,7 +496,7 @@ def api_motor():
 @login_required
 @admin_required
 def config():
-    available_models = glob.glob("*.keras")
+    available_models = [os.path.basename(m) for m in glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_app", "*.keras"))]
     
     if request.method == "POST":
         action = request.form.get("action")

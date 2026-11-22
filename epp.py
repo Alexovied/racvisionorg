@@ -53,7 +53,7 @@ def tiene_chaleco(img, bbox):
 # ── Modelo entrenado (entrenamiento/detector_chaleco_colab.ipynb) ────────────
 # YOLOv8n con dos clases: 0 = persona, 1 = chaleco. Si el archivo no está, se
 # usa la regla de color de arriba.
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "detector_chaleco.onnx")
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_app", "detector_chaleco.onnx")
 CONF_MODELO = 0.35
 _net, _lock = None, threading.Lock()
 if os.path.exists(MODEL_PATH):

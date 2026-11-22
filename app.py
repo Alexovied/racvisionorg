@@ -115,7 +115,7 @@ init_login(app)
 init_esp32()
 
 # Cargar el modelo Keras personalizado
-model_path = "modelo.keras"
+model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_app", "modelo.keras")
 model = None
 
 if not os.path.exists(model_path):

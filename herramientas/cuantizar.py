@@ -1,6 +1,6 @@
 """Cuantiza los YOLO de casco y chaleco a INT8 con NNCF (Intel) para OpenVINO.
 
-Uso: python cuantizar.py   (necesita `pip install nncf` y las fotos de con_casco/ y sin_casco/)
+Uso: python herramientas/cuantizar.py   (necesita `pip install nncf` y las fotos de con_casco/ y sin_casco/)
 Genera detector_casco_int8.xml/.bin y detector_chaleco_int8.xml/.bin, que
 helmet_detector.cargar_modelo usa si existen. Calibra con el 70 % de las fotos
 que el notebook usó para entrenar: el 30 % de prueba de evaluar_modelos.py no se toca.
@@ -11,10 +11,13 @@ import cv2
 import nncf
 import openvino as ov
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # los módulos de la app están en la raíz
+
 import evaluar_modelos
 import helmet_detector
 
-RAIZ = os.path.dirname(os.path.abspath(__file__))
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def fotos_calibracion():
@@ -35,12 +38,12 @@ def main():
     rutas = fotos_calibracion()
     print(f"Calibración con {len(rutas)} fotos")
     for nombre in ("casco", "chaleco"):
-        modelo = ov.Core().read_model(os.path.join(RAIZ, f"detector_{nombre}.onnx"))
+        modelo = ov.Core().read_model(os.path.join(RAIZ, "modelos_app", f"detector_{nombre}.onnx"))
         int8 = nncf.quantize(modelo, nncf.Dataset(rutas, preparar), preset=nncf.QuantizationPreset.MIXED,
                              subset_size=len(rutas),
                              # La cabeza de YOLOv8 (decodificación de cajas) pierde precisión en INT8
                              ignored_scope=nncf.IgnoredScope(types=["Multiply", "Subtract", "Sigmoid"]))
-        ov.save_model(int8, os.path.join(RAIZ, f"detector_{nombre}_int8.xml"))
+        ov.save_model(int8, os.path.join(RAIZ, "modelos_app", f"detector_{nombre}_int8.xml"))
         print(f"[+] detector_{nombre}_int8.xml")
 
 

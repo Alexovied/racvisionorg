@@ -334,7 +334,7 @@ timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 nombre_modelo = f"modelo_{timestamp}.keras"
 
 model.save(nombre_modelo)
-model.save("modelo.keras")
+model.save(os.path.join("modelos_app", "modelo.keras"))
 
 print(f"\n[+] Entrenamiento finalizado.")
 print(f"    Guardado como: {nombre_modelo}")
