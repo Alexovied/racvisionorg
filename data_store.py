@@ -241,6 +241,8 @@ def reset_config():
 
 # Infracciones: guardan persona y foto, disparan la alarma y cuentan como alerta en el panel
 ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido")
+# Salud de las cámaras (motor.py + salud.py): avisan y guardan foto, pero no hacen sonar la alarma
+SALUD_TYPES = ("camara_sin_senal", "camara_tapada", "camara_desenfocada")
 
 def load_events():
     return _load_json("events.json", [])

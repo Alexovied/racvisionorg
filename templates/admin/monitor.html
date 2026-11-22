@@ -5,6 +5,7 @@
 
 {% block head %}
 <style>
+    .mon-nodo { color: var(--text-muted); font-size: .85rem; white-space: nowrap; }
     .monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.25rem; }
     .mon-card { padding: 0; overflow: hidden; }
     .mon-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.9rem 1.1rem; }
@@ -34,6 +35,7 @@
 {% block content %}
 <div class="section-header">
     <p class="section-desc">Cada cámara activa se analiza en vivo. En las webcam, elegí el dispositivo y tocá Iniciar. Las cámaras USB / IP las analiza el servidor todo el tiempo: ahí podés dibujar zonas prohibidas (Nueva zona, un clic por esquina, Cerrar zona y Guardar).</p>
+    <span class="mon-nodo" id="mon-nodo" title="Equipo que analiza las cámaras del servidor" aria-live="polite"></span>
     {% if cameras %}
     <button class="btn-action btn-create" id="btn-todas"><i class="fa-solid fa-play"></i> Iniciar todas</button>
     {% endif %}
@@ -304,7 +306,8 @@
             const cortado = !e || !!e.error;
             if (cortado) { idle.style.display = ''; img.style.visibility = 'hidden'; } else if (sinSenal) pedir();
             sinSenal = cortado;
-            const [clase, texto] = !e ? [null, 'SERVIDOR SIN MOTOR'] : e.error ? [null, e.error.toUpperCase()] : [e.clase, e.titulo];
+            const [clase, texto] = !e ? [null, 'SERVIDOR SIN MOTOR'] : e.error ? [null, e.error.toUpperCase()]
+                : e.lente ? ['alerta', 'LENTE ' + e.lente.toUpperCase()] : [e.clase, e.titulo];
             chip.className = 'mon-state' + (clase === 'ok' ? ' ok' : clase === 'alerta' ? ' alerta' : '');
             chip.textContent = texto;
             chip.title = e && !e.error ? `${e.fps} fps` : '';
@@ -321,6 +324,9 @@
             if (!r.ok) return;
             const estados = await r.json();
             servidor.forEach(m => m.estado(estados[m.camId]));
+            const n = estados._nodo;
+            if (n) document.getElementById('mon-nodo').textContent = [n.cpu != null && `CPU ${Math.round(n.cpu)} %`,
+                n.memoria != null && `RAM ${Math.round(n.memoria)} %`, n.temperatura != null && `${n.temperatura} °C`].filter(Boolean).join(' · ');
         } catch (e) { console.error(e); }
     }, 700);
 

@@ -27,6 +27,7 @@ import aviso_telegram
 import data_store
 import face_id
 import riesgo
+import salud
 import motor
 from hardware import enviar_comando_esp32
 
@@ -460,7 +461,8 @@ def api_video(cam_id):
 @admin_bp.route("/api/motor")
 @roles_required("operator", "admin")
 def api_motor():
-    return jsonify(motor.estado())
+    # _nodo: CPU / RAM / temperatura del equipo (un nodo recalentado o saturado deja de analizar a tiempo)
+    return jsonify({**motor.estado(), "_nodo": salud.nodo()})
 
 
 # ═══════════════════════════════════════
@@ -596,7 +598,10 @@ VALID_EVENT_TYPES = ("con_casco", "sin_casco", "sin_chaleco")
 # Infracciones: guardan persona y foto, y disparan la alarma
 ALERT_TYPES = data_store.ALERT_TYPES
 EVENT_LABELS = {"con_casco": "Con Casco", "sin_casco": "Sin Casco", "sin_chaleco": "Sin Chaleco",
-                "zona_prohibida": "Zona Prohibida", "hombre_caido": "Hombre Caído"}
+                "zona_prohibida": "Zona Prohibida", "hombre_caido": "Hombre Caído",
+                "camara_sin_senal": "Cámara sin señal", "camara_tapada": "Cámara tapada",
+                "camara_desenfocada": "Cámara desenfocada"}
+SALUD_TYPES = data_store.SALUD_TYPES
 
 
 @admin_bp.app_context_processor
@@ -697,7 +702,7 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
         if _posicion(pos):
             extra["pos"] = _posicion(pos)
     foto_webp = None
-    if foto and event_type in ALERT_TYPES:
+    if foto and (event_type in ALERT_TYPES or event_type in SALUD_TYPES):
         # La API ya la recodificó en foto_de_alerta(); el JPEG del motor se pasa a WebP acá
         foto_webp = foto if foto[:4] == b"RIFF" and foto[8:12] == b"WEBP" else a_webp(foto)
     event = data_store.append_event(event_type, confidence, camera, foto_webp=foto_webp, **extra)
@@ -726,7 +731,7 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
             n8n_headers["Authorization"] = f"Bearer {N8N_WEBHOOK_TOKEN}"
         # En segundo plano: un n8n lento no frena ni la respuesta ni el análisis de la cámara
         threading.Thread(target=_avisar_n8n, args=(n8n_payload, n8n_headers), daemon=True).start()
-    if event_type in ALERT_TYPES:
+    if event_type in ALERT_TYPES or event_type in SALUD_TYPES:
         aviso_telegram.avisar(event, foto_webp)   # sin TELEGRAM_BOT_TOKEN no hace nada
     return event
 

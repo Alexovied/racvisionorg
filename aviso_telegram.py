@@ -15,7 +15,9 @@ import requests
 
 ESPERA = 60
 TITULOS = {"sin_casco": "⛑️ SIN CASCO", "sin_chaleco": "🦺 SIN CHALECO",
-           "zona_prohibida": "🚫 ZONA PROHIBIDA", "hombre_caido": "🆘 HOMBRE CAÍDO"}
+           "zona_prohibida": "🚫 ZONA PROHIBIDA", "hombre_caido": "🆘 HOMBRE CAÍDO",
+           "camara_sin_senal": "📵 CÁMARA SIN SEÑAL", "camara_tapada": "🙈 CÁMARA TAPADA",
+           "camara_desenfocada": "🌫️ CÁMARA DESENFOCADA"}
 _ultimo = {}
 _lock = threading.Lock()
 
@@ -39,7 +41,10 @@ def leyenda(evento):
     partes = [f"{TITULOS.get(evento['type'], evento['type'])} · {evento.get('camera', '')}"]
     if evento.get("ubicacion"):
         partes.append(f"📍 {evento['ubicacion']}")
-    partes.append(f"👤 {evento.get('persona') or 'Sin identificar'} · {float(evento.get('confidence') or 0):.0f}% · {t}")
+    if evento["type"].startswith("camara_"):
+        partes.append(f"Punto ciego desde las {t}: revisar la cámara")
+    else:
+        partes.append(f"👤 {evento.get('persona') or 'Sin identificar'} · {float(evento.get('confidence') or 0):.0f}% · {t}")
     return "\n".join(partes)
 
 
