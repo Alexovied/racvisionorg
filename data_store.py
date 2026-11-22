@@ -239,12 +239,28 @@ ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido")
 def load_events():
     return _load_json("events.json", [])
 
-def alert_photo_path(event_id):
-    """Ruta de la foto de una alerta: data/alertas/<id>.jpg"""
-    return os.path.join(DATA_DIR, "alertas", f"{event_id}.jpg")
+def alert_photo_path(event_id, ext="webp"):
+    """Ruta de la foto de una alerta: data/alertas/<id>.webp
+    (las alertas anteriores al cambio a WebP quedaron como <id>.jpg)."""
+    return os.path.join(DATA_DIR, "alertas", f"{event_id}.{ext}")
 
-def append_event(event_type, confidence, camera="webcam", foto_jpg=None, **extra):
-    """extra: persona, ubicacion... foto_jpg: bytes JPEG ya validados (se guarda aparte)."""
+def existing_alert_photo(event_id):
+    """(ruta, mimetype) de la foto guardada de una alerta, WebP o JPEG viejo; None si no hay."""
+    for ext, mime in (("webp", "image/webp"), ("jpg", "image/jpeg")):
+        ruta = alert_photo_path(event_id, ext)
+        if os.path.exists(ruta):
+            return ruta, mime
+    return None
+
+def _remove_alert_photo(event_id):
+    for ext in ("webp", "jpg"):
+        try:
+            os.remove(alert_photo_path(event_id, ext))
+        except OSError:
+            pass
+
+def append_event(event_type, confidence, camera="webcam", foto_webp=None, **extra):
+    """extra: persona, ubicacion... foto_webp: bytes WebP ya validados (se guarda aparte)."""
     with _lock:
         events = load_events()
         event = {
@@ -255,25 +271,22 @@ def append_event(event_type, confidence, camera="webcam", foto_jpg=None, **extra
             "timestamp": datetime.now().isoformat(),
             **extra,
         }
-        if foto_jpg:
+        if foto_webp:
             os.makedirs(os.path.dirname(alert_photo_path(event["id"])), exist_ok=True)
             with open(alert_photo_path(event["id"]), "wb") as f:
-                f.write(foto_jpg)
+                f.write(foto_webp)
             event["foto"] = True
         events.insert(0, event)
         # Keep max 5000 events (y se borran las fotos de los que salen)
         if len(events) > 5000:
             for viejo in events[5000:]:
                 if viejo.get("foto"):
-                    try:
-                        os.remove(alert_photo_path(viejo["id"]))
-                    except OSError:
-                        pass
+                    _remove_alert_photo(viejo["id"])
             events = events[:5000]
         try:
             _save_json("events.json", events)
         except Exception:
-            if foto_jpg:  # el evento no quedó registrado: su foto tampoco
+            if foto_webp:  # el evento no quedó registrado: su foto tampoco
                 os.remove(alert_photo_path(event["id"]))
             raise
         return event

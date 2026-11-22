@@ -599,8 +599,25 @@ def validate_event_payload(data):
     return event_type, confidence, camera, None
 
 
+# Las fotos de alertas se guardan en WebP: a igual calidad pesan bastante menos que JPEG
+CALIDAD_WEBP = 80
+
+
+def a_webp(imagen):
+    """Bytes WebP de una imagen (bytes JPEG/PNG/WebP o matriz de OpenCV), o None si no se puede.
+    Siempre se vuelve a codificar: nunca se guardan bytes tal cual llegan."""
+    if imagen is None:
+        return None
+    if isinstance(imagen, (bytes, bytearray)):
+        imagen = cv2.imdecode(np.frombuffer(imagen, np.uint8), cv2.IMREAD_COLOR)
+        if imagen is None:
+            return None
+    ok, webp = cv2.imencode(".webp", imagen, [cv2.IMWRITE_WEBP_QUALITY, CALIDAD_WEBP])
+    return webp.tobytes() if ok else None
+
+
 def foto_de_alerta(data):
-    """JPEG validado de la captura que manda el detector ("data:image/jpeg;base64,..."),
+    """WebP validado de la captura que manda el detector ("data:image/jpeg;base64,..."),
     o None si no vino o no es una imagen. Se vuelve a codificar: nunca se guardan
     bytes tal cual los manda el cliente."""
     foto = data.get("foto")
@@ -610,11 +627,7 @@ def foto_de_alerta(data):
         crudo = base64.b64decode(foto.split(",", 1)[1], validate=True)
     except (binascii.Error, ValueError):
         return None
-    img = cv2.imdecode(np.frombuffer(crudo, np.uint8), cv2.IMREAD_COLOR)
-    if img is None:
-        return None
-    ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    return jpg.tobytes() if ok else None
+    return a_webp(crudo)
 
 
 def datos_de_camara(camera):
@@ -625,15 +638,20 @@ def datos_de_camara(camera):
     return ("Detector web" if camera == DEFAULT_CAMERA else camera), ""
 
 
-def registrar_evento(event_type, confidence, camera, persona=None, foto_jpg=None):
+def registrar_evento(event_type, confidence, camera, persona=None, foto=None):
     """Guarda el evento y avisa: alarma física y webhook. Lo usan la API (el navegador decide)
     y el motor de cámaras del servidor (motor.py). camera: id o nombre de una cámara registrada.
-    Las alertas guardan además quién era, dónde fue y una foto del momento."""
+    Las alertas guardan además quién era, dónde fue y una foto del momento (en WebP).
+    foto: bytes de imagen; el motor manda el JPEG del cuadro y acá se pasa a WebP."""
     camera, ubicacion = datos_de_camara(camera)
     extra = {"ubicacion": ubicacion} if ubicacion else {}
     if event_type in ALERT_TYPES:
         extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
-    event = data_store.append_event(event_type, confidence, camera, foto_jpg=foto_jpg, **extra)
+    foto_webp = None
+    if foto and event_type in ALERT_TYPES:
+        # La API ya la recodificó en foto_de_alerta(); el JPEG del motor se pasa a WebP acá
+        foto_webp = foto if foto[:4] == b"RIFF" and foto[8:12] == b"WEBP" else a_webp(foto)
+    event = data_store.append_event(event_type, confidence, camera, foto_webp=foto_webp, **extra)
 
     # Despachar comando al hardware según el tipo de evento
     if event_type in ALERT_TYPES:
@@ -672,16 +690,17 @@ def _avisar_n8n(payload, headers):
 motor.registrar_evento = registrar_evento
 
 
-@admin_bp.route("/alertas/<event_id>.jpg")
+@admin_bp.route("/alertas/<event_id>.jpg")   # enlaces viejos: sirve la foto que haya (WebP o JPEG)
+@admin_bp.route("/alertas/<event_id>.webp")  # va abajo para registrarse primero: url_for arma .webp
 @login_required
 def foto_alerta(event_id):
     # El id es un uuid generado por el servidor; cualquier otra cosa se rechaza
     if not all(ch in "0123456789abcdef-" for ch in event_id) or len(event_id) != 36:
         abort(404)
-    ruta = data_store.alert_photo_path(event_id)
-    if not os.path.exists(ruta):
+    foto = data_store.existing_alert_photo(event_id)
+    if not foto:
         abort(404)
-    return send_file(ruta, mimetype="image/jpeg")
+    return send_file(foto[0], mimetype=foto[1])
 
 
 @admin_bp.route("/api/events", methods=["POST"])

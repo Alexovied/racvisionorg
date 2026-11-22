@@ -1,6 +1,7 @@
 """Motor de cámaras del servidor: reglas de alerta, zonas de exclusión y hombre caído."""
 import threading
 
+import cv2
 import numpy as np
 import pytest
 
@@ -176,7 +177,8 @@ def test_sin_casco_pasa_de_alerta_a_todos_con_epp(camara, monkeypatch):
 def test_registrar_evento_de_zona_guarda_persona_y_foto(flask_app):
     cam = data_store.create_camera("Portón", "Sector A", "usb", "0")
     import admin
-    ev = admin.registrar_evento("zona_prohibida", 100, cam["id"], None, b"\xff\xd8jpg")
+    jpg = cv2.imencode(".jpg", np.zeros((48, 64, 3), np.uint8))[1].tobytes()  # como el cuadro del motor
+    ev = admin.registrar_evento("zona_prohibida", 100, cam["id"], None, jpg)
     assert (ev["type"], ev["camera"], ev["ubicacion"], ev["persona"], ev["foto"]) == \
            ("zona_prohibida", "Portón", "Sector A", "Sin identificar", True)
     assert data_store.get_stats()["alerts_24h"] == 1
