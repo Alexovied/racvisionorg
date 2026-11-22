@@ -83,3 +83,61 @@ def test_nodo_informa_cpu_y_memoria():
     assert set(n) == {"cpu", "memoria", "temperatura"}
     if salud.psutil:
         assert 0 <= n["memoria"] <= 100
+
+
+# ── Zonas exentas y horario de exigencia ─────────────────────────────────────
+
+from datetime import datetime  # noqa: E402
+
+
+@pytest.mark.parametrize("horario, hora, exige", [
+    (None, "03:00", True), ({"desde": "07:00", "hasta": "19:00"}, "06:59", False),
+    ({"desde": "07:00", "hasta": "19:00"}, "07:00", True), ({"desde": "07:00", "hasta": "19:00"}, "19:00", False),
+    ({"desde": "22:00", "hasta": "06:00"}, "23:30", True), ({"desde": "22:00", "hasta": "06:00"}, "12:00", False),
+    ({"desde": "08:00", "hasta": "08:00"}, "12:00", True)])
+def test_en_horario(horario, hora, exige):
+    assert motor.en_horario(horario, datetime.strptime("2026-11-22 " + hora, "%Y-%m-%d %H:%M")) is exige
+
+
+def _camara_con(monkeypatch, cara, **extra):
+    cam = data_store.create_camera("Taller", "", "usb", "0")
+    cam.update(extra)
+    eventos = []
+    monkeypatch.setattr(motor, "registrar_evento", lambda *a: eventos.append(a))
+    monkeypatch.setattr(motor, "analizar", lambda img, modos, con_personas=False, **kw: ([cara] if modos["casco"] else [], []))
+    monkeypatch.setattr(motor.salud, "lente", lambda img: None)
+    hilo = motor.Camara(cam)
+    for _ in range(3):
+        hilo._procesar(np.zeros((480, 640, 3), np.uint8))
+    return [e[0] for e in eventos]
+
+
+SIN_CASCO = {"bbox": [100, 100, 40, 40], "nombre": None, "con_casco": 5.0, "sin_casco": 95.0}
+
+
+def test_sin_casco_en_zona_exenta_no_alerta(monkeypatch):
+    assert _camara_con(monkeypatch, SIN_CASCO) == ["sin_casco"]
+    exenta = [[[0, 0], [0.5, 0], [0.5, 0.5], [0, 0.5]]]          # la cabeza (120, 120) cae adentro
+    assert _camara_con(monkeypatch, SIN_CASCO, exentas=exenta) == []
+
+
+def test_fuera_de_horario_no_se_exige_casco(monkeypatch):
+    ahora = datetime.now().strftime("%H:%M")
+    fuera = {"desde": "00:00", "hasta": "00:01"} if ahora >= "00:01" else {"desde": "12:00", "hasta": "13:00"}
+    assert _camara_con(monkeypatch, SIN_CASCO, horario=fuera) == []
+
+
+def test_api_guarda_exentas_y_horario(operator_client):
+    cam = data_store.create_camera("Taller", "", "usb", "0")
+    url = f"/admin/api/cameras/{cam['id']}/zonas"
+    poligono = [[0, 0], [0.5, 0], [0.5, 0.5]]
+    r = operator_client.post(url, json={"zonas": [], "exentas": [poligono], "horario": {"desde": "07:00", "hasta": "19:00"}})
+    assert r.status_code == 200
+    [c] = data_store.load_cameras()
+    assert c["exentas"] == [poligono] and c["horario"] == {"desde": "07:00", "hasta": "19:00"}
+    operator_client.post(url, json={"zonas": []})                                  # sin exentas ni horario: no cambian
+    assert data_store.load_cameras()[0]["horario"] == {"desde": "07:00", "hasta": "19:00"}
+    operator_client.post(url, json={"zonas": [], "horario": None})                  # null: siempre
+    assert data_store.load_cameras()[0]["horario"] is None
+    assert operator_client.post(url, json={"zonas": [], "horario": {"desde": "7", "hasta": "19:00"}}).status_code == 400
+    assert operator_client.post(url, json={"zonas": [], "exentas": "x"}).status_code == 400

@@ -14,6 +14,7 @@ import threading
 import time
 import traceback
 import unicodedata
+from datetime import datetime
 from collections import deque
 
 import cv2
@@ -116,6 +117,15 @@ def _evaluar(c, min_conf):
     if c.get("con_casco") is not None and max(c["con_casco"], c["sin_casco"]) >= min_conf:
         casco = "ok" if c["con_casco"] > c["sin_casco"] else "falta"
     return {"casco": casco, "chaleco": {True: "ok", False: "falta"}.get(c.get("chaleco"))}
+
+
+def en_horario(horario, ahora):
+    """True si a esa hora se exige EPP. horario: {"desde": "07:00", "hasta": "19:00"}; vacío = siempre.
+    Si desde > hasta el turno cruza la medianoche (22:00 a 06:00)."""
+    if not horario or horario.get("desde") == horario.get("hasta"):
+        return True
+    t, d, h = ahora.strftime("%H:%M"), horario["desde"], horario["hasta"]
+    return d <= t < h if d < h else t >= d or t < h
 
 
 def _peor(estados):
@@ -380,12 +390,19 @@ class Camara(threading.Thread):
         pegar = lambda v: 0.0 if v < 0.02 else 1.0 if v > 0.98 else v
         zonas = [np.array([[pegar(x) * ancho, pegar(y) * alto] for x, y in z], np.int32)
                  for z in cam.get("zonas") or []]
-        modos = {"casco": bool(cfg["detectar_casco"]), "chaleco": bool(cfg["detectar_chaleco"])}
+        # Fuera del horario de la cámara (ej. sin turno de noche) no se exige casco ni chaleco;
+        # zonas prohibidas y caídas siguen siempre
+        exige = en_horario(cam.get("horario"), datetime.now())
+        modos = {"casco": exige and bool(cfg["detectar_casco"]), "chaleco": exige and bool(cfg["detectar_chaleco"])}
         caida = bool(cfg["detectar_caida"])
+        exentas = [np.array([[x * ancho, y * alto] for x, y in z], np.int32) for z in cam.get("exentas") or []]
 
         info = {}
         caras, personas = analizar(img, modos, con_personas=bool(zonas) or caida, nivel=self.nivel, info=info)
-        estados = [_evaluar(c, cfg["min_confidence"]) for c in caras]
+        # Zonas exentas (oficina, pasillo seguro): ahí no se juzga el EPP de nadie
+        exenta = lambda c: any(cv2.pointPolygonTest(z, (c["bbox"][0] + c["bbox"][2] / 2, c["bbox"][1] + c["bbox"][3] / 2),
+                                                    False) >= 0 for z in exentas)
+        estados = [{"casco": None, "chaleco": None} if exenta(c) else _evaluar(c, cfg["min_confidence"]) for c in caras]
         votos = {k: _peor([e[k] for e in estados]) for k in modos if modos[k]}
         # En zona: el punto de apoyo de la persona (centro del borde de abajo de su caja) cae en un polígono
         en_zona = [p for p in personas

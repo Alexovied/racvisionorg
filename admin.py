@@ -421,15 +421,25 @@ def _zonas_validas(zonas):
 @admin_bp.route("/api/cameras/<cam_id>/zonas", methods=["POST"])
 @roles_required("operator", "admin")
 def api_zonas(cam_id):
-    """Guarda las zonas de exclusión dibujadas en Monitoreo: {"zonas": [[[x, y], ...], ...]}."""
+    """Guarda lo dibujado en Monitoreo: {"zonas": [[[x, y], ...], ...], "exentas": [...] (opcional),
+    "horario": {"desde": "07:00", "hasta": "19:00"} o null (opcional: horario en que se exige EPP)}."""
     data = request.get_json(silent=True)
     zonas = data.get("zonas") if isinstance(data, dict) else None
-    if not _zonas_validas(zonas):
+    exentas = data.get("exentas") if isinstance(data, dict) else None
+    if not _zonas_validas(zonas) or (exentas is not None and not _zonas_validas(exentas)):
         return jsonify({"error": "Zonas inválidas: hasta 10 polígonos de 3 a 20 puntos con coordenadas de 0 a 1"}), 400
-    if not data_store.set_zonas(cam_id, zonas):
+    horario = data.get("horario", False)
+    hora = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+    if horario not in (False, None) and not (isinstance(horario, dict) and all(
+            isinstance(horario.get(k), str) and hora.match(horario[k]) for k in ("desde", "hasta"))):
+        return jsonify({"error": "Horario inválido: {desde, hasta} en HH:MM"}), 400
+    if horario:
+        horario = {"desde": horario["desde"], "hasta": horario["hasta"]}
+    cam = data_store.set_zonas(cam_id, zonas, exentas, horario)
+    if not cam:
         return jsonify({"error": "Cámara no encontrada"}), 404
     motor.sincronizar()
-    return jsonify({"ok": True, "zonas": zonas})
+    return jsonify({"ok": True, "zonas": zonas, "exentas": cam.get("exentas", []), "horario": cam.get("horario")})
 
 
 @admin_bp.route("/api/cameras/<cam_id>/frame.jpg")

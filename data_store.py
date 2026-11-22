@@ -191,13 +191,19 @@ def delete_camera(cam_id):
     save_cameras(quedan)
     return len(quedan) < len(cameras)
 
-def set_zonas(cam_id, zonas):
-    """Zonas de exclusión de una cámara: polígonos [[x, y], ...] con coordenadas de 0 a 1."""
+def set_zonas(cam_id, zonas, exentas=None, horario=False):
+    """Zonas de exclusión de una cámara: polígonos [[x, y], ...] con coordenadas de 0 a 1.
+    exentas: polígonos donde no se exige EPP (None = no cambian). horario: {"desde", "hasta"} en que
+    se exige EPP, None = siempre (False = no cambia)."""
     with _lock:
         cameras = load_cameras()
         for c in cameras:
             if c["id"] == cam_id:
                 c["zonas"] = zonas
+                if exentas is not None:
+                    c["exentas"] = exentas
+                if horario is not False:
+                    c["horario"] = horario
                 save_cameras(cameras)
                 return c
     return None
