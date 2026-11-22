@@ -23,6 +23,7 @@ from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
 )
+import aviso_mqtt
 import aviso_telegram
 import data_store
 import face_id
@@ -743,6 +744,7 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
         threading.Thread(target=_avisar_n8n, args=(n8n_payload, n8n_headers), daemon=True).start()
     if event_type in ALERT_TYPES or event_type in SALUD_TYPES:
         aviso_telegram.avisar(event, foto_webp)   # sin TELEGRAM_BOT_TOKEN no hace nada
+    aviso_mqtt.publicar(event)   # todos los eventos, también "con_casco": sin MQTT_HOST no hace nada
     return event
 
 
