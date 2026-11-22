@@ -1,0 +1,163 @@
+{% extends "admin/base.html" %}
+{% block title %}SGEP Dashboard{% endblock %}
+{% block page_title %}SGEP — Evaluación de proyectos{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sgep.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="sg-stack">
+<div class="admin-card">
+    <form id="filtros" class="sg-form sg-grid" aria-label="Filtros del dashboard">
+        <div><label class="sg-muted" for="f-proyecto">Proyecto</label>
+            <select id="f-proyecto" name="proyecto"><option value="">Todos</option>
+            {% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+        <div><label class="sg-muted" for="f-cliente">Cliente</label>
+            <select id="f-cliente" name="cliente"><option value="">Todos</option>
+            {% for c in clientes %}<option>{{ c }}</option>{% endfor %}</select></div>
+        <div><label class="sg-muted" for="f-resp">Responsable</label>
+            <select id="f-resp" name="responsable"><option value="">Todos</option>
+            {% for r in responsables %}<option value="{{ r.id }}">{{ r.nombre }}</option>{% endfor %}</select></div>
+        <div><label class="sg-muted" for="f-tipo">Tipo de encuesta</label>
+            <select id="f-tipo" name="tipo"><option value="">Todos</option>
+            {% for k, v in TIPOS_ENCUESTA.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+        <div><label class="sg-muted" for="f-desde">Desde</label><input id="f-desde" type="date" name="desde"></div>
+        <div><label class="sg-muted" for="f-hasta">Hasta</label><input id="f-hasta" type="date" name="hasta"></div>
+        <div class="sg-actions">
+            <a class="btn-action btn-export" id="xls" href="{{ url_for('sgep.exportar_excel') }}"><i class="fa-solid fa-file-excel"></i> Excel</a>
+            <a class="btn-action btn-export" id="pdf" href="{{ url_for('sgep.exportar_pdf') }}"><i class="fa-solid fa-file-pdf"></i> PDF</a>
+        </div>
+    </form>
+    <p class="sg-muted" style="margin-top:.6rem" aria-live="polite">Se actualiza solo cada 10 s · <span id="actualizado">—</span></p>
+</div>
+
+<div class="kpi-grid sg-kpis" style="margin-bottom:0">
+    {% for id, icono, color, label in [
+        ('nps', 'fa-face-smile', 'kpi-green', 'NPS'),
+        ('avance', 'fa-bars-progress', 'kpi-blue', 'Avance percibido'),
+        ('cumplimiento', 'fa-bullseye', 'kpi-orange', 'Cumplimiento'),
+        ('participacion', 'fa-users', 'kpi-blue', 'Participación'),
+        ('respuestas', 'fa-inbox', 'kpi-green', 'Respuestas'),
+        ('en_riesgo', 'fa-triangle-exclamation', 'kpi-red', 'Proyectos en riesgo')] %}
+    <div class="kpi-card">
+        <div class="kpi-icon {{ color }}"><i class="fa-solid {{ icono }}" aria-hidden="true"></i></div>
+        <div class="kpi-data"><span class="kpi-value" id="k-{{ id }}">—</span><span class="kpi-label">{{ label }}</span></div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-traffic-light"></i> Semáforo de proyectos</h2></div>
+    <div class="table-responsive">
+        <table class="admin-table">
+            <thead><tr><th>Proyecto</th><th>Curso</th><th>Cliente</th><th>Responsable</th><th>NPS</th><th>Avance</th><th>Esperado</th><th>Cumplimiento</th><th>Participación</th><th>Estado</th></tr></thead>
+            <tbody id="tabla-proyectos"></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="sg-row-2">
+    <div class="admin-card"><div class="admin-card-header"><h2><i class="fa-solid fa-chart-bar"></i> NPS por proyecto</h2></div>
+        <div class="chart-wrapper"><canvas id="g-barras" role="img" aria-label="Gráfico de barras: NPS por proyecto"></canvas></div></div>
+    <div class="admin-card"><div class="admin-card-header"><h2><i class="fa-solid fa-chart-pie"></i> Promotores, pasivos y detractores</h2></div>
+        <div class="chart-wrapper"><canvas id="g-torta" role="img" aria-label="Gráfico de torta: distribución NPS"></canvas></div></div>
+</div>
+
+<div class="admin-card"><div class="admin-card-header"><h2><i class="fa-solid fa-chart-line"></i> Tendencia semanal</h2></div>
+    <div class="chart-wrapper"><canvas id="g-lineas" role="img" aria-label="Líneas de tendencia: NPS y avance por semana"></canvas></div></div>
+
+<div class="sg-row-2">
+    <div class="admin-card"><div class="admin-card-header"><h2><i class="fa-solid fa-table-cells"></i> Mapa de calor: avance percibido por semana</h2></div>
+        <div class="table-responsive"><table class="sg-calor" id="calor"></table></div></div>
+    <div class="admin-card"><div class="admin-card-header"><h2><i class="fa-solid fa-lightbulb"></i> Lecciones y comentarios recientes</h2></div>
+        <ul id="comentarios" class="sg-stack" style="list-style:none;gap:.75rem"></ul></div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API = "{{ url_for('sgep.api_dashboard') }}";
+const form = document.getElementById('filtros');
+const pct = v => v === null || v === undefined ? '—' : v + ' %';
+const val = v => v === null || v === undefined ? '—' : v;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+Chart.defaults.color = '#9CA3AF';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.07)';
+const barras = new Chart(document.getElementById('g-barras'), {type: 'bar',
+    data: {labels: [], datasets: [{label: 'NPS', data: [], backgroundColor: []}]},
+    options: {maintainAspectRatio: false, scales: {y: {min: -100, max: 100}}, plugins: {legend: {display: false}}}});
+const torta = new Chart(document.getElementById('g-torta'), {type: 'doughnut',
+    data: {labels: ['Promotores (9–10)', 'Pasivos (7–8)', 'Detractores (0–6)'],
+           datasets: [{data: [], backgroundColor: ['#10B981', '#F59E0B', '#EF4444']}]},
+    options: {maintainAspectRatio: false}});
+const lineas = new Chart(document.getElementById('g-lineas'), {type: 'line',
+    data: {labels: [], datasets: [
+        {label: 'NPS', data: [], borderColor: '#10B981', tension: .3, spanGaps: true},
+        {label: 'Avance percibido %', data: [], borderColor: '#3B82F6', tension: .3, spanGaps: true}]},
+    options: {maintainAspectRatio: false}});
+const COLOR = {verde: '#10B981', amarillo: '#F59E0B', rojo: '#EF4444', gris: '#6B7280'};
+
+function colorCalor(v) {  // rojo (0) → amarillo (50) → verde (100)
+    const h = Math.round(Math.max(0, Math.min(100, v)) * 1.2);
+    return `hsl(${h}, 70%, 55%)`;
+}
+
+async function actualizar() {
+    const q = new URLSearchParams(new FormData(form)).toString();
+    document.getElementById('xls').href = "{{ url_for('sgep.exportar_excel') }}?" + q;
+    document.getElementById('pdf').href = "{{ url_for('sgep.exportar_pdf') }}?" + q;
+    let d;
+    try {
+        const r = await fetch(API + '?' + q, {headers: {'Accept': 'application/json'}});
+        if (!r.ok) throw new Error(r.status);
+        d = await r.json();
+    } catch (e) {
+        document.getElementById('actualizado').textContent = 'sin conexión';
+        return;
+    }
+    const k = d.kpis;
+    document.getElementById('k-nps').textContent = val(k.nps);
+    document.getElementById('k-avance').textContent = pct(k.avance);
+    document.getElementById('k-cumplimiento').textContent = pct(k.cumplimiento);
+    document.getElementById('k-participacion').textContent = pct(k.participacion);
+    document.getElementById('k-respuestas').textContent = k.respuestas;
+    document.getElementById('k-en_riesgo').textContent = k.en_riesgo;
+    document.getElementById('actualizado').textContent = 'última actualización ' + d.actualizado.replace('T', ' ');
+
+    document.getElementById('tabla-proyectos').innerHTML = d.proyectos.map(p => `<tr>
+        <td>${esc(p.nombre)}</td><td>${esc(p.curso)}</td><td>${esc(p.cliente)}</td><td>${esc(p.responsable)}</td>
+        <td>${val(p.nps)}</td><td>${pct(p.avance)}</td><td>${pct(p.esperado)}</td><td>${pct(p.cumplimiento)}</td>
+        <td>${pct(p.participacion)}</td><td><span class="sg-luz sg-${p.semaforo}">${p.semaforo === 'gris' ? 'sin datos' : p.semaforo}</span></td></tr>`).join('')
+        || '<tr><td colspan="10" class="text-muted">Sin proyectos para estos filtros.</td></tr>';
+
+    barras.data.labels = d.proyectos.map(p => p.nombre);
+    barras.data.datasets[0].data = d.proyectos.map(p => p.nps);
+    barras.data.datasets[0].backgroundColor = d.proyectos.map(p => COLOR[p.semaforo]);
+    barras.update();
+    torta.data.datasets[0].data = [d.torta.promotores, d.torta.pasivos, d.torta.detractores];
+    torta.update();
+    lineas.data.labels = d.tendencia.semanas;
+    lineas.data.datasets[0].data = d.tendencia.nps;
+    lineas.data.datasets[1].data = d.tendencia.avance;
+    lineas.update();
+
+    const sem = d.calor.semanas;
+    document.getElementById('calor').innerHTML =
+        `<thead><tr><th scope="col">Proyecto</th>${sem.map(s => `<th scope="col">${s.slice(5)}</th>`).join('')}</tr></thead><tbody>` +
+        d.calor.filas.map(f => `<tr><th scope="row">${esc(f.proyecto)}</th>${f.valores.map(v => v === null
+            ? '<td class="text-muted">·</td>'
+            : `<td class="v" style="background:${colorCalor(v)}">${v}</td>`).join('')}</tr>`).join('') + '</tbody>';
+
+    document.getElementById('comentarios').innerHTML = d.comentarios.map(c =>
+        `<li><span class="sg-muted">${c.fecha} · ${esc(c.proyecto)} · ${esc(c.pregunta)}</span><br>${esc(c.texto)}</li>`).join('')
+        || '<li class="text-muted">Todavía no hay comentarios.</li>';
+}
+
+form.addEventListener('change', actualizar);
+actualizar();
+setInterval(actualizar, 10000);
+</script>
+{% endblock %}

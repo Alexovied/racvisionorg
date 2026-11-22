@@ -594,3 +594,23 @@ body { overflow-x: clip; }
     .controls { flex-wrap: wrap; gap: 0.6rem; }
     .controls > * { flex: 1 1 100%; }
 }
+
+/* Selector de cámara y campos del detector: mismos colores que el resto, no los del sistema */
+select.btn, .campo {
+    background: rgba(255, 255, 255, 0.06);
+    color: #F1F5F9;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-family: inherit;
+    color-scheme: dark;
+    min-width: 0;
+}
+select.btn { justify-content: flex-start; padding-right: 2rem; cursor: pointer; }
+select.btn option { background: #111827; color: #F1F5F9; }
+select.btn:focus-visible, .campo:focus-visible { outline: 2px solid #E8751A; outline-offset: 2px; }
+.campo { flex: 1; padding: 0.8rem 1rem; border-radius: 0.75rem; font-size: 0.95rem; }
+.campo::placeholder { color: #94A3B8; }
+.bar-chaleco { background: linear-gradient(90deg, #FACC15, #F59E0B); }
+.bar-caida { background: linear-gradient(90deg, #F97316, #EF4444); }
+.demo-aviso { margin: 0 0 1rem; padding: 0.6rem 0.9rem; border-radius: 0.6rem; font-size: 0.85rem;
+              background: rgba(232, 117, 26, 0.1); border: 1px solid rgba(232, 117, 26, 0.25); color: #FDBA74; }
+.cara-msg { margin-top: 0.75rem; font-size: 0.85rem; color: #94A3B8; min-height: 1.2em; }

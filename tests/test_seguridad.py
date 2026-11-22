@@ -13,11 +13,9 @@ BIG = 2 * 1024 * 1024 + 1024  # apenas más de 2 MB
 # ── Sin sesión: todo lo protegido responde 401 (API) o 302 (páginas) ─────────
 
 @pytest.mark.parametrize("method,url", [
-    ("post", "/predict"),
     ("post", "/api/alarm"),
     ("post", "/admin/api/events"),
     ("get", "/admin/api/config"),
-    ("post", "/reset_buffer"),
 ])
 def test_api_sin_sesion_devuelve_401(client, method, url):
     r = getattr(client, method)(url, json={})
@@ -25,11 +23,33 @@ def test_api_sin_sesion_devuelve_401(client, method, url):
     assert r.is_json and "error" in r.get_json()
 
 
-def test_app_sin_sesion_redirige_al_login(client):
-    r = client.get("/app")
-    assert r.status_code == 302
-    assert "/admin/login" in r.headers["Location"]
-    assert "next=" in r.headers["Location"]
+def test_detector_es_publico_y_en_modo_demo_no_registra(client):
+    html = client.get("/app").get_data(as_text=True)
+    assert "Modo demostración" in html and "const REGISTRA = false;" in html
+    assert client.post("/predict", json={"image": 123}).status_code == 400   # atiende sin sesión
+    # ...pero lo que guarda datos o acciona la alarma sigue pidiendo sesión
+    assert client.post("/admin/api/events", json={"type": "sin_casco", "confidence": 90}).status_code == 401
+    assert data_store.load_events() == []
+
+
+def test_detector_con_operador_registra(operator_client):
+    assert "const REGISTRA = true;" in operator_client.get("/app").get_data(as_text=True)
+
+
+def test_cara_de_prueba_es_temporal_y_por_visita(flask_app, client, monkeypatch):
+    foto = "data:image/jpeg;base64," + _frame_b64().split(",")[1]
+    monkeypatch.setattr(flask_app.face_id, "_embeddings", lambda imgs: ([[1.0, 0.0]] * len(imgs), 0))
+    assert client.post("/api/demo/cara", json={"nombre": "Ana", "fotos": [foto] * 2}).status_code == 400
+    assert client.post("/api/demo/cara", json={"nombre": "Ana", "fotos": [foto] * 3}).status_code == 200
+    with client.session_transaction() as s:
+        token = s["demo"]
+    assert flask_app._demo[token][1] == "Ana"
+    assert not (data_store.DATA_DIR and __import__("os").path.exists(data_store.DATA_DIR + "/personas.json"))
+    otro = flask_app.app.test_client()                       # otra visita no ve esa cara
+    with flask_app.app.test_request_context():
+        assert flask_app._conocidos() == []
+    assert client.delete("/api/demo/cara").status_code == 200
+    assert token not in flask_app._demo
 
 
 def test_landing_sigue_siendo_publica(client):

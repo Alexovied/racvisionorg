@@ -1,0 +1,77 @@
+{% extends "admin/base.html" %}
+{% block title %}Encuestas{% endblock %}
+{% block page_title %}Encuestas y plantillas{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='sgep.css') }}">{% endblock %}
+
+{% block content %}
+<div class="sg-stack">
+{% if puede_gestionar %}
+<div class="admin-card">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-plus"></i> Nueva encuesta</h2></div>
+    <form method="POST" action="{{ url_for('sgep.nueva_encuesta') }}" class="sg-form sg-grid">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div><label class="sg-muted" for="n-proy">Proyecto *</label>
+            <select id="n-proy" name="proyecto_id" required>{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }} ({{ p.curso }})</option>{% endfor %}</select></div>
+        <div><label class="sg-muted" for="n-pl">Partir de plantilla</label>
+            <select id="n-pl" name="plantilla_id"><option value="">En blanco</option>
+            {% for t in plantillas %}<option value="{{ t.id }}">{{ t.titulo }}</option>{% endfor %}</select></div>
+        <div><label class="sg-muted" for="n-tit">Título (opcional)</label><input id="n-tit" name="titulo" maxlength="150"></div>
+        <div class="sg-actions"><button class="btn-action btn-create" type="submit"><i class="fa-solid fa-pen-ruler"></i> Crear y abrir editor</button></div>
+    </form>
+</div>
+{% endif %}
+
+<div class="admin-card">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-square-poll-vertical"></i> Encuestas ({{ encuestas|length }})</h2></div>
+    <div class="table-responsive">
+    <table class="admin-table">
+        <thead><tr><th>Encuesta</th><th>Proyecto</th><th>Tipo</th><th>Preguntas</th><th>Respuestas</th><th>Participación</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody>
+        {% for e in encuestas %}
+        <tr>
+            <td><a class="sg-link" href="{{ url_for('sgep.encuesta', eid=e.id) }}">{{ e.titulo }}</a>{% if e.anonima %} <span class="sg-muted">· anónima</span>{% endif %}</td>
+            <td>{{ e.proyecto }}</td><td>{{ TIPOS_ENCUESTA[e.tipo] }}</td><td>{{ e.preguntas|length }}</td>
+            <td>{{ e.n_respuestas }}</td><td>{{ e.participacion if e.participacion is not none else '—' }}{% if e.participacion is not none %} %{% endif %}</td>
+            <td>{{ 'Abierta' if e.activa else 'Cerrada' }}</td>
+            <td><div class="action-buttons">
+                <a class="btn-icon" href="{{ url_for('sgep.encuesta', eid=e.id) }}" title="Distribución" aria-label="Distribución de {{ e.titulo }}"><i class="fa-solid fa-share-nodes"></i></a>
+                {% if puede_gestionar %}
+                <a class="btn-icon btn-edit" href="{{ url_for('sgep.editar_encuesta', eid=e.id) }}" title="Editar" aria-label="Editar {{ e.titulo }}"><i class="fa-solid fa-pen"></i></a>
+                <form method="POST" action="{{ url_for('sgep.borrar_encuesta', eid=e.id) }}" onsubmit="return confirm('Se borran también sus invitaciones y {{ e.n_respuestas }} respuesta(s). ¿Seguir?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn-icon btn-delete" type="submit" title="Eliminar" aria-label="Eliminar {{ e.titulo }}"><i class="fa-solid fa-trash"></i></button>
+                </form>
+                {% endif %}
+            </div></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-muted">Todavía no hay encuestas.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h2><i class="fa-solid fa-clone"></i> Plantillas reutilizables ({{ plantillas|length }})</h2></div>
+    <p class="sg-muted" style="margin-bottom:.8rem">Para crear una plantilla, marcá «Guardar también como plantilla» en el editor.</p>
+    <div class="table-responsive">
+    <table class="admin-table">
+        <thead><tr><th>Plantilla</th><th>Tipo</th><th>Preguntas</th><th>Anónima</th>{% if puede_gestionar %}<th>Acciones</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for t in plantillas %}
+        <tr><td>{{ t.titulo }}</td><td>{{ TIPOS_ENCUESTA[t.tipo] }}</td><td>{{ t.preguntas|length }}</td><td>{{ 'Sí' if t.anonima else 'No' }}</td>
+            {% if puede_gestionar %}
+            <td><form method="POST" action="{{ url_for('sgep.borrar_plantilla', tid=t.id) }}" onsubmit="return confirm('¿Eliminar la plantilla?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn-icon btn-delete" type="submit" title="Eliminar" aria-label="Eliminar plantilla {{ t.titulo }}"><i class="fa-solid fa-trash"></i></button>
+            </form></td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+</div>
+{% endblock %}

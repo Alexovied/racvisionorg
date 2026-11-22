@@ -31,6 +31,37 @@
         </div>
 
         <nav class="sidebar-nav">
+            {% if current_user.role in ('admin', 'pm', 'auditor') %}
+            {# Para el admin de RAC, SGEP va plegado; pm y auditor (que solo usan SGEP) lo ven abierto #}
+            <details class="nav-grupo" {% if solo_sgep or current_user.role != 'admin' or (request.endpoint or '').startswith('sgep.') %}open{% endif %}>
+            <summary class="nav-item"><i class="fa-solid fa-square-poll-vertical"></i><span>SGEP · Encuestas</span></summary>
+            <a href="{{ url_for('sgep.dashboard') }}" class="nav-item {% if request.endpoint == 'sgep.dashboard' %}active{% endif %}">
+                <i class="fa-solid fa-gauge-high"></i>
+                <span>SGEP Dashboard</span>
+            </a>
+            <a href="{{ url_for('sgep.proyectos') }}" class="nav-item {% if request.endpoint == 'sgep.proyectos' %}active{% endif %}">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span>Proyectos</span>
+            </a>
+            <a href="{{ url_for('sgep.encuestas') }}" class="nav-item {% if request.endpoint in ('sgep.encuestas', 'sgep.encuesta', 'sgep.editar_encuesta') %}active{% endif %}">
+                <i class="fa-solid fa-square-poll-vertical"></i>
+                <span>Encuestas</span>
+            </a>
+            <a href="{{ url_for('sgep.correos') }}" class="nav-item {% if request.endpoint == 'sgep.correos' %}active{% endif %}">
+                <i class="fa-solid fa-envelope"></i>
+                <span>Correos</span>
+            </a>
+            </details>
+            {% if current_user.role == 'admin' %}
+            {% if solo_sgep %}
+            <a href="{{ url_for('admin.users') }}" class="nav-item {% if request.endpoint == 'admin.users' %}active{% endif %}">
+                <i class="fa-solid fa-users-gear"></i>
+                <span>Usuarios</span>
+            </a>
+            {% else %}<div class="sidebar-divider"></div>{% endif %}
+            {% endif %}
+            {% endif %}
+            {% if current_user.role not in ('pm', 'auditor') and not solo_sgep %}
             <a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
                 <i class="fa-solid fa-chart-pie"></i>
                 <span>Dashboard</span>
@@ -65,14 +96,17 @@
                 <i class="fa-solid fa-clipboard-list"></i>
                 <span>Auditoría</span>
             </a>
+            {% endif %}
         </nav>
 
         <div class="sidebar-footer">
             <div class="sidebar-divider"></div>
+            {% if current_user.role in ('admin', 'operator') and not solo_sgep %}
             <a href="/app" class="nav-item nav-external" target="_blank">
                 <i class="fa-solid fa-helmet-safety"></i>
                 <span>Abrir Detector</span>
             </a>
+            {% endif %}
             <a href="/" class="nav-item nav-external">
                 <i class="fa-solid fa-globe"></i>
                 <span>Ir al Sitio</span>

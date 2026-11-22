@@ -1,0 +1,27 @@
+{% extends "admin/base.html" %}
+{% block title %}Correos{% endblock %}
+{% block page_title %}Correos enviados{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='sgep.css') }}">{% endblock %}
+
+{% block content %}
+<div class="admin-card">
+    <p class="sg-muted" style="margin-bottom:1rem">
+        {% if smtp %}SMTP configurado: los correos se envían de verdad y quedan registrados acá.
+        {% else %}Modo demo (sin SMTP_HOST): los correos no salen, solo quedan registrados acá.{% endif %}
+    </p>
+    <div class="table-responsive">
+    <table class="admin-table">
+        <thead><tr><th>Fecha</th><th>Para</th><th>Asunto</th><th>Estado</th><th>Mensaje</th></tr></thead>
+        <tbody>
+        {% for c in correos %}
+        <tr><td class="text-muted">{{ c.fecha.replace('T', ' ') }}</td><td>{{ c.para }}</td><td>{{ c.asunto }}</td>
+            <td>{% if c.enviado %}<span class="sg-luz sg-verde">enviado</span>{% elif c.error %}<span class="sg-luz sg-rojo" title="{{ c.error }}">error</span>{% else %}<span class="sg-luz sg-gris">registrado</span>{% endif %}</td>
+            <td><details><summary>Ver</summary><pre style="white-space:pre-wrap;font-family:var(--font)">{{ c.cuerpo }}</pre></details></td></tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Todavía no se envió ningún correo.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endblock %}

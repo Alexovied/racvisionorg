@@ -2,6 +2,8 @@ import json
 import os
 import secrets
 import sys
+import threading
+import time
 import uuid
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,19 +13,37 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 def _ensure_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
+# Un solo candado para leer y escribir los JSON: el motor de cámaras (motor.py) registra
+# eventos desde sus hilos mientras el panel lee. Reentrante: append_event lo toma y adentro lee y guarda.
+# shortcut: protege un solo proceso; con más de un worker de gunicorn, pasar los eventos a SQLite.
+_lock = threading.RLock()
+
 def _load_json(filename, default=None):
     _ensure_dir()
     path = os.path.join(DATA_DIR, filename)
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+    with _lock:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
     return default if default is not None else []
 
 def _save_json(filename, data):
     _ensure_dir()
     path = os.path.join(DATA_DIR, filename)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with _lock:
+        # Se escribe aparte y se reemplaza: un corte de luz a mitad no deja el archivo truncado
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        # En Windows el reemplazo falla si otro programa (antivirus, backup, un editor) tiene
+        # el archivo abierto en ese instante: se reintenta un cuarto de segundo antes de rendirse.
+        for intento in range(5):
+            try:
+                os.replace(path + ".tmp", path)
+                break
+            except PermissionError:
+                if intento == 4:
+                    raise
+                time.sleep(0.05)
 
 
 # ═══════════════════════════════════════
@@ -165,6 +185,17 @@ def delete_camera(cam_id):
     cameras = [c for c in cameras if c["id"] != cam_id]
     save_cameras(cameras)
 
+def set_zonas(cam_id, zonas):
+    """Zonas de exclusión de una cámara: polígonos [[x, y], ...] con coordenadas de 0 a 1."""
+    with _lock:
+        cameras = load_cameras()
+        for c in cameras:
+            if c["id"] == cam_id:
+                c["zonas"] = zonas
+                save_cameras(cameras)
+                return c
+    return None
+
 
 # ═══════════════════════════════════════
 #  CONFIGURATION
@@ -177,6 +208,9 @@ DEFAULT_CONFIG = {
     "active_model": "modelo.keras",
     "detectar_casco": True,
     "detectar_chaleco": True,
+    # Solo para cámaras que analiza el servidor (motor.py)
+    "detectar_caida": True,
+    "caida_segundos": 10,
 }
 
 def load_config():
@@ -199,6 +233,9 @@ def reset_config():
 #  EVENTS / AUDIT LOG
 # ═══════════════════════════════════════
 
+# Infracciones: guardan persona y foto, disparan la alarma y cuentan como alerta en el panel
+ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido")
+
 def load_events():
     return _load_json("events.json", [])
 
@@ -208,32 +245,38 @@ def alert_photo_path(event_id):
 
 def append_event(event_type, confidence, camera="webcam", foto_jpg=None, **extra):
     """extra: persona, ubicacion... foto_jpg: bytes JPEG ya validados (se guarda aparte)."""
-    events = load_events()
-    event = {
-        "id": str(uuid.uuid4()),
-        "type": event_type,
-        "confidence": round(confidence, 1),
-        "camera": camera,
-        "timestamp": datetime.now().isoformat(),
-        **extra,
-    }
-    if foto_jpg:
-        os.makedirs(os.path.dirname(alert_photo_path(event["id"])), exist_ok=True)
-        with open(alert_photo_path(event["id"]), "wb") as f:
-            f.write(foto_jpg)
-        event["foto"] = True
-    events.insert(0, event)
-    # Keep max 5000 events (y se borran las fotos de los que salen)
-    if len(events) > 5000:
-        for viejo in events[5000:]:
-            if viejo.get("foto"):
-                try:
-                    os.remove(alert_photo_path(viejo["id"]))
-                except OSError:
-                    pass
-        events = events[:5000]
-    _save_json("events.json", events)
-    return event
+    with _lock:
+        events = load_events()
+        event = {
+            "id": str(uuid.uuid4()),
+            "type": event_type,
+            "confidence": round(confidence, 1),
+            "camera": camera,
+            "timestamp": datetime.now().isoformat(),
+            **extra,
+        }
+        if foto_jpg:
+            os.makedirs(os.path.dirname(alert_photo_path(event["id"])), exist_ok=True)
+            with open(alert_photo_path(event["id"]), "wb") as f:
+                f.write(foto_jpg)
+            event["foto"] = True
+        events.insert(0, event)
+        # Keep max 5000 events (y se borran las fotos de los que salen)
+        if len(events) > 5000:
+            for viejo in events[5000:]:
+                if viejo.get("foto"):
+                    try:
+                        os.remove(alert_photo_path(viejo["id"]))
+                    except OSError:
+                        pass
+            events = events[:5000]
+        try:
+            _save_json("events.json", events)
+        except Exception:
+            if foto_jpg:  # el evento no quedó registrado: su foto tampoco
+                os.remove(alert_photo_path(event["id"]))
+            raise
+        return event
 
 def get_filtered_events(event_type=None, camera=None, date_from=None, date_to=None, page=1, per_page=20):
     events = load_events()
@@ -287,7 +330,7 @@ def get_stats():
         try:
             ts = datetime.fromisoformat(e["timestamp"])
             if ts >= last_24h:
-                if e.get("type") in ("sin_casco", "sin_chaleco"):
+                if e.get("type") in ALERT_TYPES:
                     alerts_24h += 1
                 hour_key = ts.strftime("%H:00")
                 if hour_key not in detections_by_hour:

@@ -92,6 +92,7 @@
                     <div class="select-wrapper">
                         <select id="cam-type" name="type" onchange="toggleUrlField()">
                             <option value="webcam">Webcam</option>
+                            <option value="usb">USB en el servidor</option>
                             <option value="ip">Cámara IP</option>
                         </select>
                         <i class="fa-solid fa-chevron-down"></i>
@@ -99,9 +100,9 @@
                 </div>
 
                 <div class="form-group" id="url-group" style="display: none;">
-                    <label for="cam-url">URL / Dirección IP</label>
+                    <label for="cam-url">Dirección (IP) o número de dispositivo (USB)</label>
                     <div class="input-wrapper">
-                        <input type="text" id="cam-url" name="url" placeholder="rtsp://192.168.1.100/stream">
+                        <input type="text" id="cam-url" name="url" placeholder="rtsp://192.168.1.100/stream  ·  USB: 0">
                         <i class="fa-solid fa-link"></i>
                     </div>
                 </div>
@@ -122,7 +123,7 @@
 <script>
     function toggleUrlField() {
         const type = document.getElementById('cam-type').value;
-        document.getElementById('url-group').style.display = type === 'ip' ? 'block' : 'none';
+        document.getElementById('url-group').style.display = type === 'webcam' ? 'none' : 'block';
     }
 
     // Close modal on overlay click

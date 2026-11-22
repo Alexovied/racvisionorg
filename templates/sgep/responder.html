@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>{{ encuesta.titulo }} — SGEP</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='accesibilidad.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='sgep.css') }}">
+    <script src="{{ url_for('static', filename='accesibilidad.js') }}"></script>
+    <style>body { background: var(--bg); color: var(--text); font-family: var(--font); }</style>
+</head>
+<body>
+<main class="sg-publica">
+    <h1 style="margin-bottom:.3rem">{{ encuesta.titulo }}</h1>
+    <p class="sg-muted" style="margin-bottom:1.5rem">Proyecto: {{ proyecto.nombre }}{% if encuesta.anonima %} · Encuesta anónima: tus respuestas no quedan asociadas a tu nombre.{% endif %}</p>
+
+    {% if estado == 'gracias' %}
+        <div class="admin-card" role="status"><h2>¡Gracias por responder!</h2><p class="sg-muted">Tu respuesta quedó registrada.</p></div>
+    {% elif estado == 'ya' %}
+        <div class="admin-card" role="status"><h2>Ya respondiste esta encuesta</h2><p class="sg-muted">Cada link personal admite una sola respuesta.</p></div>
+    {% elif estado == 'cerrada' %}
+        <div class="admin-card" role="status"><h2>Encuesta cerrada</h2><p class="sg-muted">Ya no acepta respuestas.</p></div>
+    {% else %}
+        {% if error %}<div class="sg-error" role="alert">{{ error }}</div>{% endif %}
+        <form method="POST" class="sg-form" id="form-respuesta">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% for p in encuesta.preguntas %}
+            <fieldset data-id="{{ p.id }}" {% if p.condicion %}data-si="{{ p.condicion.pregunta }}" data-valor="{{ p.condicion.valor }}"{% endif %}>
+                <legend>{{ loop.index }}. {{ p.texto }}{% if p.tipo != 'texto' %} <span aria-hidden="true">*</span>{% endif %}</legend>
+                {% set previo_v = previo.get(p.id, '') %}
+                {% if p.tipo in ('nps', 'escala') %}
+                    {% set lo, hi = (0, 10) if p.tipo == 'nps' else (1, 5) %}
+                    <div class="sg-escala">
+                    {% for n in range(lo, hi + 1) %}
+                        <label><input type="radio" name="{{ p.id }}" value="{{ n }}" {% if previo_v == n|string %}checked{% endif %}><span>{{ n }}</span></label>
+                    {% endfor %}
+                    </div>
+                    <p class="sg-muted" style="margin-top:.4rem">{{ 'Nada probable' if p.tipo == 'nps' else 'Muy en desacuerdo' }} ← → {{ 'Muy probable' if p.tipo == 'nps' else 'Muy de acuerdo' }}</p>
+                {% elif p.tipo == 'avance' %}
+                    <label class="sg-muted" for="in-{{ p.id }}">Porcentaje (0 a 100)</label>
+                    <input id="in-{{ p.id }}" type="number" name="{{ p.id }}" min="0" max="100" step="1" value="{{ previo_v }}">
+                {% elif p.tipo == 'si_no' %}
+                    <div class="sg-escala">
+                        <label><input type="radio" name="{{ p.id }}" value="si" {% if previo_v == 'si' %}checked{% endif %}><span>Sí</span></label>
+                        <label><input type="radio" name="{{ p.id }}" value="no" {% if previo_v == 'no' %}checked{% endif %}><span>No</span></label>
+                    </div>
+                {% elif p.tipo == 'opcion' %}
+                    <label class="sg-muted" for="in-{{ p.id }}">Elegí una opción</label>
+                    <select id="in-{{ p.id }}" name="{{ p.id }}"><option value="">—</option>
+                    {% for o in p.opciones %}<option {% if previo_v == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+                {% else %}
+                    <label class="sg-muted" for="in-{{ p.id }}">Respuesta (opcional)</label>
+                    <textarea id="in-{{ p.id }}" name="{{ p.id }}" rows="3" maxlength="1000">{{ previo_v }}</textarea>
+                {% endif %}
+            </fieldset>
+            {% endfor %}
+            <button class="btn-action btn-create" type="submit">Enviar respuesta</button>
+        </form>
+    {% endif %}
+</main>
+<script>
+// Lógica condicional: muestra cada pregunta solo si la respuesta de la que depende coincide.
+// El servidor aplica la misma regla e ignora lo que llegue de preguntas ocultas.
+const form = document.getElementById('form-respuesta');
+function aplicarCondiciones() {
+    const valores = {};
+    form.querySelectorAll('fieldset').forEach(fs => {
+        const si = fs.dataset.si;
+        const ver = !si || valores[si] === fs.dataset.valor;  // una pregunta oculta vale ''
+        fs.hidden = !ver;
+        fs.querySelectorAll('input, select, textarea').forEach(el => el.disabled = !ver);
+        const marcado = fs.querySelector('input:checked, select, input[type=number], textarea');
+        valores[fs.dataset.id] = ver && marcado ? marcado.value : '';
+    });
+}
+if (form) { form.addEventListener('input', aplicarCondiciones); form.addEventListener('change', aplicarCondiciones); aplicarCondiciones(); }
+</script>
+</body>
+</html>

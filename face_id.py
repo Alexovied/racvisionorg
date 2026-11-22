@@ -140,10 +140,12 @@ def embedding(img):
     return feat / np.linalg.norm(feat)
 
 
-def identificar(img, bbox):
+def identificar(img, bbox, personas=None):
     """Nombre de la persona cuya cabeza está en bbox [x, y, w, h], "Desconocido",
-    o None si no se ve la cara."""
-    personas = _personas()
+    o None si no se ve la cara. personas: [(nombre, embeddings)] contra las que comparar;
+    por defecto, las dadas de alta."""
+    if personas is None:
+        personas = _personas()
     if not personas:
         return None
     x, y, w, h = bbox

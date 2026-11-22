@@ -1,5 +1,11 @@
 # Detector de Casco de Seguridad - Red Neuronal Convolucional (CNN)
 
+## 🎬 Video demo
+
+▶️ **[Ver el video demo de RAC Vision](PEGAR_ENLACE_DE_YOUTUBE_AQUI)** · 🌐 Demo en vivo: https://racvision.org
+
+<img src="docs/actividades/qr-racvision.png" alt="Código QR a racvision.org" width="140">
+
 Este proyecto implementa un sistema completo para entrenar, probar y ejecutar en tiempo real un **Detector de Casco de Seguridad** utilizando aprendizaje profundo (*Deep Learning*) con TensorFlow, Keras y OpenCV.
 
 El sistema clasifica imágenes de personas en dos categorías principales:

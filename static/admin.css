@@ -681,6 +681,18 @@ body {
     border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
+.role-pm {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--green);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.role-auditor {
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--yellow);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
 .role-viewer {
     background: rgba(139, 92, 246, 0.12);
     color: var(--purple);
@@ -1483,3 +1495,10 @@ input[type="range"]::-moz-range-thumb {
         grid-template-columns: 1fr;
     }
 }
+
+/* Menú: grupo plegable (SGEP) */
+.nav-grupo > summary { cursor: pointer; list-style: none; }
+.nav-grupo > summary::-webkit-details-marker { display: none; }
+.nav-grupo > summary::after { content: "▾"; margin-left: auto; opacity: .6; transition: transform .15s; }
+.nav-grupo:not([open]) > summary::after { transform: rotate(-90deg); }
+.nav-grupo > a.nav-item { padding-left: 2rem; }

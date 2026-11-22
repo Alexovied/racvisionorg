@@ -141,7 +141,7 @@
                     <div class="event-left">
                         <i class="fa-solid {{ 'fa-circle-exclamation' if event.type != 'con_casco' else 'fa-circle-check' }}"></i>
                         <div>
-                            <span class="event-type">{{ {'sin_casco': 'Sin Casco', 'sin_chaleco': 'Sin Chaleco'}.get(event.type, 'Con Casco') }}</span>
+                            <span class="event-type">{{ EVENT_LABELS.get(event.type, 'Con Casco') }}</span>
                             <span class="event-camera">{{ event.camera }}</span>
                         </div>
                     </div>
@@ -255,7 +255,7 @@
         const isDanger = event.type !== 'con_casco';
         const cls   = isDanger ? 'event-danger' : 'event-success';
         const icon  = isDanger ? 'fa-circle-exclamation' : 'fa-circle-check';
-        const label = { sin_casco: 'Sin Casco', sin_chaleco: 'Sin Chaleco' }[event.type] || 'Con Casco';
+        const label = {{ EVENT_LABELS | tojson }}[event.type] || 'Con Casco';
         return `<div class="event-item ${cls} event-item-new">
             <div class="event-left">
                 <i class="fa-solid ${icon}"></i>

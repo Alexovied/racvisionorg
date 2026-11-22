@@ -72,10 +72,11 @@ def _letterbox(img):
     return canvas, r, pad_x, pad_y
 
 
-def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=False):
+def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=False, puntos=False):
     """Corre un YOLOv8 exportado a ONNX (red de cargar_modelo) y devuelve [(bbox [x, y, w, h], puntajes por clase)].
     por_clase=False: NMS sin distinguir clase (una cabeza es "casco" o "sin_casco").
-    por_clase=True: cada clase aparte (una persona y su chaleco se superponen)."""
+    por_clase=True: cada clase aparte (una persona y su chaleco se superponen).
+    puntos=True (modelos de pose): cada resultado trae además los puntos del cuerpo, (N, 3): x, y, confianza."""
     h_img, w_img = img.shape[:2]
     canvas, r, pad_x, pad_y = _letterbox(img)
     blob = cv2.dnn.blobFromImage(canvas, 1 / 255.0, (INPUT_SIZE, INPUT_SIZE), swapRB=True)
@@ -112,7 +113,13 @@ def correr_yolo(net, lock, img, n_clases, conf_th=CONF_THRESHOLD, por_clase=Fals
         x0, y0 = max(0, int(bx)), max(0, int(by))
         x1, y1 = min(w_img, int(bx + bw_i)), min(h_img, int(by + bh_i))
         if x1 > x0 and y1 > y0:
-            resultados.append(([x0, y0, x1 - x0, y1 - y0], scores[i]))
+            if puntos:  # lo que sigue a los puntajes: x, y, confianza de cada punto, en el canvas
+                kp = preds[i, 4 + n_clases:].reshape(-1, 3).copy()
+                kp[:, 0] = (kp[:, 0] - pad_x) / r
+                kp[:, 1] = (kp[:, 1] - pad_y) / r
+                resultados.append(([x0, y0, x1 - x0, y1 - y0], scores[i], kp))
+            else:
+                resultados.append(([x0, y0, x1 - x0, y1 - y0], scores[i]))
     return resultados
 
 

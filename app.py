@@ -1,5 +1,9 @@
+import os
+# El detector es público: una imagen de pocos KB puede descomprimirse a varios GB. OpenCV rechaza
+# las que pasen de este tamaño (unas 4 veces Full HD). Tiene que ir antes de importar cv2.
+os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", str(1920 * 1080 * 4))
 from flask import Flask, render_template, request, jsonify, Response, session, abort
-from flask_login import login_required
+from flask_login import login_required, current_user
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from hardware import init_esp32, enviar_comando_esp32
 import cv2
@@ -7,6 +11,8 @@ import numpy as np
 import base64
 import os
 import secrets
+import time
+import uuid
 from collections import deque
 import keras
 from keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
@@ -95,7 +101,9 @@ def verificar_csrf():
 
 # Register admin Blueprint & Flask-Login
 from admin import admin_bp, init_login, roles_required
+from sgep import sgep_bp
 app.register_blueprint(admin_bp)
+app.register_blueprint(sgep_bp)
 init_login(app)
 
 # Inicializar conexión con ESP32 (falla silenciosamente si no está conectado)
@@ -121,6 +129,7 @@ import helmet_detector
 import face_id
 import epp
 import data_store
+import motor
 
 # (Suavizado temporal eliminado para manejar múltiples rostros independientemente en el frontend)
 
@@ -161,7 +170,7 @@ def crop_head(img):
 def robots():
     # Solo la página pública se indexa; el panel y el detector piden login
     texto = ("User-agent: *\nAllow: /$\nAllow: /static/\n"
-             "Disallow: /admin\nDisallow: /app\nDisallow: /predict\nDisallow: /api/\n"
+             "Disallow: /admin\nDisallow: /predict\nDisallow: /api/\n"
              "Sitemap: https://racvision.org/sitemap.xml\n")
     return Response(texto, mimetype="text/plain")
 
@@ -203,12 +212,61 @@ def too_large(e):
     return jsonify({"error": "El request supera el tamaño máximo (2 MB)"}), 413
 
 
+# Caras de prueba del detector: en memoria, por visita y por media hora. Nunca van a disco.
+_demo = {}  # id de la visita -> (vence, nombre, embeddings)
+DEMO_MINUTOS, DEMO_MAX = 30, 200
+
+
+def _conocidos():
+    """Caras contra las que se identifica en /predict: la de prueba de esta visita y, solo
+    con sesión iniciada, las personas dadas de alta (un visitante no ve nombres del personal)."""
+    demo = _demo.get(session.get("demo"))
+    propias = [(demo[1], demo[2])] if demo and demo[0] > time.time() else []
+    return (face_id._personas() if current_user.is_authenticated else []) + propias
+
+
+@app.route("/api/demo/cara", methods=["POST", "DELETE"])
+def demo_cara():
+    """Alta temporal de una cara para probar el reconocimiento: {"nombre", "fotos": [dataURL x3..6]}."""
+    if request.method == "DELETE":
+        _demo.pop(session.pop("demo", None), None)
+        return jsonify({"ok": True})
+    data = request.get_json(silent=True)
+    fotos = data.get("fotos") if isinstance(data, dict) else None
+    nombre = str(data.get("nombre") or "").strip()[:40] if isinstance(data, dict) else ""
+    if not nombre or not isinstance(fotos, list) or not 3 <= len(fotos) <= 6:
+        return jsonify({"error": "Hace falta un nombre y de 3 a 6 fotos"}), 400
+    ahora = time.time()
+    for k in [k for k, v in _demo.items() if v[0] <= ahora]:
+        _demo.pop(k)
+    embs = []
+    for f in fotos:  # de a una: nunca hay más de una foto decodificada en memoria
+        try:
+            crudo = base64.b64decode(f.split(",", 1)[1])
+            img = cv2.imdecode(np.frombuffer(crudo, np.uint8), cv2.IMREAD_COLOR) if crudo else None
+        except (AttributeError, IndexError, ValueError, cv2.error):
+            return jsonify({"error": "Foto inválida"}), 400
+        if img is not None:
+            embs += face_id._embeddings([img])[0]
+    if len(embs) < 3:
+        return jsonify({"error": f"Solo se vio la cara en {len(embs)} de {len(fotos)} fotos. "
+                                 "Probá de frente y con buena luz."}), 400
+    if len(_demo) >= DEMO_MAX and session.get("demo") not in _demo:
+        _demo.pop(min(_demo, key=lambda k: _demo[k][0]))  # cupo lleno: sale la prueba más vieja
+    token = session.setdefault("demo", uuid.uuid4().hex)
+    _demo[token] = (ahora + DEMO_MINUTOS * 60, nombre, np.array(embs, dtype=np.float32))
+    return jsonify({"ok": True, "nombre": nombre, "minutos": DEMO_MINUTOS})
+
+
 @app.route("/app")
-@roles_required("operator", "admin")
 def detector():
-    return render_template("index.html")
+    # Público, para que cualquiera pueda probarlo. Sin sesión de operador no se guarda nada:
+    # ni eventos en auditoría, ni fotos, ni alarma (la página no los manda y la API los rechaza).
+    registra = current_user.is_authenticated and current_user.role in ("operator", "admin")
+    return render_template("index.html", cfg=data_store.load_config(), registra=registra)
+
+
 @app.route("/predict", methods=["POST"])
-@login_required
 def predict():
     try:
         if model is None and not helmet_detector.disponible():
@@ -221,7 +279,10 @@ def predict():
         image_data = data["image"].split(",")[1]
         image_bytes = base64.b64decode(image_data)
         np_arr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        try:
+            img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR) if image_bytes else None
+        except cv2.error:  # imagen demasiado grande o dañada
+            img = None
 
         if img is None:
             return jsonify({"error": "No se pudo decodificar el frame"}), 400
@@ -232,28 +293,15 @@ def predict():
         cfg = data_store.load_config()
         modos = {"casco": bool(cfg["detectar_casco"]), "chaleco": bool(cfg["detectar_chaleco"])}
 
-        if not modos["casco"] and modos["chaleco"] and epp.disponible():
-            # Solo chaleco: el modelo de chalecos encuentra a las personas por su cuenta
-            personas = epp.detectar_personas(img)
-            return jsonify({"has_face": len(personas) > 0, "modos": modos,
-                            "faces": [{"bbox": p["bbox"], "chaleco": p["chaleco"],
-                                       "nombre": face_id.identificar(img, p["bbox"])} for p in personas]})
-
-        # Detector de cabezas (YOLO): ve el casco desde cualquier ángulo, aunque
-        # la persona esté de espaldas o se tape la cara.
-        if helmet_detector.disponible():
-            cabezas = helmet_detector.detectar(img)
-            chalecos = epp.chalecos_por_cabeza(img, [c["bbox"] for c in cabezas]) if modos["chaleco"] else []
-            caras = []
-            for i, c in enumerate(cabezas):
-                # None = no se ve la cara; "Desconocido" = cara que no está dada de alta
-                cara = {"bbox": c["bbox"], "nombre": face_id.identificar(img, c["bbox"])}
-                if modos["casco"]:
-                    cara.update(con_casco=c["p_casco"] * 100, sin_casco=c["p_sin"] * 100)
-                if modos["chaleco"]:
-                    cara["chaleco"] = chalecos[i]
-                caras.append(cara)
-            return jsonify({"has_face": len(caras) > 0, "modos": modos, "faces": caras})
+        # Detección con YOLO (cabezas y chaleco): la misma que usa el motor de cámaras del servidor
+        if helmet_detector.disponible() or (not modos["casco"] and modos["chaleco"] and epp.disponible()):
+            # "caida": la página lo pide un par de veces por segundo (es otra pasada de red)
+            caida = bool(data.get("caida")) and bool(cfg["detectar_caida"])
+            caras, personas = motor.analizar(img, modos, con_personas=caida, conocidos=_conocidos())
+            respuesta = {"has_face": len(caras) > 0, "modos": modos, "faces": caras}
+            if caida:
+                respuesta["acostados"] = motor.acostados(img, personas, caras, modos)
+            return jsonify(respuesta)
 
         # Respaldo sin detector_casco.onnx: cara (YuNet) + clasificador Keras
         faces_data = crop_head(img)
@@ -300,10 +348,9 @@ def predict():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Error interno al analizar el frame"}), 500  # el detalle queda en la consola
 
 @app.route("/reset_buffer", methods=["POST"])
-@login_required
 def reset_buffer():
     # Ya no hay buffer en el backend, se mantiene por compatibilidad con el frontend
     return jsonify({"ok": True})
@@ -351,4 +398,8 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     # El depurador de Werkzeug permite ejecutar código: solo con FLASK_DEBUG=1.
     debug = os.environ.get("FLASK_DEBUG") == "1"
+    # Motor de cámaras del servidor (USB / IP). Con el recargador de debug solo en el proceso
+    # que atiende: si no, el proceso padre también abriría las cámaras.
+    if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        motor.iniciar()
     app.run(host="0.0.0.0", port=port, debug=debug)

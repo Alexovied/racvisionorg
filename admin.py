@@ -4,6 +4,8 @@ import io
 import math
 import os
 import re
+import threading
+import time
 import requests
 from functools import wraps
 from urllib.parse import urlsplit
@@ -22,6 +24,7 @@ from flask_login import (
 )
 import data_store
 import face_id
+import motor
 from hardware import enviar_comando_esp32
 
 # ── Integración n8n ──────────────────────────────────────────────────────────
@@ -74,7 +77,7 @@ def init_login(app):
 #  ROLE DECORATOR
 # ═══════════════════════════════════════
 
-API_PREFIXES = ("/predict", "/reset_buffer", "/api/", "/admin/api/")
+API_PREFIXES = ("/predict", "/reset_buffer", "/api/", "/admin/api/", "/sgep/api/")
 
 
 def is_api_request():
@@ -105,6 +108,10 @@ def _safe_next(target):
     if parts.scheme or parts.netloc:
         return None
     return target
+
+
+# pm y auditor son roles del SGEP (sgep.py): no acceden a nada de RAC
+ROLES = ("admin", "operator", "viewer", "pm", "auditor")
 
 
 def admin_required(f):
@@ -175,7 +182,9 @@ def users():
             password = request.form.get("password", "")
             role = request.form.get("role", "operator")
             
-            if not username or not password:
+            if role not in ROLES:
+                flash("Rol inválido.", "error")
+            elif not username or not password:
                 flash("Usuario y contraseña son obligatorios.", "error")
             elif len(password) < 4:
                 flash("La contraseña debe tener al menos 4 caracteres.", "error")
@@ -191,6 +200,9 @@ def users():
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             role = request.form.get("role")
+            if role and role not in ROLES:
+                flash("Rol inválido.", "error")
+                return redirect(url_for("admin.users"))
             
             success = data_store.update_user(
                 user_id,
@@ -300,7 +312,8 @@ def contrato():
 @admin_bp.route("/monitor")
 @roles_required("operator", "admin")
 def monitor():
-    # Las cámaras activas se monitorean juntas; el video se toma en el navegador
+    # Las cámaras activas se monitorean juntas. Las "webcam" toman el video en el navegador;
+    # las "usb" e "ip" las analiza el servidor (motor.py) y acá solo se miran.
     activas = [c for c in data_store.load_cameras() if c.get("active")]
     return render_template("admin/monitor.html", cameras=activas)
 
@@ -310,13 +323,25 @@ def cameras():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         location = request.form.get("location", "").strip()
+        # Registrar una cámara usb/ip hace que el servidor la abra: no alcanza con estar logueado
+        if current_user.role not in ("operator", "admin"):
+            abort(403)
         cam_type = request.form.get("type", "webcam")
         url = request.form.get("url", "").strip()
+        if cam_type == "usb":
+            url = url or "0"  # número de dispositivo del servidor: 0 es la primera cámara
         
         if not name:
             flash("El nombre de la cámara es obligatorio.", "error")
+        elif cam_type not in ("webcam", "ip", "usb"):
+            flash("Tipo de cámara desconocido.", "error")
+        elif cam_type == "usb" and not (url.isdecimal() and len(url) <= 2):
+            flash("Para una cámara USB indicá el número de dispositivo (0, 1, 2...).", "error")
+        elif cam_type == "ip" and not url.lower().startswith(("rtsp://", "rtsps://", "http://", "https://")):
+            flash("Para una cámara IP indicá la dirección (rtsp://... o http://...).", "error")
         else:
             data_store.create_camera(name, location, cam_type, url)
+            motor.sincronizar()
             flash(f"Cámara '{name}' registrada.", "success")
         
         return redirect(url_for("admin.cameras"))
@@ -325,9 +350,10 @@ def cameras():
     return render_template("admin/cameras.html", cameras=all_cameras)
 
 @admin_bp.route("/cameras/<cam_id>/toggle", methods=["POST"])
-@login_required
+@roles_required("operator", "admin")
 def toggle_camera(cam_id):
     cam = data_store.toggle_camera(cam_id)
+    motor.sincronizar()
     if cam:
         state = "activada" if cam["active"] else "desactivada"
         flash(f"Cámara '{cam['name']}' {state}.", "success")
@@ -338,8 +364,65 @@ def toggle_camera(cam_id):
 @admin_required
 def delete_camera(cam_id):
     data_store.delete_camera(cam_id)
+    motor.sincronizar()
     flash("Cámara eliminada.", "success")
     return redirect(url_for("admin.cameras"))
+
+
+def _zonas_validas(zonas):
+    """Hasta 10 polígonos de 3 a 20 puntos [x, y] con coordenadas de 0 a 1."""
+    def numero(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1
+    return (isinstance(zonas, list) and len(zonas) <= 10
+            and all(isinstance(z, list) and 3 <= len(z) <= 20
+                    and all(isinstance(p, list) and len(p) == 2 and numero(p[0]) and numero(p[1]) for p in z)
+                    for z in zonas))
+
+
+@admin_bp.route("/api/cameras/<cam_id>/zonas", methods=["POST"])
+@roles_required("operator", "admin")
+def api_zonas(cam_id):
+    """Guarda las zonas de exclusión dibujadas en Monitoreo: {"zonas": [[[x, y], ...], ...]}."""
+    data = request.get_json(silent=True)
+    zonas = data.get("zonas") if isinstance(data, dict) else None
+    if not _zonas_validas(zonas):
+        return jsonify({"error": "Zonas inválidas: hasta 10 polígonos de 3 a 20 puntos con coordenadas de 0 a 1"}), 400
+    if not data_store.set_zonas(cam_id, zonas):
+        return jsonify({"error": "Cámara no encontrada"}), 404
+    motor.sincronizar()
+    return jsonify({"ok": True, "zonas": zonas})
+
+
+@admin_bp.route("/api/cameras/<cam_id>/frame.jpg")
+@roles_required("operator", "admin")
+def api_frame(cam_id):
+    """Último frame analizado por el servidor, con los recuadros dibujados."""
+    jpg = motor.frame(cam_id)
+    if jpg is None:
+        abort(404)
+    return Response(jpg, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@admin_bp.route("/api/cameras/<cam_id>/video")
+@roles_required("operator", "admin")
+def api_video(cam_id):
+    """Video en vivo (MJPEG) de una cámara que analiza el servidor, a unos 20 cuadros por segundo."""
+    if motor.frame(cam_id) is None:
+        abort(404)
+
+    def cuadros():
+        while (jpg := motor.frame(cam_id)) is not None:
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
+            time.sleep(0.05)
+
+    return Response(cuadros(), mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control": "no-store"})
+
+
+@admin_bp.route("/api/motor")
+@roles_required("operator", "admin")
+def api_motor():
+    return jsonify(motor.estado())
 
 
 # ═══════════════════════════════════════
@@ -367,6 +450,8 @@ def config():
                 cfg["active_model"] = request.form.get("active_model", "modelo.keras")
                 cfg["detectar_casco"] = request.form.get("detectar_casco") == "on"
                 cfg["detectar_chaleco"] = request.form.get("detectar_chaleco") == "on"
+                cfg["detectar_caida"] = request.form.get("detectar_caida") == "on"
+                cfg["caida_segundos"] = max(3, min(120, int(request.form.get("caida_segundos", 10))))
                 if not (cfg["detectar_casco"] or cfg["detectar_chaleco"]):
                     flash("Tiene que quedar activa al menos una detección (casco o chaleco).", "error")
                     return redirect(url_for("admin.config"))
@@ -467,9 +552,18 @@ def audit_export():
 #  API — Receive events from detector
 # ═══════════════════════════════════════
 
+# Tipos que puede mandar el navegador. Zona prohibida y hombre caído solo los decide el servidor (motor.py).
 VALID_EVENT_TYPES = ("con_casco", "sin_casco", "sin_chaleco")
-# Infracciones de EPP: guardan persona y foto, y disparan la alarma
-ALERT_TYPES = ("sin_casco", "sin_chaleco")
+# Infracciones: guardan persona y foto, y disparan la alarma
+ALERT_TYPES = data_store.ALERT_TYPES
+EVENT_LABELS = {"con_casco": "Con Casco", "sin_casco": "Sin Casco", "sin_chaleco": "Sin Chaleco",
+                "zona_prohibida": "Zona Prohibida", "hombre_caido": "Hombre Caído"}
+
+
+@admin_bp.app_context_processor
+def _etiquetas_de_evento():
+    return {"EVENT_LABELS": EVENT_LABELS}
+
 # Cámara implícita del detector web (index.html la envía siempre).
 DEFAULT_CAMERA = "webcam"
 
@@ -531,6 +625,53 @@ def datos_de_camara(camera):
     return ("Detector web" if camera == DEFAULT_CAMERA else camera), ""
 
 
+def registrar_evento(event_type, confidence, camera, persona=None, foto_jpg=None):
+    """Guarda el evento y avisa: alarma física y webhook. Lo usan la API (el navegador decide)
+    y el motor de cámaras del servidor (motor.py). camera: id o nombre de una cámara registrada.
+    Las alertas guardan además quién era, dónde fue y una foto del momento."""
+    camera, ubicacion = datos_de_camara(camera)
+    extra = {"ubicacion": ubicacion} if ubicacion else {}
+    if event_type in ALERT_TYPES:
+        extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
+    event = data_store.append_event(event_type, confidence, camera, foto_jpg=foto_jpg, **extra)
+
+    # Despachar comando al hardware según el tipo de evento
+    if event_type in ALERT_TYPES:
+        enviar_comando_esp32("R")   # LED Rojo + Buzzer ON
+    elif event_type == "con_casco":
+        enviar_comando_esp32("G")   # LED Verde + Buzzer OFF
+
+    # Webhook n8n: solo en infracciones. timeout=3s y excepción silenciosa.
+    if event_type in ALERT_TYPES and N8N_WEBHOOK_URL:
+        n8n_payload = {
+            "sensor":        camera,
+            "persona":       event.get("persona", "Sin identificar"),
+            "alerta":        round(confidence),
+            "ubicacion":     ubicacion or camera,
+            "mensaje":       (f"Trabajador {event_type.replace('_', ' ')}" if event_type.startswith("sin_")
+                              else EVENT_LABELS[event_type]) + f" (confianza: {confidence:.1f}%)",
+            "tipo_riesgo":   event_type,
+            "confianza_raw": confidence,
+            "timestamp":     event.get("timestamp", ""),
+        }
+        n8n_headers = {}
+        if N8N_WEBHOOK_TOKEN:
+            n8n_headers["Authorization"] = f"Bearer {N8N_WEBHOOK_TOKEN}"
+        # En segundo plano: un n8n lento no frena ni la respuesta ni el análisis de la cámara
+        threading.Thread(target=_avisar_n8n, args=(n8n_payload, n8n_headers), daemon=True).start()
+    return event
+
+
+def _avisar_n8n(payload, headers):
+    try:
+        requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=3)
+    except Exception:
+        pass  # n8n inaccesible no debe romper el flujo de RAC
+
+
+motor.registrar_evento = registrar_evento
+
+
 @admin_bp.route("/alertas/<event_id>.jpg")
 @login_required
 def foto_alerta(event_id):
@@ -552,64 +693,9 @@ def api_add_event():
         if error:
             return jsonify({"error": error}), 400
 
-        # Registrar en base de datos de auditoría. Las alertas (sin casco o sin chaleco) guardan
-        # además quién era, dónde fue y una foto del momento.
-        camera, ubicacion = datos_de_camara(camera)
-        extra = {"ubicacion": ubicacion} if ubicacion else {}
-        foto = None
-        if event_type in ALERT_TYPES:
-            persona = data.get("persona")
-            extra["persona"] = persona.strip()[:120] if isinstance(persona, str) and persona.strip() else "Sin identificar"
-            foto = foto_de_alerta(data)
-        event = data_store.append_event(event_type, confidence, camera, foto_jpg=foto, **extra)
-
-        # Despachar comando al hardware según el tipo de evento
-        # Esto desacopla el hardware del ciclo de /predict (sin micro-interrupciones)
-        if event_type in ALERT_TYPES:
-            enviar_comando_esp32("R")   # LED Rojo + Buzzer ON
-        elif event_type == "con_casco":
-            enviar_comando_esp32("G")   # LED Verde + Buzzer OFF
-
-        # ── Webhook n8n ───────────────────────────────────────────────────────
-        # Solo se dispara en infracciones (sin casco o sin chaleco).
-        # No bloquea el flujo principal: timeout=3s y excepción silenciosa.
-        if event_type in ALERT_TYPES and N8N_WEBHOOK_URL:
-            # Intentar obtener la ubicación registrada para esta cámara.
-            # Si no está en data_store, se usa el nombre de la cámara como fallback.
-            ubicacion = camera
-            try:
-                cameras = data_store.load_cameras()
-                cam_match = next((c for c in cameras if c.get("name") == camera), None)
-                if cam_match and cam_match.get("location"):
-                    ubicacion = cam_match["location"]
-            except Exception:
-                pass
-
-            n8n_payload = {
-                "sensor":        camera,
-                "persona":       event.get("persona", "Sin identificar"),
-                "alerta":        round(confidence),
-                "ubicacion":     ubicacion,
-                "mensaje":       f"Trabajador {event_type.replace('_', ' ')} (confianza: {confidence:.1f}%)",
-                "tipo_riesgo":   event_type,
-                "confianza_raw": confidence,
-                "timestamp":     event.get("timestamp", ""),
-            }
-
-            n8n_headers = {}
-            if N8N_WEBHOOK_TOKEN:
-                n8n_headers["Authorization"] = f"Bearer {N8N_WEBHOOK_TOKEN}"
-
-            try:
-                requests.post(
-                    N8N_WEBHOOK_URL,
-                    json=n8n_payload,
-                    headers=n8n_headers,
-                    timeout=3
-                )
-            except Exception:
-                pass  # n8n inaccesible no debe romper el flujo de RAC
-        # ─────────────────────────────────────────────────────────────────────
+        persona = data.get("persona") if event_type in ALERT_TYPES else None
+        foto = foto_de_alerta(data) if event_type in ALERT_TYPES else None
+        event = registrar_evento(event_type, confidence, camera, persona, foto)
 
         return jsonify({"ok": True, "event": event})
     except HTTPException:
