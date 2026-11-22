@@ -498,7 +498,7 @@ _lock = threading.Lock()
 
 
 def iniciar():
-    """Enciende el motor (lo llama `python app.py`). Sin esto sincronizar() no hace nada: un
+    """Enciende el motor (lo llama `python src/app.py`). Sin esto sincronizar() no hace nada: un
     servidor sin cámaras propias (el sitio con gunicorn) no abre ningún hilo ni dispositivo."""
     global _activo
     _activo = True

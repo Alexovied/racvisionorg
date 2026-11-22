@@ -2,7 +2,7 @@
 
 Uso:
     pip install -r requirements-sgep.txt
-    python sgep_local.py            → http://localhost:5000
+    python src/sgep_local.py            → http://localhost:5000
 
 Usa su propia carpeta de datos (data_sgep/) y la llena con datos de prueba la
 primera vez. Usuarios de prueba (solo para uso local):
@@ -13,7 +13,7 @@ import secrets
 import sys
 from unittest import mock
 
-RAIZ = os.path.dirname(os.path.abspath(__file__))
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
 
 # El panel de RAC (admin.py) importa visión por computadora y el ESP32; el SGEP no los usa.

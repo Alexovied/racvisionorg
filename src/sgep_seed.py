@@ -1,6 +1,6 @@
 """Datos de prueba del SGEP-Dashboard (solo para desarrollo local y la demo).
 
-Uso:  python sgep_seed.py [--force]
+Uso:  python src/sgep_seed.py [--force]
 
 Crea responsables, proyectos de 7mo, plantillas, encuestas, invitaciones y
 ~10 semanas de respuestas en data/sgep_*.json, y dos usuarios demo:

@@ -1,7 +1,7 @@
 """Simulador de wearable: manda telemetría a RAC como lo haría la pulsera, para probar sin hardware.
 
 1. En el panel, Wearables → Registrar un equipo. Copiar el token que aparece.
-2. python simulador_wearable.py --token rac_XXXX --escenario desmayo
+2. python src/simulador_wearable.py --token rac_XXXX --escenario desmayo
    (contra el servidor local; para otro: --url https://...)
 3. Mirar el panel: la tarjeta del equipo cambia de estado y aparece el aviso rojo arriba.
 

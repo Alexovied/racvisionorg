@@ -52,7 +52,7 @@ keras.layers.Dense.__init__ = _patched_dense_init
 print("[+] Patches de compatibilidad Keras aplicados")
 # ────────────────────────────────────────────────────────────────────────────
 
-app = Flask(__name__)
+app = Flask(__name__, root_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # templates/ y static/ están en la raíz
 
 # Límite de tamaño por request: un frame JPEG 640x480 en base64 pesa ~100 KB.
 # Evita DoS por imágenes gigantes en /predict (Flask responde 413).
@@ -61,7 +61,7 @@ app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 # SECRET_KEY for sessions (Flask-Login)
 # Prioridad: variable de entorno SECRET_KEY (recomendado en Render, cuyo disco es
 # efímero) y, si no está, el archivo data/.secret_key (se crea la primera vez).
-secret_key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", ".secret_key")
+secret_key_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", ".secret_key")
 os.makedirs(os.path.dirname(secret_key_path), exist_ok=True)
 if os.environ.get("SECRET_KEY"):
     app.secret_key = os.environ["SECRET_KEY"]
@@ -74,7 +74,7 @@ else:
         f.write(app.secret_key)
 
 # Cookie de sesión: no viaja en POST de otros sitios (Lax) y, con gunicorn
-# (producción, detrás de HTTPS), solo por HTTPS. `python app.py` es desarrollo local por HTTP.
+# (producción, detrás de HTTPS), solo por HTTPS. `python src/app.py` es desarrollo local por HTTP.
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = __name__ != "__main__"
 
@@ -115,7 +115,7 @@ init_login(app)
 init_esp32()
 
 # Cargar el modelo Keras personalizado
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_app", "modelo.keras")
+model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modelos_app", "modelo.keras")
 model = None
 
 if not os.path.exists(model_path):

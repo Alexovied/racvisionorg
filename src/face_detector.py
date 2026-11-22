@@ -15,7 +15,7 @@ import numpy as np
 
 import helmet_detector  # comparte el Core y el dispositivo de OpenVINO
 
-YUNET_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+YUNET_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "modelos_app", "face_detection_yunet_2023mar.onnx")
 
 # Puntaje mínimo para aceptar una cara. En el dataset las caras reales dan

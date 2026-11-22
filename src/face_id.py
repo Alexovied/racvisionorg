@@ -1,6 +1,6 @@
 """Reconocimiento de personas con SFace (OpenCV).
 
-Alta: desde el panel (Personas) o con `python face_id.py enrolar`, que lee
+Alta: desde el panel (Personas) o con `python src/face_id.py enrolar`, que lee
 personas/<nombre>/ con 5-10 fotos de frente. Se calcula un embedding por foto y
 se guarda en data/personas.json (solo números, nunca las fotos). Quién la
 registró y cuándo queda en data/personas_registro.json.
@@ -23,7 +23,7 @@ import data_store
 import face_detector
 import helmet_detector  # Core y dispositivo de OpenVINO
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(BASE, "modelos_app", "face_recognition_sface_2021dec.onnx")
 
 # Similitud coseno mínima para dar un nombre. OpenCV sugiere 0.363, pero en las

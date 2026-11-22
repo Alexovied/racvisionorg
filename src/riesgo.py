@@ -275,5 +275,5 @@ def redactar(r):
         return texto(r)
 
 
-if __name__ == "__main__":  # python riesgo.py → reporte de ayer en la consola
+if __name__ == "__main__":  # python src/riesgo.py → reporte de ayer en la consola
     print(redactar(reporte(data_store.load_events())))

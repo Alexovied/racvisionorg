@@ -12,7 +12,7 @@ import time
 import cv2
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # los módulos de la app están en la raíz
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))  # los módulos de la app
 
 import helmet_detector
 

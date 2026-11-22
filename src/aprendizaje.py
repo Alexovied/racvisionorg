@@ -73,7 +73,7 @@ def exportar_fotos(eventos, destino):
     return n
 
 
-if __name__ == "__main__":   # python aprendizaje.py dataset_feedback/
+if __name__ == "__main__":   # python src/aprendizaje.py dataset_feedback/
     import sys
     destino = sys.argv[1] if len(sys.argv) > 1 else "dataset_feedback"
     print(f"{exportar_fotos(data_store.load_events(), destino)} fotos copiadas a {destino}/")

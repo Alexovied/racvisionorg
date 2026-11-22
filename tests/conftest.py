@@ -16,8 +16,9 @@ import numpy as np
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+SRC = os.path.join(ROOT, "src")  # el código de la app
+if SRC not in sys.path:
+    sys.path.insert(0, SRC)
 
 # Variables de entorno para que app.py no lea data/.secret_key ni genere un admin.
 os.environ["SECRET_KEY"] = "clave-solo-para-tests"

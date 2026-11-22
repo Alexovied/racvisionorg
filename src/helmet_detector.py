@@ -14,7 +14,7 @@ import threading
 import cv2
 import numpy as np
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_app", "detector_casco.onnx")
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modelos_app", "detector_casco.onnx")
 
 INPUT_SIZE    = 640
 CONF_THRESHOLD = 0.35   # mismo umbral con el que el notebook mide aciertos
