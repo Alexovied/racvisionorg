@@ -6,8 +6,8 @@
 {% block head %}
 <style>
     .mon-nodo { color: var(--text-muted); font-size: .85rem; white-space: nowrap; }
-    .monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.25rem; }
-    .mon-card { padding: 0; overflow: hidden; }
+    .monitor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 1.25rem; }
+    .mon-card { padding: 0; overflow: hidden; max-width: 960px; }
     .mon-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.9rem 1.1rem; }
     .mon-name { font-weight: 600; color: var(--text); }
     .mon-loc { font-size: 0.78rem; color: var(--text-dim); }
@@ -20,8 +20,8 @@
     .mon-video .mon-idle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
                            color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 1rem; }
     .mon-card.alerta .mon-video { box-shadow: inset 0 0 0 3px var(--red); }
-    .mon-foot { display: flex; gap: 0.5rem; padding: 0.8rem 1.1rem; }
-    .mon-foot select { flex: 1; min-width: 0; background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border);
+    .mon-foot { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.8rem 1.1rem; }
+    .mon-foot select { flex: 1; min-width: 8rem; background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border);
                        border-radius: var(--radius-sm); padding: 0.5rem 0.6rem; font-family: var(--font); font-size: 0.82rem;
                        color-scheme: dark; }
     /* La lista desplegable la dibuja el sistema: sin esto, texto claro sobre fondo blanco */
@@ -274,7 +274,11 @@
 
         // Video continuo (MJPEG): una sola conexión; si se corta o todavía no hay señal, se reintenta
         const pedir = () => { img.src = `/admin/api/cameras/${camId}/video?t=${Date.now()}`; };
-        img.onload = () => { idle.style.display = 'none'; img.style.visibility = ''; };
+        img.onload = () => {
+            idle.style.display = 'none'; img.style.visibility = '';
+            // El recuadro toma la forma de la cámara (16:9, 4:3...): si no, el video se ve estirado
+            if (img.naturalWidth) img.parentElement.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+        };
         img.onerror = () => { idle.style.display = ''; img.style.visibility = 'hidden'; setTimeout(pedir, 2000); };
         pedir();
 

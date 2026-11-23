@@ -31,6 +31,7 @@ import salud
 # Mismas reglas que static/epp.js: ventana de 8 frames, alerta con 60 % "falta", OK con 70 % y ventana llena
 VENTANA, TH_FALTA, TH_OK, VACIOS_RESET = 8, 0.60, 0.70, 15
 TIMEOUT_IP_MS = 8000   # abrir / leer una cámara IP: más que esto es "sin señal"
+ANCHO_MAX = 960        # los frames más anchos se achican al leerlos
 EVENTOS = {"casco": "sin_casco", "chaleco": "sin_chaleco", "zona": "zona_prohibida", "caida": "hombre_caido"}
 TITULOS = {"casco": "SIN CASCO", "chaleco": "SIN CHALECO", "zona": "ZONA PROHIBIDA", "caida": "HOMBRE CAÍDO"}
 ROJO, VERDE, AMARILLO = (68, 68, 239), (129, 185, 16), (0, 200, 255)  # BGR
@@ -330,6 +331,11 @@ class Camara(threading.Thread):
                     ok, img = cap.read()
                     if not ok:
                         break
+                    # Cámaras Full HD o más: a 960 de ancho. Analizar, dibujar y mandar al panel 1080p
+                    # satura la CPU, y los recuadros y letras quedan diminutos en la tarjeta
+                    if img.shape[1] > ANCHO_MAX:
+                        img = cv2.resize(img, (ANCHO_MAX, round(img.shape[0] * ANCHO_MAX / img.shape[1])),
+                                         interpolation=cv2.INTER_AREA)
                     self.crudo = img
                     # Volvió la señal (y se sostiene 5 s: un stream que da un cuadro y muere no cuenta)
                     if espera != 5 and time.monotonic() - t_abierta >= 5:
