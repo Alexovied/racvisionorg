@@ -24,6 +24,11 @@ CLASES = ("casco", "sin_casco")
 try:
     import openvino
     _core = openvino.Core()
+    # Un contenedor limitado (docker cpus: 1.5) igual ve todos los núcleos del equipo: OpenVINO
+    # abre un hilo por núcleo, agota la cuota en un instante y el servidor queda congelado
+    # hasta el próximo período, sin poder responder. OPENVINO_HILOS lo ajusta al límite.
+    if os.environ.get("OPENVINO_HILOS", "").isdecimal():
+        _core.set_property("CPU", {"INFERENCE_NUM_THREADS": int(os.environ["OPENVINO_HILOS"])})
 except Exception as e:  # sin OpenVINO se usa cv2.dnn
     print(f"[!] OpenVINO no disponible ({e}); los YOLO corren con cv2.dnn")
     _core = None

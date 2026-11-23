@@ -481,8 +481,11 @@ def api_video(cam_id):
         abort(404)
 
     def cuadros():
+        anterior = None
         while (jpg := motor.frame(cam_id)) is not None:
-            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
+            if jpg is not anterior:  # sin cuadro nuevo no se manda nada
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
+                anterior = jpg
             time.sleep(0.05)
 
     return Response(cuadros(), mimetype="multipart/x-mixed-replace; boundary=frame",

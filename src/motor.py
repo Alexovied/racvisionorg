@@ -299,6 +299,7 @@ class Camara(threading.Thread):
         self.t_recibido = 0.0         # cámaras relay: cuándo llegó el último cuadro
         self.n_recibido = -1          # y su número: el relay manda varios a la vez y pueden llegar desordenados
         self.pintar = None            # dibuja sobre un frame los recuadros del último análisis
+        self._vista = None            # último JPEG de vista(): (clave, jpg, frame)
         self.caidos, self.t_pose = [], 0.0
         self.nivel = cuerpo.Nivel()   # inclinación de esta cámara, promediada entre frames
         self.estado = {"clase": None, "titulo": "CONECTANDO"}
@@ -408,11 +409,19 @@ class Camara(threading.Thread):
         img, pintar = self.crudo, self.pintar
         if img is None:
             return None
-        img = img.copy()
+        # El mismo cuadro con los mismos recuadros no se vuelve a codificar: cada video abierto en
+        # el panel pide 20 por segundo, y codificar de más le saca CPU al análisis
+        clave = (id(img), id(pintar))
+        cache = self._vista
+        if cache and cache[0] == clave and cache[2] is img:
+            return cache[1]
+        img2 = img.copy()
         if pintar:
-            pintar(img)
-        ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        return jpg.tobytes() if ok else None
+            pintar(img2)
+        ok, jpg = cv2.imencode(".jpg", img2, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        jpg = jpg.tobytes() if ok else None
+        self._vista = (clave, jpg, img)
+        return jpg
 
     def _procesar(self, img):
         ahora = time.monotonic()
