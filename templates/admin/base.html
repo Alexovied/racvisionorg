@@ -79,6 +79,10 @@
                 <i class="fa-solid fa-display"></i>
                 <span>Monitoreo</span>
             </a>
+            <a href="{{ url_for('admin.revision_pagina') }}" class="nav-item {% if request.endpoint == 'admin.revision_pagina' %}active{% endif %}">
+                <i class="fa-solid fa-tags"></i>
+                <span>Revisar alertas</span>
+            </a>
             {% endif %}
             {% if current_user.role == 'admin' %}
             <a href="{{ url_for('admin.users') }}" class="nav-item {% if request.endpoint == 'admin.users' %}active{% endif %}">

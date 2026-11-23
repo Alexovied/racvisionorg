@@ -37,6 +37,13 @@ ROJO, VERDE, AMARILLO = (68, 68, 239), (129, 185, 16), (0, 200, 255)  # BGR
 
 # admin.py pone acá su registrar_evento (evento + foto + alarma + webhook): este módulo no importa al panel
 registrar_evento = None
+# ...y su guardar_muestra(evento, jpg): la foto limpia (sin recuadros) para revisar y reentrenar (revision.py)
+guardar_muestra = None
+
+
+class _Pendiente(tuple):
+    """Argumentos de registrar_evento, y la foto limpia del cuadro si es una alerta."""
+    limpia = None
 
 
 def analizar(img, modos, con_personas=False, conocidos=None, nivel=None, info=None):
@@ -450,6 +457,10 @@ class Camara(threading.Thread):
                 if texto:
                     _recuadro(im, c["bbox"], texto, ROJO if "falta" in e.values() else VERDE)
 
+        limpia = None
+        if nuevas:   # el cuadro sin dibujar, para revisar la alerta y reentrenar el detector
+            ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+            limpia = jpg.tobytes() if ok else None
         pintar(img)
         self.pintar = pintar
         ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -478,7 +489,9 @@ class Camara(threading.Thread):
             else:
                 pos = None
             pos = [min(1.0, max(0.0, v)) for v in pos] if pos else None
-            self.pendientes.append((EVENTOS[k], min(100.0, conf), cam["id"], persona, self.jpg, pos))
+            pendiente = _Pendiente((EVENTOS[k], min(100.0, conf), cam["id"], persona, self.jpg, pos))
+            pendiente.limpia = limpia
+            self.pendientes.append(pendiente)
         # Evento "todos con EPP" cuando la cámara vuelve a verde, como hace el monitor del navegador
         if clase and clase != self.alarma:
             self.alarma = clase
@@ -487,8 +500,14 @@ class Camara(threading.Thread):
         # Se registran al final y de a uno: si guardar falla (disco, archivo tomado), el evento
         # queda en la lista y se reintenta en el próximo frame en vez de perderse.
         while self.pendientes:
-            registrar_evento(*self.pendientes[0])
+            pendiente = self.pendientes[0]
+            evento = registrar_evento(*pendiente)
             self.pendientes.pop(0)
+            if getattr(pendiente, "limpia", None) and guardar_muestra and isinstance(evento, dict):
+                try:   # si falla, la alerta ya quedó registrada: no se reintenta
+                    guardar_muestra(evento, pendiente.limpia)
+                except Exception:
+                    traceback.print_exc()
 
 
 # ── Motor ────────────────────────────────────────────────────────────────────
@@ -531,6 +550,16 @@ def estado():
     """{id de cámara: {clase, titulo, fps, error}} de las cámaras que analiza el servidor."""
     return {cid: {**h.estado, "fps": round(h.fps, 1), "error": h.error, "lente": h.lente}
             for cid, h in list(_hilos.items())}
+
+
+def cuadro_limpio(cam_id):
+    """JPEG del frame más nuevo de la cámara SIN recuadros (para guardarlo y revisarlo), o None."""
+    h = _hilos.get(cam_id)
+    img = h.crudo if h else None
+    if img is None:
+        return None
+    ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    return jpg.tobytes() if ok else None
 
 
 def frame(cam_id):

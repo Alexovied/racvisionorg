@@ -30,6 +30,7 @@ import data_store
 import face_detector
 import wearables
 import face_id
+import revision
 import riesgo
 import salud
 import motor
@@ -712,18 +713,30 @@ def a_webp(imagen):
     return webp.tobytes() if ok else None
 
 
+def _base64_de(valor):
+    """Bytes de un "data:image/jpeg;base64,...", o None si no vino o no es base64."""
+    if not isinstance(valor, str) or "," not in valor:
+        return None
+    try:
+        return base64.b64decode(valor.split(",", 1)[1], validate=True)
+    except (binascii.Error, ValueError):
+        return None
+
+
 def foto_de_alerta(data):
     """WebP validado de la captura que manda el detector ("data:image/jpeg;base64,..."),
     o None si no vino o no es una imagen. Se vuelve a codificar: nunca se guardan
     bytes tal cual los manda el cliente."""
-    foto = data.get("foto")
-    if not isinstance(foto, str) or "," not in foto:
+    crudo = _base64_de(data.get("foto"))
+    return a_webp(crudo) if crudo else None
+
+
+def guardar_muestra(evento, foto):
+    """Guarda la foto limpia (sin recuadros) de una alerta de cámara para revisarla en
+    /admin/revision. En modo anónimo no: ahí no se guarda ninguna cara sin pixelar."""
+    if not foto or evento.get("type") not in revision.TIPOS or data_store.load_config().get("modo_anonimo"):
         return None
-    try:
-        crudo = base64.b64decode(foto.split(",", 1)[1], validate=True)
-    except (binascii.Error, ValueError):
-        return None
-    return a_webp(crudo)
+    return revision.guardar(foto, evento.get("camera"), "alerta", evento["type"], evento["id"])
 
 
 def datos_de_camara(camera):
@@ -814,6 +827,7 @@ def _avisar_n8n(payload, headers):
 
 
 motor.registrar_evento = registrar_evento
+motor.guardar_muestra = guardar_muestra
 
 
 @admin_bp.route("/alertas/<event_id>.jpg")   # enlaces viejos: sirve la foto que haya (WebP o JPEG)
@@ -841,6 +855,11 @@ def api_add_event():
         persona = data.get("persona") if event_type in ALERT_TYPES else None
         foto = foto_de_alerta(data) if event_type in ALERT_TYPES else None
         event = registrar_evento(event_type, confidence, camera, persona, foto, _posicion(data.get("pos")))
+        if event_type in revision.TIPOS:
+            try:   # la foto sin recuadros, para revisar la alerta; si falla, la alerta ya quedó
+                guardar_muestra(event, _base64_de(data.get("foto_limpia")))
+            except Exception as e:
+                print(f"[!] No se guardó la foto para revisar: {e}", flush=True)
 
         return jsonify({"ok": True, "event": event})
     except HTTPException:
@@ -1068,6 +1087,119 @@ def api_feedback(event_id):
     evento = data_store.set_feedback(event_id, veredicto, current_user.username)
     aprendido = wearables.aprender_de_falsa(evento) if veredicto == "falsa" else None
     return jsonify({"ok": True, "aprendido": aprendido})
+
+
+# ═══════════════════════════════════════
+#  REVISIÓN DE ALERTAS PARA REENTRENAR (revision.py)
+# ═══════════════════════════════════════
+
+@admin_bp.route("/revision")
+@roles_required("admin", "operator")
+def revision_pagina():
+    return render_template("admin/revision.html", resumen=revision.resumen(),
+                           anonimo=bool(data_store.load_config().get("modo_anonimo")),
+                           etiquetas=EVENT_LABELS)
+
+
+@admin_bp.route("/api/revision")
+@roles_required("admin", "operator")
+def api_revision_lista():
+    """Fotos para revisar: estado = pendientes (por defecto), revisadas o todas."""
+    estado = request.args.get("estado", "pendientes")
+    muestras = revision.cargar()
+    if estado == "pendientes":
+        muestras = [m for m in muestras if m["cajas"] is None]
+    elif estado == "revisadas":
+        muestras = [m for m in muestras if m["cajas"] is not None]
+    campos = ("id", "origen", "tipo", "camera", "timestamp", "veredicto", "event_id")
+    return jsonify({"muestras": [{k: m.get(k) for k in campos} | {"revisada": m["cajas"] is not None}
+                                 for m in muestras[:500]],
+                    "resumen": revision.resumen()})
+
+
+@admin_bp.route("/api/revision/<muestra_id>")
+@roles_required("admin", "operator")
+def api_revision_muestra(muestra_id):
+    """Una foto con las cajas: las corregidas si ya se revisó, si no las que propone el modelo."""
+    m = revision.obtener(muestra_id)
+    if not m:
+        return jsonify({"error": "No existe esa foto"}), 404
+    detecciones = revision.detectar(m)
+    evento = data_store.get_event(m["event_id"]) if m.get("event_id") else None
+    return jsonify(m | {"detecciones": detecciones,
+                        "persona": evento.get("persona") if evento else None,
+                        "confianza": evento.get("confidence") if evento else None,
+                        "etiqueta": EVENT_LABELS.get(m.get("tipo"), m.get("tipo"))})
+
+
+@admin_bp.route("/revision/<muestra_id>.webp")
+@roles_required("admin", "operator")
+def revision_foto(muestra_id):
+    if not revision.obtener(muestra_id):
+        abort(404)
+    return send_file(revision.ruta_foto(muestra_id), mimetype="image/webp")
+
+
+@admin_bp.route("/api/revision/<muestra_id>", methods=["POST"])
+@roles_required("admin", "operator")
+def api_revision_guardar(muestra_id):
+    m = revision.obtener(muestra_id)
+    if not m:
+        return jsonify({"error": "No existe esa foto"}), 404
+    data = request.get_json(silent=True) or {}
+    cajas = revision.validar_cajas(data.get("cajas"))
+    if cajas is None:
+        return jsonify({"error": "Cajas inválidas"}), 400
+    veredicto = data.get("veredicto")
+    if m.get("origen") == "alerta":
+        if veredicto not in ("real", "falsa"):
+            return jsonify({"error": "'veredicto' debe ser 'real' o 'falsa'"}), 400
+    else:
+        veredicto = None
+    revision.revisar(muestra_id, cajas, veredicto, current_user.username)
+    return jsonify({"ok": True, "resumen": revision.resumen()})
+
+
+@admin_bp.route("/api/revision/<muestra_id>/borrar", methods=["POST"])
+@roles_required("admin", "operator")
+def api_revision_borrar(muestra_id):
+    if not revision.obtener(muestra_id) or not revision.borrar(muestra_id):
+        return jsonify({"error": "No existe esa foto"}), 404
+    return jsonify({"ok": True, "resumen": revision.resumen()})
+
+
+@admin_bp.route("/api/revision/capturar", methods=["POST"])
+@roles_required("admin", "operator")
+def api_revision_capturar():
+    """Guarda el cuadro actual de una cámara para revisarlo: sirve para los errores que no
+    generan alerta (una cabeza sin casco que el modelo vio "con casco"). Webcam: el navegador
+    manda la foto; cámara USB / IP: se toma el último cuadro del motor."""
+    if data_store.load_config().get("modo_anonimo"):
+        return jsonify({"error": "En modo anónimo no se guardan fotos para revisar"}), 409
+    data = request.get_json(silent=True) or {}
+    cam_id = data.get("camera")
+    cam = next((c for c in data_store.load_cameras() if c.get("id") == cam_id), None)
+    if not cam:
+        return jsonify({"error": "No existe esa cámara"}), 404
+    foto = _base64_de(data.get("foto")) if cam.get("type") == "webcam" else motor.cuadro_limpio(cam_id)
+    if not foto:
+        return jsonify({"error": "No hay imagen de esa cámara"}), 409
+    m = revision.guardar(foto, cam.get("name", cam_id), "captura")
+    if not m:
+        return jsonify({"error": "La foto no es una imagen válida"}), 400
+    return jsonify({"ok": True, "id": m["id"]})
+
+
+@admin_bp.route("/revision/dataset.zip")
+@admin_required
+def revision_dataset():
+    """Dataset YOLO con las fotos revisadas, para reentrenar en Colab."""
+    contenido, n = revision.exportar_zip()
+    if not n:
+        flash("Todavía no hay fotos revisadas para exportar.", "error")
+        return redirect(url_for("admin.revision_pagina"))
+    nombre = f"rac_revisadas_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
+    return send_file(io.BytesIO(contenido), mimetype="application/zip", as_attachment=True, download_name=nombre)
 
 
 # ═══════════════════════════════════════
