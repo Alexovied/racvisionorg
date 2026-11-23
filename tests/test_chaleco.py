@@ -1,6 +1,7 @@
 """Chaleco reflectante: color de alta visibilidad en el torso y alertas sin_chaleco."""
 import json
 
+import cv2
 import numpy as np
 
 import epp
@@ -18,6 +19,20 @@ def _imagen(color_torso=None):
 
 def test_torso_amarillo_fluor_es_chaleco():
     assert epp.tiene_chaleco(_imagen(AMARILLO_FLUOR), CABEZA) is True
+
+
+def _bgr(h, s, v):
+    return tuple(int(x) for x in cv2.cvtColor(np.uint8([[[h, s, v]]]), cv2.COLOR_HSV2BGR)[0, 0])
+
+
+def test_chaleco_verde_lima_al_sol_es_chaleco():
+    # Chalecos de los videos de Pexels: tono 46, poco saturados por el sol
+    assert epp.tiene_chaleco(_imagen(_bgr(46, 90, 225)), CABEZA) is True
+
+
+def test_ropa_caqui_y_pasto_oscuro_no_son_chaleco():
+    assert epp.tiene_chaleco(_imagen((140, 180, 195)), CABEZA) is False      # caqui
+    assert epp.tiene_chaleco(_imagen(_bgr(45, 120, 110)), CABEZA) is False   # pasto a la sombra
 
 
 def test_torso_gris_no_es_chaleco():
