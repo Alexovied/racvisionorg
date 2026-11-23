@@ -20,9 +20,8 @@ modelo_2026*.keras
 test.jpg
 campa.jpg
 
-# Dataset local
-con_casco/
-sin_casco/
+# Fotos locales: con_casco/, sin_casco/ y las del alta de personas (datos biométricos, no se suben)
+datasets/
 
 # VS Code
 .vscode/
@@ -37,9 +36,6 @@ detector_casco.pt
 # Configuración local de MCP (colab-mcp)
 .mcp.json
 
-# Fotos para el alta de personas (datos biométricos, no se suben)
-personas/
-personas_prueba/
 
 # Datos del SGEP corriendo solo (sgep_local.py)
 data_sgep/
@@ -47,7 +43,7 @@ data_sgep/
 # Secretos y paquetes locales: credenciales, claves privadas, zips de deploy
 credenciales*.txt
 *.pem
-monitor-run/
+monitor/
 *.zip
 # Scripts de vista previa con SECRET_KEY y ADMIN_PASSWORD fijos
 .claude/

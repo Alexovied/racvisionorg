@@ -28,7 +28,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def fotos_prueba_casco():
     # Igual que el notebook: lista ordenada por carpeta, seed 1, 70 % ajuste / 30 % prueba
     fotos = [(p, real) for real in ("con_casco", "sin_casco")
-             for p in sorted(glob.glob(os.path.join(RAIZ, real, "*.jpg")))]
+             for p in sorted(glob.glob(os.path.join(RAIZ, "datasets", real, "*.jpg")))]
     random.seed(1)
     random.shuffle(fotos)
     return fotos[int(len(fotos) * 0.7):]
@@ -49,9 +49,9 @@ def evaluar_casco():
 
 
 def evaluar_chaleco():
-    rutas = sorted(glob.glob(os.path.join(RAIZ, "personas", "*", "*.jpg"))
-                   + glob.glob(os.path.join(RAIZ, "personas_prueba", "*", "*.jpg")))
-    rutas += sorted(glob.glob(os.path.join(RAIZ, "sin_casco", "*.jpg")))
+    rutas = sorted(glob.glob(os.path.join(RAIZ, "datasets", "personas", "*", "*.jpg"))
+                   + glob.glob(os.path.join(RAIZ, "datasets", "personas_prueba", "*", "*.jpg")))
+    rutas += sorted(glob.glob(os.path.join(RAIZ, "datasets", "sin_casco", "*.jpg")))
     tabla, t = Counter(), []
     for ruta in rutas:
         img = cv2.imread(ruta)

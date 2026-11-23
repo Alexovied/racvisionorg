@@ -19,7 +19,7 @@ Todo el código de la app está en `src/`:
 *   **Avisos, hardware y wearables:** `aviso_telegram.py`, `aviso_mqtt.py`, `hardware.py`, `wearables.py`, `simulador_wearable.py`, `aprendizaje.py`. El firmware de la caja está en `firmware/`.
 *   **SGEP-Dashboard:** `sgep.py`, `sgep_seed.py`, `sgep_local.py` (corre solo el dashboard en localhost: `python src/sgep_local.py`).
 *   **Modelos (`modelos_app/`):** `detector_casco.onnx`, `detector_chaleco.onnx`, `detector_pose.onnx` (no está en git, va por scp), los `*_int8.*` de OpenVINO, los dos de caras (`face_*.onnx`) y `modelo.keras` (clasificador viejo, se puede elegir en la configuración).
-*   **Entrenamiento y medición (`herramientas/`, se corren desde la raíz, ej. `python herramientas/evaluar_modelos.py`):** `ea.py` y `retrain.py` (modelo Keras), `cuantizar.py`, `evaluar_modelos.py`, `benchmark_inferencia.py`, `benchmark_carga.py`, `convert_model.py`. Los notebooks de Colab están en `entrenamiento/`.
+*   **Entrenamiento y medición (`herramientas/`, se corren desde la raíz, ej. `python herramientas/evaluar_modelos.py`):** `ea.py` y `retrain.py` (modelo Keras), `cuantizar.py`, `evaluar_modelos.py`, `benchmark_inferencia.py`, `benchmark_carga.py`, `convert_model.py`. Los notebooks de Colab (entrenamiento de los detectores y clips de video) están en `entrenamiento/`. Las fotos locales (`con_casco`, `sin_casco`, `personas`) van en `datasets/`, que no se sube a git.
 *   **Tests y docs:** `tests/`, `docs/`.
 
 ---

@@ -113,7 +113,7 @@ def test_config_vieja_sin_claves_nuevas_activa_las_dos(tmp_data):
 def test_openvino_y_cv2_dan_las_mismas_detecciones():
     if not helmet_detector.disponible():
         pytest.skip("falta detector_casco.onnx")
-    img = cv2.imread(os.path.join(os.path.dirname(os.path.dirname(helmet_detector.MODEL_PATH)), "con_casco", "1.jpg"))
+    img = cv2.imread(os.path.join(os.path.dirname(os.path.dirname(helmet_detector.MODEL_PATH)), "datasets", "con_casco", "1.jpg"))
     img = img if img is not None else np.random.default_rng(0).integers(0, 255, (480, 640, 3), dtype=np.uint8)
     cv_net = cv2.dnn.readNetFromONNX(helmet_detector.MODEL_PATH)
     a = helmet_detector.correr_yolo(cv_net, helmet_detector._lock, img, 2)

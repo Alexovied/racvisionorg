@@ -133,16 +133,17 @@ def crop_head(img):
 x = 0  # contador de clase: 0 = con_casco, 1 = sin_casco
 
 for i in cat:
-    if not os.path.exists(i):
-        os.makedirs(i)
+    carpeta = os.path.join("datasets", i)  # se corre desde la raíz
+    if not os.path.exists(carpeta):
+        os.makedirs(carpeta)
 
-    files = [f for f in os.listdir(i) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    files = [f for f in os.listdir(carpeta) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     total_files = len(files)
     print(f"\n[+] Cargando clase '{i}' ({total_files} imagenes)...")
 
     for idx, file in enumerate(files):
         print(f"\r    -> Procesando {idx+1}/{total_files}: {file}", end="", flush=True)
-        img = cv2.imread(os.path.join(i, file))
+        img = cv2.imread(os.path.join(carpeta, file))
 
         if img is not None:
             cropped = crop_head(img)

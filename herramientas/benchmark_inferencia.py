@@ -41,7 +41,7 @@ def medir(net, imgs, por_clase, vueltas=3):
 
 
 def main():
-    carpeta = sys.argv[1] if len(sys.argv) > 1 else os.path.join(RAIZ, "con_casco")
+    carpeta = sys.argv[1] if len(sys.argv) > 1 else os.path.join(RAIZ, "datasets", "con_casco")
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 20
     imgs = imagenes(carpeta, n)
     cpu = helmet_detector._core.get_property("CPU", "FULL_DEVICE_NAME") if helmet_detector._core else platform.processor()

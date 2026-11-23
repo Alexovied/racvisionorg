@@ -23,7 +23,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def fotos_calibracion():
     prueba = {r for r, _ in evaluar_modelos.fotos_prueba_casco()}
     rutas = [r for real in ("con_casco", "sin_casco")
-             for r in sorted(evaluar_modelos.glob.glob(os.path.join(RAIZ, real, "*.jpg"))) if r not in prueba]
+             for r in sorted(evaluar_modelos.glob.glob(os.path.join(RAIZ, "datasets", real, "*.jpg"))) if r not in prueba]
     assert len(rutas) >= 50, "faltan fotos de calibración en con_casco/ y sin_casco/"
     return rutas
 

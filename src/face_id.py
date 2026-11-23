@@ -191,7 +191,7 @@ def identificar(img, bbox, personas=None):
     return nombre if mejor >= UMBRAL else "Desconocido"
 
 
-def enrolar(carpeta=os.path.join(BASE, "personas")):
+def enrolar(carpeta=os.path.join(BASE, "datasets", "personas")):
     """Lee personas/<nombre>/*.jpg|png y suma esas personas a data/personas.json
     (no borra a las registradas desde el panel)."""
     datos, sin_cara = _leer_db(estricto=True), []
