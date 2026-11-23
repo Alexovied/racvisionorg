@@ -502,7 +502,8 @@ def api_cuadro(cam_id):
     img = cv2.imdecode(np.frombuffer(request.get_data(), np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         return jsonify({"error": "El cuerpo tiene que ser un JPEG"}), 400
-    if not motor.recibir(cam_id, img):
+    numero = request.headers.get("X-Cuadro", "")
+    if not motor.recibir(cam_id, img, int(numero) if numero.isdecimal() and len(numero) < 12 else None):
         return jsonify({"error": "Cámara desactivada"}), 409
     return jsonify({"ok": True})
 

@@ -48,47 +48,64 @@ def jpeg(img, ancho):
     return buf.tobytes() if ok else None
 
 
+def enviar(sesion, url, lector, args, contador, lock):
+    """Un hilo emisor. Hay varios en paralelo: cada envío espera la ida y vuelta al servidor
+    (~0,3 s), y de a uno no pasan de 3 cuadros/s aunque la conexión dé para más."""
+    while True:
+        t = time.monotonic()
+        img = lector.cuadro
+        with lock:  # cada cuadro lo manda un solo hilo
+            nuevo = img is not None and img is not contador["ultimo"]
+            if nuevo:
+                contador["ultimo"] = img
+                contador["n"] += 1
+                numero = contador["n"]
+        if nuevo:
+            cuerpo = jpeg(img, args.ancho)
+            try:
+                r = sesion.post(url, data=cuerpo, headers={"X-Cuadro": str(numero)}, timeout=10)
+                if r.status_code == 401:
+                    print("[x] El servidor rechazó el ID o el token de la cámara", flush=True)
+                    os._exit(1)
+                if r.ok:
+                    with lock:
+                        contador["enviados"] += 1
+                else:
+                    print(f"[!] El servidor respondió {r.status_code}: {r.text[:200]}", flush=True)
+            except requests.RequestException as e:
+                print(f"[!] No se pudo enviar: {e}", flush=True)
+                time.sleep(2)
+        time.sleep(max(0.0, args.hilos / args.fps - (time.monotonic() - t)))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--camara", required=True, help="URL RTSP/HTTP de la cámara en la red local")
     ap.add_argument("--servidor", required=True, help="ej. https://dev.racvision.org")
     ap.add_argument("--id", required=True, help="ID de la cámara en el panel")
     ap.add_argument("--token", default=os.environ.get("RAC_TOKEN"), help="token de la cámara (o RAC_TOKEN)")
-    ap.add_argument("--fps", type=float, default=2.5, help="cuadros por segundo al servidor (2.5)")
+    ap.add_argument("--fps", type=float, default=8, help="cuadros por segundo al servidor (8: video fluido; "
+                    "el servidor analiza 2 por segundo)")
     ap.add_argument("--ancho", type=int, default=960, help="ancho máximo del cuadro (960)")
+    ap.add_argument("--hilos", type=int, default=4, help="envíos en paralelo (4)")
     a = ap.parse_args()
     if not a.token:
         ap.error("falta el token (--token o RAC_TOKEN)")
 
     url = f"{a.servidor.rstrip('/')}/admin/api/cameras/{a.id}/cuadro"
-    sesion = requests.Session()
-    sesion.headers.update({"Authorization": f"Bearer {a.token}", "Content-Type": "image/jpeg"})
     lector = Lector(a.camara)
     lector.start()
+    contador, lock = {"n": 0, "enviados": 0, "ultimo": None}, threading.Lock()
+    for _ in range(a.hilos):
+        sesion = requests.Session()  # una conexión por hilo: Session no es segura entre hilos
+        sesion.headers.update({"Authorization": f"Bearer {a.token}", "Content-Type": "image/jpeg"})
+        threading.Thread(target=enviar, args=(sesion, url, lector, a, contador, lock), daemon=True).start()
     print(f"[+] Reenviando {a.camara} a {a.servidor} a {a.fps} cuadros/s", flush=True)
-
-    ultimo, enviados, t_log = None, 0, time.monotonic()
     while True:
-        t = time.monotonic()
-        img = lector.cuadro
-        if img is not None and img is not ultimo:
-            ultimo = img
-            cuerpo = jpeg(img, a.ancho)
-            try:
-                r = sesion.post(url, data=cuerpo, timeout=10)
-                if r.status_code == 401:
-                    raise SystemExit("[x] El servidor rechazó el ID o el token de la cámara")
-                if r.ok:
-                    enviados += 1
-                else:
-                    print(f"[!] El servidor respondió {r.status_code}: {r.text[:200]}", flush=True)
-            except requests.RequestException as e:
-                print(f"[!] No se pudo enviar: {e}", flush=True)
-                time.sleep(2)
-        if time.monotonic() - t_log >= 60:
-            print(f"[+] {enviados} cuadros enviados en el último minuto", flush=True)
-            enviados, t_log = 0, time.monotonic()
-        time.sleep(max(0.0, 1 / a.fps - (time.monotonic() - t)))
+        time.sleep(60)
+        with lock:
+            print(f"[+] {contador['enviados']} cuadros enviados en el último minuto", flush=True)
+            contador["enviados"] = 0
 
 
 if __name__ == "__main__":

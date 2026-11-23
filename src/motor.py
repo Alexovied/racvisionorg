@@ -34,6 +34,7 @@ import salud
 VENTANA, TH_FALTA, TH_OK, VACIOS_RESET = 8, 0.60, 0.70, 15
 TIMEOUT_IP_MS = 8000   # abrir / leer una cámara IP: más que esto es "sin señal"
 ANCHO_MAX = 960        # los frames más anchos se achican al leerlos
+ANALISIS_RELAY_S = 0.5 # relay: el video llega a ~8 cuadros/s para verse fluido, pero se analizan 2 por segundo
 EVENTOS = {"casco": "sin_casco", "chaleco": "sin_chaleco", "zona": "zona_prohibida", "caida": "hombre_caido"}
 TITULOS = {"casco": "SIN CASCO", "chaleco": "SIN CHALECO", "zona": "ZONA PROHIBIDA", "caida": "HOMBRE CAÍDO"}
 ROJO, VERDE, AMARILLO = (68, 68, 239), (129, 185, 16), (0, 200, 255)  # BGR
@@ -296,6 +297,7 @@ class Camara(threading.Thread):
         self.jpg, self.fps, self.error = None, 0.0, "Conectando"
         self.crudo = None             # último frame leído de la cámara, sin dibujar
         self.t_recibido = 0.0         # cámaras relay: cuándo llegó el último cuadro
+        self.n_recibido = -1          # y su número: el relay manda varios a la vez y pueden llegar desordenados
         self.pintar = None            # dibuja sobre un frame los recuadros del último análisis
         self.caidos, self.t_pose = [], 0.0
         self.nivel = cuerpo.Nivel()   # inclinación de esta cámara, promediada entre frames
@@ -306,8 +308,13 @@ class Camara(threading.Thread):
         self.vigia_senal = salud.Vigia(60)
         self.exigia = True            # si en el cuadro anterior se exigía EPP (horario de la cámara)
 
-    def recibir(self, img):
-        """Cuadro que mandó el relay de una cámara "relay"."""
+    def recibir(self, img, numero=None):
+        """Cuadro que mandó el relay de una cámara "relay". Uno más viejo que el último se descarta;
+        un número bajo de golpe es que el relay se reinició."""
+        if numero is not None:
+            if self.n_recibido - 50 < numero <= self.n_recibido:
+                return
+            self.n_recibido = numero
         self.crudo, self.t_recibido = _achicar(img), time.monotonic()
         self.vigia_senal.ver(None, 0)
 
@@ -375,6 +382,7 @@ class Camara(threading.Thread):
 
     def _analizar(self):
         ultimo, t = None, time.monotonic()
+        ultimo_t = t
         while not self.parar.is_set():
             img = self.crudo
             if img is None or img is ultimo:
@@ -391,6 +399,9 @@ class Camara(threading.Thread):
             ahora = time.monotonic()
             self.fps = 0.8 * self.fps + 0.2 / max(ahora - t, 1e-3)
             t = ahora
+            if self.cam["type"] == "relay":
+                self.parar.wait(max(0.0, ANALISIS_RELAY_S - (time.monotonic() - ultimo_t)))
+            ultimo_t = time.monotonic()
 
     def vista(self):
         """JPEG del frame más nuevo con los recuadros del último análisis, o None sin señal."""
@@ -560,14 +571,14 @@ def estado():
             for cid, h in list(_hilos.items())}
 
 
-def recibir(cam_id, img):
+def recibir(cam_id, img, numero=None):
     """Cuadro de una cámara relay. False si no hay hilo para ella (borrada o desactivada)."""
     if cam_id not in _hilos:
         sincronizar()
     h = _hilos.get(cam_id)
     if h is None or h.cam.get("type") != "relay":
         return False
-    h.recibir(img)
+    h.recibir(img, numero)
     return True
 
 

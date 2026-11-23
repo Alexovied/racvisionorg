@@ -294,7 +294,7 @@ class mock_hilo:
 
 def test_camara_relay_recibe_cuadros_solo_con_su_token(operator_client, client, monkeypatch):
     recibidos = []
-    monkeypatch.setattr(motor, "recibir", lambda cid, img: recibidos.append((cid, img.shape)) or True)
+    monkeypatch.setattr(motor, "recibir", lambda cid, img, n=None: recibidos.append((cid, img.shape)) or True)
     r = operator_client.post("/admin/cameras", data={"name": "Oryx", "type": "relay"}, follow_redirects=True)
     cam = data_store.load_cameras()[0]
     token = re.search(r"--token (rac_\S+)", r.get_data(as_text=True)).group(1)
@@ -317,3 +317,14 @@ def test_camara_relay_achica_y_queda_sin_senal_si_no_llegan_cuadros(monkeypatch)
     monkeypatch.setattr(hilo.parar, "wait", lambda s: next(espera))
     hilo._esperar_relay()
     assert hilo.crudo is None and hilo.error == "Sin señal"
+
+
+def test_camara_relay_descarta_cuadros_que_llegan_desordenados():
+    hilo = motor.Camara(data_store.create_camera("Oryx", "", "relay", "", token_hash="x"))
+    nuevo, viejo = np.zeros((10, 10, 3), np.uint8), np.ones((10, 10, 3), np.uint8)
+    hilo.recibir(nuevo, 7)
+    hilo.recibir(viejo, 6)
+    assert hilo.crudo is nuevo
+    hilo.recibir(viejo, 1000)   # relay reiniciado o salto: se toma
+    hilo.recibir(nuevo, 1)      # el relay volvió a contar desde 1
+    assert hilo.crudo is nuevo
