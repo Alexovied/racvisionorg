@@ -160,9 +160,10 @@ def load_cameras():
 def save_cameras(cameras):
     _save_json("cameras.json", cameras)
 
-def create_camera(name, location, cam_type="webcam", url=""):
+def create_camera(name, location, cam_type="webcam", url="", **extra):
+    """extra: campos propios del tipo (token_hash de las relay)."""
     cameras = load_cameras()
-    new_cam = {
+    new_cam = {**extra,
         "id": str(uuid.uuid4()),
         "name": name,
         "location": location,

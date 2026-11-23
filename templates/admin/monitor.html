@@ -273,9 +273,13 @@
         let actual = null, capaActual = 'zonas';
 
         // Video continuo (MJPEG): una sola conexión; si se corta o todavía no hay señal, se reintenta
-        const pedir = () => { img.src = `/admin/api/cameras/${camId}/video?t=${Date.now()}`; };
+        // Las relay se piden de a un cuadro: llegan 2-3 por segundo y el sitio (gunicorn) no se queda
+        // con una conexión abierta por cada panel
+        const relay = card.dataset.camType === 'relay';
+        const pedir = () => { img.src = `/admin/api/cameras/${camId}/${relay ? 'frame.jpg' : 'video'}?t=${Date.now()}`; };
         img.onload = () => {
             idle.style.display = 'none'; img.style.visibility = '';
+            if (relay) setTimeout(pedir, 400);
             // El recuadro toma la forma de la cámara (16:9, 4:3...): si no, el video se ve estirado
             if (img.naturalWidth) img.parentElement.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
         };

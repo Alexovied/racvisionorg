@@ -1,6 +1,8 @@
 """Motor de cámaras del servidor.
 
 Un hilo por cada cámara activa de tipo "usb" (enchufada a este equipo) o "ip" (RTSP/HTTP).
+Las "relay" están en otra red (la del cliente): un programa allá (herramientas/relay_camara.py)
+manda los cuadros a /admin/api/cameras/<id>/cuadro y este hilo los analiza igual que los demás.
 Cada hilo lee el video, corre las mismas detecciones que /predict y decide las alertas acá,
 en el servidor: sigue vigilando aunque nadie tenga el panel abierto. Las cámaras "webcam"
 siguen como antes (el navegador manda los frames a /predict y decide con static/epp.js).
@@ -273,6 +275,14 @@ def _etiqueta(c, e):
 
 # ── Cámara ───────────────────────────────────────────────────────────────────
 
+def _achicar(img):
+    """Cámaras Full HD o más: a 960 de ancho. Analizar, dibujar y mandar al panel 1080p
+    satura la CPU, y los recuadros y letras quedan diminutos en la tarjeta."""
+    if img.shape[1] <= ANCHO_MAX:
+        return img
+    return cv2.resize(img, (ANCHO_MAX, round(img.shape[0] * ANCHO_MAX / img.shape[1])), interpolation=cv2.INTER_AREA)
+
+
 class Camara(threading.Thread):
     def __init__(self, cam, anteriores=()):
         super().__init__(daemon=True, name="camara-" + cam["id"][:8])
@@ -285,6 +295,7 @@ class Camara(threading.Thread):
         self.alarma = None
         self.jpg, self.fps, self.error = None, 0.0, "Conectando"
         self.crudo = None             # último frame leído de la cámara, sin dibujar
+        self.t_recibido = 0.0         # cámaras relay: cuándo llegó el último cuadro
         self.pintar = None            # dibuja sobre un frame los recuadros del último análisis
         self.caidos, self.t_pose = [], 0.0
         self.nivel = cuerpo.Nivel()   # inclinación de esta cámara, promediada entre frames
@@ -294,6 +305,19 @@ class Camara(threading.Thread):
         self.vigia_lente = salud.Vigia()
         self.vigia_senal = salud.Vigia(60)
         self.exigia = True            # si en el cuadro anterior se exigía EPP (horario de la cámara)
+
+    def recibir(self, img):
+        """Cuadro que mandó el relay de una cámara "relay"."""
+        self.crudo, self.t_recibido = _achicar(img), time.monotonic()
+        self.vigia_senal.ver(None, 0)
+
+    def _esperar_relay(self):
+        """Cámara relay: no hay nada que leer, solo marcar "sin señal" si dejan de llegar cuadros."""
+        while not self.parar.wait(1):
+            if self.crudo is not None and time.monotonic() - self.t_recibido > TIMEOUT_IP_MS / 1000:
+                self.crudo, self.jpg, self.fps, self.error = None, None, 0.0, "Sin señal"
+            if self.crudo is None:
+                self._sin_senal(time.monotonic())
 
     def _abrir(self):
         if self.cam["type"] == "usb":
@@ -321,6 +345,8 @@ class Camara(threading.Thread):
         # Este hilo solo lee la cámara, a su ritmo: el video del panel se ve fluido y nunca se
         # acumulan frames viejos. El análisis va en otro hilo y toma siempre el frame más nuevo.
         threading.Thread(target=self._analizar, daemon=True, name=self.name + "-analisis").start()
+        if self.cam["type"] == "relay":
+            return self._esperar_relay()
         espera = 5
         while not self.parar.is_set():
             cap = None
@@ -331,12 +357,7 @@ class Camara(threading.Thread):
                     ok, img = cap.read()
                     if not ok:
                         break
-                    # Cámaras Full HD o más: a 960 de ancho. Analizar, dibujar y mandar al panel 1080p
-                    # satura la CPU, y los recuadros y letras quedan diminutos en la tarjeta
-                    if img.shape[1] > ANCHO_MAX:
-                        img = cv2.resize(img, (ANCHO_MAX, round(img.shape[0] * ANCHO_MAX / img.shape[1])),
-                                         interpolation=cv2.INTER_AREA)
-                    self.crudo = img
+                    self.crudo = _achicar(img)
                     # Volvió la señal (y se sostiene 5 s: un stream que da un cuadro y muere no cuenta)
                     if espera != 5 and time.monotonic() - t_abierta >= 5:
                         espera = 5
@@ -499,25 +520,25 @@ class Camara(threading.Thread):
 
 # ── Motor ────────────────────────────────────────────────────────────────────
 
-_hilos, _activo, _cerrando = {}, False, []
+_hilos, _cerrando = {}, []
+_tipos = ("relay",)  # el sitio (gunicorn) solo analiza cámaras relay; python app.py además usb e ip
 _lock = threading.Lock()
 
 
 def iniciar():
     """Enciende el motor (lo llama `python src/app.py`). Sin esto sincronizar() no hace nada: un
-    servidor sin cámaras propias (el sitio con gunicorn) no abre ningún hilo ni dispositivo."""
-    global _activo
-    _activo = True
+    servidor sin cámaras propias (el sitio con gunicorn) no abre ningún dispositivo: solo
+    analiza cámaras relay, y recién cuando les llega el primer cuadro."""
+    global _tipos
+    _tipos = ("usb", "ip", "relay")
     sincronizar()
 
 
 def sincronizar():
-    """Deja un hilo por cada cámara activa usb/ip. Llamar cuando cambian las cámaras o sus zonas."""
-    if not _activo:
-        return
+    """Deja un hilo por cada cámara activa usb/ip/relay. Llamar cuando cambian las cámaras o sus zonas."""
     with _lock:
         camaras = {c["id"]: c for c in data_store.load_cameras()
-                   if c.get("active") and c.get("type") in ("usb", "ip")}
+                   if c.get("active") and c.get("type") in _tipos}
         for cid in list(_hilos):
             if cid not in camaras or not _hilos[cid].is_alive():
                 hilo = _hilos.pop(cid)
@@ -537,6 +558,17 @@ def estado():
     """{id de cámara: {clase, titulo, fps, error}} de las cámaras que analiza el servidor."""
     return {cid: {**h.estado, "fps": round(h.fps, 1), "error": h.error, "lente": h.lente}
             for cid, h in list(_hilos.items())}
+
+
+def recibir(cam_id, img):
+    """Cuadro de una cámara relay. False si no hay hilo para ella (borrada o desactivada)."""
+    if cam_id not in _hilos:
+        sincronizar()
+    h = _hilos.get(cam_id)
+    if h is None or h.cam.get("type") != "relay":
+        return False
+    h.recibir(img)
+    return True
 
 
 def frame(cam_id):

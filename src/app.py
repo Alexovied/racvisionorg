@@ -95,7 +95,8 @@ def verificar_csrf():
     if request.method != "POST" or not app.config.get("WTF_CSRF_ENABLED", True):
         return
     # Los wearables se autentican con su token en el header, sin cookie de sesión: no hay CSRF posible
-    if request.path == "/admin/api/dispositivos/telemetria":
+    if request.path == "/admin/api/dispositivos/telemetria" or (
+            request.path.startswith("/admin/api/cameras/") and request.path.endswith("/cuadro")):
         return
     enviado = request.headers.get("X-CSRFToken") or request.form.get("csrf_token", "")
     esperado = session.get("csrf_token")

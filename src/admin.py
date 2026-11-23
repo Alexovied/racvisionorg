@@ -4,6 +4,7 @@ import io
 import math
 import os
 import re
+import secrets
 import threading
 import time
 import requests
@@ -383,12 +384,19 @@ def cameras():
         
         if not name:
             flash("El nombre de la cámara es obligatorio.", "error")
-        elif cam_type not in ("webcam", "ip", "usb"):
+        elif cam_type not in ("webcam", "ip", "usb", "relay"):
             flash("Tipo de cámara desconocido.", "error")
         elif cam_type == "usb" and not (url.isdecimal() and len(url) <= 2):
             flash("Para una cámara USB indicá el número de dispositivo (0, 1, 2...).", "error")
         elif cam_type == "ip" and not url.lower().startswith(("rtsp://", "rtsps://", "http://", "https://")):
             flash("Para una cámara IP indicá la dirección (rtsp://... o http://...).", "error")
+        elif cam_type == "relay":
+            # La cámara está en otra red: la manda herramientas/relay_camara.py con este token.
+            # Se guarda solo su hash y se muestra una única vez, como el de los wearables.
+            token = "rac_" + secrets.token_urlsafe(24)
+            cam = data_store.create_camera(name, location, "relay", "", token_hash=wearables._hash(token))
+            flash(f"Cámara '{name}' registrada. Para el relay: --id {cam['id']} --token {token} "
+                  "(copialo ahora: no se vuelve a mostrar).", "success")
         else:
             data_store.create_camera(name, location, cam_type, url)
             motor.sincronizar()
@@ -479,6 +487,24 @@ def api_video(cam_id):
 
     return Response(cuadros(), mimetype="multipart/x-mixed-replace; boundary=frame",
                     headers={"Cache-Control": "no-store"})
+
+
+@admin_bp.route("/api/cameras/<cam_id>/cuadro", methods=["POST"])
+def api_cuadro(cam_id):
+    """Cuadro JPEG de una cámara relay, con su token (no con sesión: no pasa por CSRF)."""
+    cam = next((c for c in data_store.load_cameras() if c["id"] == cam_id), None)
+    token = _token_del_equipo()
+    if (not cam or cam.get("type") != "relay" or not token
+            or not secrets.compare_digest(cam.get("token_hash", ""), wearables._hash(token))):
+        return jsonify({"error": "Cámara o token inválido"}), 401
+    if not cam.get("active"):
+        return jsonify({"error": "Cámara desactivada"}), 409
+    img = cv2.imdecode(np.frombuffer(request.get_data(), np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return jsonify({"error": "El cuerpo tiene que ser un JPEG"}), 400
+    if not motor.recibir(cam_id, img):
+        return jsonify({"error": "Cámara desactivada"}), 409
+    return jsonify({"ok": True})
 
 
 @admin_bp.route("/api/motor")
