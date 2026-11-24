@@ -65,6 +65,7 @@
             <select aria-label="Dispositivo de {{ cam.name }}"></select>
             <button class="btn-action btn-create mon-start"><i class="fa-solid fa-play"></i> Iniciar</button>
             <button class="btn-action btn-cancel mon-stop" aria-label="Detener" disabled><i class="fa-solid fa-stop"></i></button>
+            <button class="btn-action btn-cancel mon-revisar" title="Guardar este cuadro para revisarlo (ej. alguien sin casco que el modelo vio con casco)" aria-label="Guardar para revisar" disabled><i class="fa-solid fa-camera"></i></button>
         </div>
         {% else %}
         {# Cámara USB / IP: la analiza el servidor (motor.py); acá se ve el resultado y se dibujan las zonas #}
@@ -81,6 +82,7 @@
             <button class="btn-action btn-create mon-zona"><i class="fa-solid fa-draw-polygon"></i> Nueva zona</button>
             <button class="btn-action btn-cancel mon-zona-borrar">Borrar zonas</button>
             <button class="btn-action btn-create mon-zona-guardar" disabled>Guardar</button>
+            <button class="btn-action btn-cancel mon-revisar" title="Guardar este cuadro para revisarlo (ej. alguien sin casco que el modelo vio con casco)" aria-label="Guardar para revisar"><i class="fa-solid fa-camera"></i></button>
         </div>
         <div class="mon-foot mon-horario">
             <label>EPP exigido de <input type="time" class="mon-desde" aria-label="Desde"></label>
@@ -116,6 +118,20 @@
     let dispositivos = [];
     async function cargarDispositivos() {
         dispositivos = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    }
+
+    // "Guardar para revisar": el cuadro sin recuadros va a Revisar alertas
+    async function guardarParaRevisar(boton, camId, foto) {
+        boton.disabled = true;
+        try {
+            const r = await fetch('/admin/api/revision/capturar', { method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify({ camera: camId, foto }) });
+            const data = await r.json().catch(() => ({}));
+            boton.innerHTML = r.ok ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-xmark"></i>';
+            boton.title = r.ok ? 'Guardado: corregilo en Revisar alertas' : (data.error || 'No se pudo guardar');
+        } catch (e) { boton.innerHTML = '<i class="fa-solid fa-xmark"></i>'; }
+        setTimeout(() => { boton.innerHTML = '<i class="fa-solid fa-camera"></i>'; boton.disabled = false; }, 1500);
     }
 
     function crearMonitor(card, indice) {
@@ -185,7 +201,8 @@
                                confidence: Math.min(100, EPP.confianza(caras, elemento, 'falta', MIN_CONFIDENCE)),
                                persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE),
                                pos: EPP.posicion(caras, elemento, MIN_CONFIDENCE, canvas.width, canvas.height),
-                               foto: fotoConRecuadros() });
+                               foto: fotoConRecuadros(),
+                               foto_limpia: captura.toDataURL('image/jpeg', 0.9) });   // para revisar y reentrenar
             }
             // Alarma física y evento "todos con EPP": según el estado combinado de casco y chaleco
             const alarma = seguimiento.alarma();
@@ -232,7 +249,7 @@
             canvas.width = captura.width = video.videoWidth || 640;
             canvas.height = captura.height = video.videoHeight || 480;
             idle.style.display = 'none';
-            btnStart.disabled = true; btnStop.disabled = false; select.disabled = true;
+            btnStart.disabled = true; btnStop.disabled = false; select.disabled = true; card.querySelector('.mon-revisar').disabled = false;
             seguimiento.reset(); ultimaAlarma = null; ponerEstado(null, 'ANALIZANDO');
             activo = true; ciclo();
             // Con el permiso dado, el navegador recién muestra todos los dispositivos con nombre:
@@ -246,12 +263,16 @@
             stream = null; video.srcObject = null;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             idle.textContent = 'Cámara detenida'; idle.style.display = '';
-            btnStart.disabled = false; btnStop.disabled = true; select.disabled = false;
+            btnStart.disabled = false; btnStop.disabled = true; select.disabled = false; card.querySelector('.mon-revisar').disabled = true;
             ponerEstado(null, 'DETENIDA');
         }
 
         btnStart.addEventListener('click', iniciar);
         btnStop.addEventListener('click', detener);
+        const btnRevisar = card.querySelector('.mon-revisar');
+        btnRevisar.addEventListener('click', () => {
+            if (activo) guardarParaRevisar(btnRevisar, camId, captura.toDataURL('image/jpeg', 0.9));
+        });
         return { iniciar, poblarSelect };
     }
 
@@ -277,6 +298,8 @@
         img.onload = () => { idle.style.display = 'none'; img.style.visibility = ''; };
         img.onerror = () => { idle.style.display = ''; img.style.visibility = 'hidden'; setTimeout(pedir, 2000); };
         pedir();
+        const btnRevisar = card.querySelector('.mon-revisar');
+        btnRevisar.addEventListener('click', () => guardarParaRevisar(btnRevisar, camId));
 
         function dibujarZonas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);

@@ -17,7 +17,7 @@ RAC Vision detecta en tiempo real si las personas llevan casco y chaleco, recono
 *   **Avisos y hardware:** `aviso_telegram.py`, `aviso_mqtt.py`, `hardware.py`, `firmware/`.
 *   **SGEP-Dashboard:** `sgep.py`, `sgep_seed.py`, `sgep_local.py` (corre solo el dashboard en localhost).
 *   **Modelos:** `detector_casco.onnx`, `detector_chaleco.onnx`, `detector_pose.onnx`, los `*_int8.*` de OpenVINO, los dos de caras (`face_*.onnx`) y `modelo.keras` (clasificador viejo, se puede elegir en la configuración).
-*   **Entrenamiento y medición:** `entrenamiento/` (notebooks de Colab), `ea.py` y `retrain.py` (modelo Keras), `cuantizar.py`, `evaluar_modelos.py`, `benchmark_inferencia.py`, `benchmark_carga.py`, `convert_model.py` (lo usa el workflow de GitHub).
+*   **Entrenamiento y medición:** `revision.py` (Revisar alertas: corregir a mano lo que vio el modelo y descargar el dataset YOLO para reentrenar), `entrenamiento/` (notebooks de Colab), `ea.py` y `retrain.py` (modelo Keras), `cuantizar.py`, `evaluar_modelos.py`, `benchmark_inferencia.py`, `benchmark_carga.py`, `convert_model.py` (lo usa el workflow de GitHub).
 *   **Tests y docs:** `tests/`, `docs/`.
 
 ---

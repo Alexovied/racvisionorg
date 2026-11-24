@@ -1,0 +1,354 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Revisar alertas{% endblock %}
+{% block page_title %}Revisar alertas{% endblock %}
+
+{% block head %}
+<style>
+    .rev-cifras { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .rev-cifra { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .55rem .9rem; min-width: 7.5rem; }
+    .rev-cifra b { display: block; font-size: 1.3rem; }
+    .rev-cifra span { font-size: .75rem; color: var(--text-muted); }
+    .rev-layout { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 1.25rem; align-items: start; }
+    @media (max-width: 900px) { .rev-layout { grid-template-columns: 1fr; } }
+    .rev-tabs { display: flex; gap: .3rem; margin-bottom: .7rem; }
+    .rev-tabs button { flex: 1; background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border);
+                       border-radius: 999px; padding: .35rem .5rem; font: inherit; font-size: .8rem; cursor: pointer; }
+    .rev-tabs button[aria-pressed="true"] { background: var(--orange); border-color: var(--orange); color: #fff; }
+    .rev-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .5rem; max-height: 70vh; overflow-y: auto; padding-right: .2rem; }
+    .rev-item { position: relative; border: 2px solid transparent; border-radius: 10px; overflow: hidden; cursor: pointer; background: #05080e; padding: 0; color: inherit; font: inherit; text-align: left; }
+    .rev-item[aria-current="true"] { border-color: var(--orange); }
+    .rev-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+    .rev-item .rev-pie { position: absolute; left: 0; right: 0; bottom: 0; padding: .2rem .35rem; font-size: .68rem;
+                         background: linear-gradient(transparent, rgba(0,0,0,.85)); color: #fff; }
+    .rev-item .rev-marca { position: absolute; top: .3rem; right: .3rem; font-size: .65rem; font-weight: 700; padding: .1rem .4rem; border-radius: 999px; }
+    .rev-marca.real { background: var(--red); color: #fff; }
+    .rev-marca.falsa { background: var(--green); color: #fff; }
+    .rev-marca.ok { background: var(--blue); color: #fff; }
+    .rev-vacio { color: var(--text-muted); font-size: .85rem; padding: 1.5rem .5rem; text-align: center; grid-column: 1 / -1; }
+    .rev-titulo { display: flex; justify-content: space-between; gap: .75rem; flex-wrap: wrap; align-items: baseline; margin-bottom: .6rem; }
+    .rev-titulo h2 { font-size: 1.05rem; }
+    .rev-titulo .rev-meta { font-size: .8rem; color: var(--text-muted); }
+    .rev-escena { position: relative; background: #05080e; border-radius: var(--radius-sm); overflow: hidden; touch-action: none; user-select: none; }
+    .rev-escena img { display: block; width: 100%; height: auto; }
+    .rev-escena canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+    .rev-ayuda { font-size: .78rem; color: var(--text-muted); margin: .5rem 0 .8rem; line-height: 1.5; }
+    .rev-ayuda kbd { background: rgba(255,255,255,.08); border-radius: 4px; padding: 0 .3rem; font-family: inherit; }
+    .rev-caja { display: flex; gap: .5rem 1rem; flex-wrap: wrap; align-items: center; padding: .7rem .8rem; border: 1px solid var(--border);
+                border-radius: var(--radius-sm); margin-bottom: .8rem; font-size: .85rem; }
+    .rev-caja[hidden] { display: none; }
+    .rev-grupo { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+    .rev-grupo button { background: transparent; color: var(--text-muted); border: 0; padding: .35rem .75rem; font: inherit; font-size: .8rem; cursor: pointer; }
+    .rev-grupo button + button { border-left: 1px solid var(--border); }
+    .rev-grupo button[aria-pressed="true"] { background: var(--orange); color: #fff; }
+    .rev-acciones { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .rev-acciones .btn-action.sugerido { box-shadow: 0 0 0 2px var(--orange); }
+    .rev-acciones .btn-real { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.4); }
+    .rev-acciones .btn-falsa { background: rgba(16,185,129,.15); color: var(--green); border: 1px solid rgba(16,185,129,.4); }
+    .rev-acciones .espacio { flex: 1; }
+    .rev-acciones [hidden] { display: none; }
+    .rev-msg { font-size: .82rem; margin-top: .6rem; min-height: 1.2em; color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <p class="section-desc">Cada alerta de cámara guarda una foto sin recuadros. Corregí lo que vio el modelo en cada cabeza
+        (con o sin casco, con o sin chaleco) y marcá si la alerta era real o falsa. Las fotos revisadas se descargan como
+        dataset para reentrenar el detector. Para los errores que no hacen saltar ninguna alerta (alguien sin casco que el
+        modelo vio "con casco"), usá <b>Guardar para revisar</b> en <a href="{{ url_for('admin.monitor') }}" style="color: var(--orange)">Monitoreo</a>.</p>
+    {% if current_user.role == 'admin' %}
+    <a class="btn-action btn-create" href="{{ url_for('admin.revision_dataset') }}" id="btn-dataset">
+        <i class="fa-solid fa-file-zipper"></i> Descargar dataset (YOLO)</a>
+    {% endif %}
+</div>
+
+{% if anonimo %}
+<div class="admin-card" style="margin-bottom:1rem;border-color:var(--yellow)">
+    <i class="fa-solid fa-user-secret"></i> El modo anónimo está activado: mientras siga así no se guardan fotos nuevas para revisar.
+</div>
+{% endif %}
+
+<div class="rev-cifras" aria-live="polite">
+    <div class="rev-cifra"><b id="n-pendientes">{{ resumen.pendientes }}</b><span>sin revisar</span></div>
+    <div class="rev-cifra"><b id="n-revisadas">{{ resumen.revisadas }}</b><span>revisadas</span></div>
+    <div class="rev-cifra"><b id="n-falsas">{{ resumen.falsas }}</b><span>falsas alarmas</span></div>
+    <div class="rev-cifra"><b id="n-cascos">{{ resumen.con_casco }} / {{ resumen.sin_casco }}</b><span>cabezas con / sin casco</span></div>
+</div>
+
+<div class="rev-layout">
+    <div class="admin-card">
+        <div class="rev-tabs" role="group" aria-label="Qué fotos mostrar">
+            <button data-estado="pendientes" aria-pressed="true">Sin revisar</button>
+            <button data-estado="revisadas" aria-pressed="false">Revisadas</button>
+            <button data-estado="todas" aria-pressed="false">Todas</button>
+        </div>
+        <div class="rev-lista" id="lista"><div class="rev-vacio">Cargando…</div></div>
+    </div>
+
+    <div class="admin-card" id="editor" hidden>
+        <div class="rev-titulo">
+            <h2 id="ed-titulo"></h2>
+            <span class="rev-meta" id="ed-meta"></span>
+        </div>
+        <div class="rev-escena" id="escena">
+            <img id="ed-foto" alt="Foto para revisar">
+            <canvas id="ed-canvas"></canvas>
+        </div>
+        <p class="rev-ayuda">Tocá una caja para elegirla y corregirla. Si el modelo no encontró una cabeza, arrastrá sobre ella para
+            dibujar la caja. Atajos: <kbd>1</kbd> con casco, <kbd>2</kbd> sin casco, <kbd>3</kbd> con chaleco, <kbd>4</kbd> sin chaleco,
+            <kbd>Supr</kbd> borrar caja, <kbd>Tab</kbd> siguiente caja.</p>
+        <div class="rev-caja" id="ed-caja" hidden>
+            <b>Caja <span id="ed-num"></span></b>
+            <span>Casco
+                <span class="rev-grupo" data-campo="casco">
+                    <button data-valor="con">Con</button><button data-valor="sin">Sin</button><button data-valor="">No se ve</button>
+                </span></span>
+            <span>Chaleco
+                <span class="rev-grupo" data-campo="chaleco">
+                    <button data-valor="con">Con</button><button data-valor="sin">Sin</button><button data-valor="">No se ve</button>
+                </span></span>
+            <button class="btn-action btn-cancel" id="ed-borrar-caja"><i class="fa-solid fa-trash"></i> No es una persona</button>
+        </div>
+        <div class="rev-acciones">
+            <button class="btn-action btn-real" id="btn-real" data-veredicto="real"><i class="fa-solid fa-triangle-exclamation"></i> Alerta correcta</button>
+            <button class="btn-action btn-falsa" id="btn-falsa" data-veredicto="falsa"><i class="fa-solid fa-circle-xmark"></i> Falsa alarma</button>
+            <button class="btn-action btn-create" id="btn-guardar"><i class="fa-solid fa-floppy-disk"></i> Guardar etiquetas</button>
+            <span class="espacio"></span>
+            <button class="btn-action btn-cancel" id="btn-reabrir" title="Vuelve a las cajas que propone el modelo y la pasa a Sin revisar"><i class="fa-solid fa-rotate-left"></i> Deshacer revisión</button>
+            <button class="btn-action btn-cancel" id="btn-descartar" title="Foto movida, borrosa o que no sirve"><i class="fa-solid fa-trash-can"></i> Descartar foto</button>
+        </div>
+        <div class="rev-msg" id="ed-msg" role="status"></div>
+    </div>
+    <div class="admin-card" id="sin-seleccion">
+        <div class="empty-state">
+            <i class="fa-solid fa-tags"></i>
+            <p>Elegí una foto de la lista</p>
+            <span>Las alertas nuevas de cámara aparecen acá solas.</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+    const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+    const $ = id => document.getElementById(id);
+    const lista = $('lista'), editor = $('editor'), vacio = $('sin-seleccion');
+    const foto = $('ed-foto'), canvas = $('ed-canvas'), ctx = canvas.getContext('2d');
+    const panelCaja = $('ed-caja'), msg = $('ed-msg');
+    let estado = 'pendientes', items = [], actual = null, cajas = [], sel = -1, dibujando = null;
+
+    const fecha = iso => new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const COLORES = { con: '#10B981', sin: '#EF4444', null: '#9CA3AF' };
+
+    function cifras(r) {
+        $('n-pendientes').textContent = r.pendientes; $('n-revisadas').textContent = r.revisadas;
+        $('n-falsas').textContent = r.falsas; $('n-cascos').textContent = `${r.con_casco} / ${r.sin_casco}`;
+    }
+
+    async function cargarLista(elegir) {
+        const r = await fetch(`/admin/api/revision?estado=${estado}`);
+        if (!r.ok) { lista.innerHTML = '<div class="rev-vacio">No se pudo cargar la lista.</div>'; return; }
+        const data = await r.json();
+        items = data.muestras; cifras(data.resumen);
+        lista.replaceChildren();
+        if (!items.length) {
+            const d = document.createElement('div'); d.className = 'rev-vacio';
+            d.textContent = estado === 'pendientes' ? 'No queda nada por revisar.' : 'Todavía no hay fotos acá.';
+            lista.append(d);
+        }
+        for (const m of items) {
+            const b = document.createElement('button'); b.className = 'rev-item'; b.dataset.id = m.id;
+            const img = document.createElement('img'); img.loading = 'lazy'; img.alt = ''; img.src = `/admin/revision/${m.id}.webp`;
+            const pie = document.createElement('span'); pie.className = 'rev-pie';
+            pie.textContent = `${m.origen === 'captura' ? 'Captura' : (ETIQ[m.tipo] || m.tipo)} · ${fecha(m.timestamp)}`;
+            b.append(img, pie);
+            if (m.revisada) {
+                const marca = document.createElement('span');
+                marca.className = 'rev-marca ' + (m.veredicto || 'ok');
+                marca.textContent = m.veredicto === 'real' ? 'Real' : m.veredicto === 'falsa' ? 'Falsa' : 'Lista';
+                b.append(marca);
+            }
+            b.addEventListener('click', () => abrir(m.id));
+            lista.append(b);
+        }
+        if (elegir !== undefined) {
+            const siguiente = items.find(m => m.id === elegir) || items[0];
+            if (siguiente) await abrir(siguiente.id); else cerrar();
+        }
+    }
+
+    function cerrar() { actual = null; editor.hidden = true; vacio.hidden = false; }
+
+    async function abrir(id) {
+        const r = await fetch(`/admin/api/revision/${id}`);
+        if (!r.ok) return;
+        actual = await r.json();
+        lista.querySelectorAll('.rev-item').forEach(b => b.setAttribute('aria-current', b.dataset.id === id));
+        // Revisada: lo que corrigió la persona. Sin revisar: lo que propone el modelo.
+        cajas = (actual.cajas || actual.detecciones || []).map(c => ({ bbox: [...c.bbox], casco: c.casco ?? null, chaleco: c.chaleco ?? null }));
+        sel = cajas.length ? 0 : -1;
+        const alerta = actual.origen === 'alerta';
+        $('ed-titulo').textContent = alerta ? `Alerta: ${actual.etiqueta}` : 'Captura manual';
+        $('ed-meta').textContent = [actual.camera, fecha(actual.timestamp),
+            alerta && actual.persona && actual.persona !== 'Sin identificar' ? actual.persona : null,
+            alerta && actual.confianza != null ? `confianza ${Math.round(actual.confianza)}%` : null,
+            actual.revisado_por ? `revisada por ${actual.revisado_por}` : null].filter(Boolean).join(' · ');
+        $('btn-real').hidden = $('btn-falsa').hidden = !alerta;
+        $('btn-guardar').hidden = alerta;
+        $('btn-reabrir').hidden = !actual.cajas;
+        msg.textContent = cajas.length ? '' : 'El modelo no encontró ninguna cabeza. Si hay alguna, dibujala arrastrando.';
+        editor.hidden = false; vacio.hidden = true;
+        foto.onload = () => { canvas.width = foto.naturalWidth; canvas.height = foto.naturalHeight; pintar(); };
+        foto.src = `/admin/revision/${id}.webp`;
+        panel();
+    }
+
+    function texto(c) {
+        const p = [];
+        if (c.casco) p.push(c.casco === 'con' ? 'CON CASCO' : 'SIN CASCO');
+        if (c.chaleco) p.push(c.chaleco === 'con' ? 'CON CHALECO' : 'SIN CHALECO');
+        return p.join(' · ') || '¿?';
+    }
+
+    function pintar() {
+        const W = canvas.width, H = canvas.height, k = Math.max(1, W / 640);
+        ctx.clearRect(0, 0, W, H);
+        ctx.font = `600 ${Math.round(13 * k)}px Outfit, sans-serif`;
+        cajas.forEach((c, i) => {
+            const [x, y, w, h] = [c.bbox[0] * W, c.bbox[1] * H, c.bbox[2] * W, c.bbox[3] * H];
+            const color = COLORES[c.casco];
+            ctx.lineWidth = (i === sel ? 4 : 2) * k;
+            ctx.strokeStyle = i === sel ? '#E8751A' : color;
+            ctx.strokeRect(x, y, w, h);
+            const t = `${i + 1}. ${texto(c)}`, tw = ctx.measureText(t).width + 10 * k, th = 20 * k;
+            const ty = y - th >= 0 ? y - th : y + h;
+            ctx.fillStyle = i === sel ? '#E8751A' : color;
+            ctx.fillRect(x - 1, ty, tw, th);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(t, x + 4 * k, ty + 14.5 * k);
+        });
+        if (dibujando) {
+            const [x0, y0, x1, y1] = dibujando;
+            ctx.setLineDash([6 * k, 4 * k]); ctx.lineWidth = 2 * k; ctx.strokeStyle = '#E8751A';
+            ctx.strokeRect(Math.min(x0, x1) * W, Math.min(y0, y1) * H, Math.abs(x1 - x0) * W, Math.abs(y1 - y0) * H);
+            ctx.setLineDash([]);
+        }
+        sugerir();
+    }
+
+    function panel() {
+        panelCaja.hidden = sel < 0;
+        if (sel < 0) return;
+        $('ed-num').textContent = sel + 1;
+        panelCaja.querySelectorAll('.rev-grupo').forEach(g => {
+            const v = cajas[sel][g.dataset.campo] || '';
+            g.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.valor === v));
+        });
+    }
+
+    // Qué veredicto corresponde según las etiquetas: en "sin casco", real si quedó alguna cabeza sin casco
+    function sugerir() {
+        const real = $('btn-real'), falsa = $('btn-falsa');
+        real.classList.remove('sugerido'); falsa.classList.remove('sugerido');
+        if (!actual || actual.origen !== 'alerta') return;
+        const campo = { sin_casco: 'casco', sin_chaleco: 'chaleco' }[actual.tipo];
+        if (!campo) return;
+        (cajas.some(c => c[campo] === 'sin') ? real : falsa).classList.add('sugerido');
+    }
+
+    function poner(campo, valor) {
+        if (sel < 0) return;
+        cajas[sel][campo] = valor || null; panel(); pintar();
+    }
+
+    panelCaja.querySelectorAll('.rev-grupo').forEach(g => g.addEventListener('click', e => {
+        const b = e.target.closest('button'); if (b) poner(g.dataset.campo, b.dataset.valor);
+    }));
+    $('ed-borrar-caja').addEventListener('click', () => {
+        if (sel < 0) return;
+        cajas.splice(sel, 1); sel = Math.min(sel, cajas.length - 1); panel(); pintar();
+    });
+
+    // Elegir una caja tocándola, o dibujar una nueva arrastrando
+    const punto = e => { const r = canvas.getBoundingClientRect();
+        return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+    canvas.addEventListener('pointerdown', e => {
+        const [px, py] = punto(e);
+        canvas.setPointerCapture(e.pointerId);
+        dibujando = [px, py, px, py];
+    });
+    canvas.addEventListener('pointermove', e => { if (dibujando) { [dibujando[2], dibujando[3]] = punto(e); pintar(); } });
+    canvas.addEventListener('pointerup', () => {
+        if (!dibujando) return;
+        const [x0, y0, x1, y1] = dibujando; dibujando = null;
+        const w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+        if (w > 0.015 && h > 0.015) {
+            cajas.push({ bbox: [Math.min(x0, x1), Math.min(y0, y1), w, h], casco: null, chaleco: null });
+            sel = cajas.length - 1;
+            msg.textContent = 'Caja nueva: elegí si tiene casco y chaleco.';
+        } else {
+            // Un toque: la caja más chica que contiene el punto
+            const dentro = cajas.map((c, i) => [c, i]).filter(([c]) => x0 >= c.bbox[0] && x0 <= c.bbox[0] + c.bbox[2] && y0 >= c.bbox[1] && y0 <= c.bbox[1] + c.bbox[3]);
+            if (dentro.length) sel = dentro.sort((a, b) => a[0].bbox[2] * a[0].bbox[3] - b[0].bbox[2] * b[0].bbox[3])[0][1];
+        }
+        panel(); pintar();
+    });
+
+    // Atajos: en la fase de captura, para que ningún otro script ni el foco en un botón los frene.
+    // e.code cubre también el teclado numérico y distribuciones de teclado raras.
+    const ATAJOS = { '1': ['casco', 'con'], '2': ['casco', 'sin'], '3': ['chaleco', 'con'], '4': ['chaleco', 'sin'] };
+    window.addEventListener('keydown', e => {
+        if (!actual || editor.hidden || e.ctrlKey || e.altKey || e.metaKey) return;
+        if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable], .a11y-panel')) return;
+        const tecla = /^(Digit|Numpad)([1-4])$/.exec(e.code || '')?.[2] || e.key;
+        if (ATAJOS[tecla]) { poner(...ATAJOS[tecla]); e.preventDefault(); e.stopPropagation(); }
+        else if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) { $('ed-borrar-caja').click(); e.preventDefault(); }
+        else if (e.key === 'Tab' && cajas.length && !e.target.closest('.sidebar, header')) {
+            sel = (Math.max(sel, 0) + (e.shiftKey ? cajas.length - 1 : 1)) % cajas.length;
+            if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+            panel(); pintar(); e.preventDefault();
+        }
+    }, true);
+
+    function siguienteId() {
+        const i = items.findIndex(m => m.id === actual.id);
+        return (items[i + 1] || items[i - 1] || {}).id;
+    }
+
+    async function guardar(veredicto) {
+        const sinEtiqueta = cajas.filter(c => !c.casco).length;
+        const r = await fetch(`/admin/api/revision/${actual.id}`, { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ cajas, veredicto }) });
+        if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).error || 'No se pudo guardar.'; return; }
+        const sigue = estado === 'pendientes' ? siguienteId() : actual.id;
+        await cargarLista(sigue);
+        msg.textContent = 'Guardado.' + (sinEtiqueta ? ` ${sinEtiqueta} caja(s) con casco "No se ve" no van al dataset.` : '');
+    }
+    $('btn-real').addEventListener('click', () => guardar('real'));
+    $('btn-falsa').addEventListener('click', () => guardar('falsa'));
+    $('btn-guardar').addEventListener('click', () => guardar(null));
+    $('btn-reabrir').addEventListener('click', async () => {
+        const r = await fetch(`/admin/api/revision/${actual.id}/reabrir`, { method: 'POST', headers: { 'X-CSRFToken': CSRF } });
+        if (r.ok) { await cargarLista(actual.id); msg.textContent = 'Volvió a Sin revisar, con las cajas del modelo.'; }
+    });
+    $('btn-descartar').addEventListener('click', async () => {
+        const sigue = siguienteId();
+        const r = await fetch(`/admin/api/revision/${actual.id}/borrar`, { method: 'POST', headers: { 'X-CSRFToken': CSRF } });
+        if (r.ok) await cargarLista(sigue);
+    });
+
+    document.querySelectorAll('.rev-tabs button').forEach(b => b.addEventListener('click', () => {
+        estado = b.dataset.estado;
+        document.querySelectorAll('.rev-tabs button').forEach(o => o.setAttribute('aria-pressed', o === b));
+        cargarLista(null);
+    }));
+
+    const ETIQ = {{ etiquetas | tojson }};
+    cargarLista(null);
+})();
+</script>
+{% endblock %}

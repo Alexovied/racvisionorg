@@ -566,7 +566,8 @@
                            confidence: Math.min(100, EPP.confianza(caras, elemento, 'falta', MIN_CONFIDENCE)),
                            persona: EPP.enFalta(caras, elemento, MIN_CONFIDENCE),
                            pos: EPP.posicion(caras, elemento, MIN_CONFIDENCE, f.width, f.height),
-                           foto: f.toDataURL('image/jpeg', 0.8) });
+                           foto: f.toDataURL('image/jpeg', 0.8),
+                           foto_limpia: captureCanvas.toDataURL('image/jpeg', 0.9) });   // para revisar y reentrenar
         }
 
         function addLog(time, label, confidence, cssClass) {
