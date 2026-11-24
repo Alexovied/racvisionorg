@@ -211,6 +211,22 @@ def revisar(muestra_id, cajas, veredicto, usuario):
     return muestra
 
 
+def reabrir(muestra_id):
+    """Deshace la revisión: vuelve a Sin revisar con las cajas del modelo. En una alerta saca
+    también la marca de real / falsa de Auditoría."""
+    muestra = _actualizar(muestra_id, cajas=None, veredicto=None, revisado_por=None, revisado_en=None)
+    if muestra and muestra.get("event_id"):
+        evento = data_store.get_event(muestra["event_id"])
+        if evento and "feedback" in evento:
+            with data_store._lock:
+                eventos = data_store.load_events()
+                for e in eventos:
+                    if e.get("id") == muestra["event_id"]:
+                        e.pop("feedback", None)
+                data_store._save_json("events.json", eventos)
+    return muestra
+
+
 def resumen(muestras=None):
     muestras = cargar() if muestras is None else muestras
     revisadas = [m for m in muestras if m["cajas"] is not None]

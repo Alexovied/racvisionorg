@@ -1160,6 +1160,15 @@ def api_revision_guardar(muestra_id):
     return jsonify({"ok": True, "resumen": revision.resumen()})
 
 
+@admin_bp.route("/api/revision/<muestra_id>/reabrir", methods=["POST"])
+@roles_required("admin", "operator")
+def api_revision_reabrir(muestra_id):
+    if not revision.obtener(muestra_id):
+        return jsonify({"error": "No existe esa foto"}), 404
+    revision.reabrir(muestra_id)
+    return jsonify({"ok": True, "resumen": revision.resumen()})
+
+
 @admin_bp.route("/api/revision/<muestra_id>/borrar", methods=["POST"])
 @roles_required("admin", "operator")
 def api_revision_borrar(muestra_id):

@@ -115,6 +115,7 @@
             <button class="btn-action btn-falsa" id="btn-falsa" data-veredicto="falsa"><i class="fa-solid fa-circle-xmark"></i> Falsa alarma</button>
             <button class="btn-action btn-create" id="btn-guardar"><i class="fa-solid fa-floppy-disk"></i> Guardar etiquetas</button>
             <span class="espacio"></span>
+            <button class="btn-action btn-cancel" id="btn-reabrir" title="Vuelve a las cajas que propone el modelo y la pasa a Sin revisar"><i class="fa-solid fa-rotate-left"></i> Deshacer revisión</button>
             <button class="btn-action btn-cancel" id="btn-descartar" title="Foto movida, borrosa o que no sirve"><i class="fa-solid fa-trash-can"></i> Descartar foto</button>
         </div>
         <div class="rev-msg" id="ed-msg" role="status"></div>
@@ -197,6 +198,7 @@
             actual.revisado_por ? `revisada por ${actual.revisado_por}` : null].filter(Boolean).join(' · ');
         $('btn-real').hidden = $('btn-falsa').hidden = !alerta;
         $('btn-guardar').hidden = alerta;
+        $('btn-reabrir').hidden = !actual.cajas;
         msg.textContent = cajas.length ? '' : 'El modelo no encontró ninguna cabeza. Si hay alguna, dibujala arrastrando.';
         editor.hidden = false; vacio.hidden = true;
         foto.onload = () => { canvas.width = foto.naturalWidth; canvas.height = foto.naturalHeight; pintar(); };
@@ -295,15 +297,21 @@
         panel(); pintar();
     });
 
-    document.addEventListener('keydown', e => {
-        if (!actual || editor.hidden || e.target.closest('input, textarea, select')) return;
-        const atajos = { '1': ['casco', 'con'], '2': ['casco', 'sin'], '3': ['chaleco', 'con'], '4': ['chaleco', 'sin'] };
-        if (atajos[e.key]) { poner(...atajos[e.key]); e.preventDefault(); }
+    // Atajos: en la fase de captura, para que ningún otro script ni el foco en un botón los frene.
+    // e.code cubre también el teclado numérico y distribuciones de teclado raras.
+    const ATAJOS = { '1': ['casco', 'con'], '2': ['casco', 'sin'], '3': ['chaleco', 'con'], '4': ['chaleco', 'sin'] };
+    window.addEventListener('keydown', e => {
+        if (!actual || editor.hidden || e.ctrlKey || e.altKey || e.metaKey) return;
+        if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable], .a11y-panel')) return;
+        const tecla = /^(Digit|Numpad)([1-4])$/.exec(e.code || '')?.[2] || e.key;
+        if (ATAJOS[tecla]) { poner(...ATAJOS[tecla]); e.preventDefault(); e.stopPropagation(); }
         else if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) { $('ed-borrar-caja').click(); e.preventDefault(); }
-        else if (e.key === 'Tab' && cajas.length && document.activeElement === document.body) {
-            sel = (sel + (e.shiftKey ? cajas.length - 1 : 1)) % cajas.length; panel(); pintar(); e.preventDefault();
+        else if (e.key === 'Tab' && cajas.length && !e.target.closest('.sidebar, header')) {
+            sel = (Math.max(sel, 0) + (e.shiftKey ? cajas.length - 1 : 1)) % cajas.length;
+            if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+            panel(); pintar(); e.preventDefault();
         }
-    });
+    }, true);
 
     function siguienteId() {
         const i = items.findIndex(m => m.id === actual.id);
@@ -323,6 +331,10 @@
     $('btn-real').addEventListener('click', () => guardar('real'));
     $('btn-falsa').addEventListener('click', () => guardar('falsa'));
     $('btn-guardar').addEventListener('click', () => guardar(null));
+    $('btn-reabrir').addEventListener('click', async () => {
+        const r = await fetch(`/admin/api/revision/${actual.id}/reabrir`, { method: 'POST', headers: { 'X-CSRFToken': CSRF } });
+        if (r.ok) { await cargarLista(actual.id); msg.textContent = 'Volvió a Sin revisar, con las cajas del modelo.'; }
+    });
     $('btn-descartar').addEventListener('click', async () => {
         const sigue = siguienteId();
         const r = await fetch(`/admin/api/revision/${actual.id}/borrar`, { method: 'POST', headers: { 'X-CSRFToken': CSRF } });

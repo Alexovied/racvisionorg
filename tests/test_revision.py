@@ -217,3 +217,16 @@ def test_pagina_de_revision(operator_client, sin_modelo):
     revision.guardar(_jpg(), "Taller", "captura")
     r = operator_client.get("/admin/revision")
     assert r.status_code == 200 and "Revisar alertas" in r.get_data(as_text=True)
+
+
+def test_deshacer_revision(operator_client):
+    ev = data_store.append_event("sin_casco", 70, "webcam")
+    m = revision.guardar(_jpg(), "Taller", "alerta", "sin_casco", ev["id"])
+    operator_client.post(f"/admin/api/revision/{m['id']}", json={"cajas": [], "veredicto": "falsa"})
+    assert data_store.get_event(ev["id"])["feedback"]["veredicto"] == "falsa"
+    r = operator_client.post(f"/admin/api/revision/{m['id']}/reabrir")
+    assert r.status_code == 200 and r.get_json()["resumen"]["pendientes"] == 1
+    m = revision.obtener(m["id"])
+    assert (m["cajas"], m["veredicto"], m["revisado_por"]) == (None, None, None)
+    assert "feedback" not in data_store.get_event(ev["id"])
+    assert operator_client.post(f"/admin/api/revision/{'0' * 8}-0000-0000-0000-{'0' * 12}/reabrir").status_code == 404
