@@ -1,4 +1,4 @@
-"""Pose de las personas (YOLOv8n-pose exportado a ONNX): 17 puntos del cuerpo por persona.
+"""Pose de las personas (YOLO11n-pose exportado a ONNX): 17 puntos del cuerpo por persona.
 
 El motor de cámaras lo usa para el hombre caído: mide la inclinación del torso
 (hombros → caderas) en vez de mirar solo la forma de la caja. Y cuerpo.py lo usa para
@@ -15,10 +15,13 @@ import cv2
 import helmet_detector
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "detector_pose.onnx")
-CONF_PERSONA = 0.35
-CONF_PUNTO = 0.5          # por debajo, el punto no se ve bien y no se usa
-ANGULO_CAIDO = 50         # grados del torso respecto de la vertical
-HOMBROS, CADERAS = (5, 6), (11, 12)   # índices COCO
+# Valores elegidos probando 8.100 combinaciones con clips de Pexels (demo-persona-caida/herramientas/
+# buscar_reglas.py): con estos y YOLO11n-pose, alerta en 6/6 caídas de entrenamiento y 7/8 de validación,
+# sin falsas alarmas en 11 clips de gente parada, caminando, agachada o arrodillada.
+CONF_PERSONA = 0.25
+CONF_PUNTO = 0.3          # por debajo, el punto no se ve bien y no se usa
+ANGULO_CAIDO = 40         # grados del torso respecto de la vertical
+NARIZ, HOMBROS, CADERAS = 0, (5, 6), (11, 12)   # índices COCO
 
 _net, _lock = None, threading.Lock()
 if os.path.exists(MODEL_PATH):
@@ -43,12 +46,20 @@ def detectar(img):
 
 def torso_caido(puntos, inclinacion=0.0):
     """True si el torso está acostado o cabeza abajo; False si está derecho;
-    None si no se ven bien los hombros y las caderas (muy cerca de la cámara, tapado).
+    None si no se ven bien los hombros y las caderas (ni la cabeza) (muy cerca de la cámara, tapado).
     inclinacion: grados que está girada la cámara (horario), ver cuerpo.inclinacion()."""
-    if min(puntos[i][2] for i in HOMBROS + CADERAS) < CONF_PUNTO:
+    if min(puntos[i][2] for i in HOMBROS) < CONF_PUNTO:
         return None
     hx, hy = (puntos[5][0] + puntos[6][0]) / 2, (puntos[5][1] + puntos[6][1]) / 2
-    cx, cy = (puntos[11][0] + puntos[12][0]) / 2, (puntos[11][1] + puntos[12][1]) / 2
+    if min(puntos[i][2] for i in CADERAS) >= CONF_PUNTO:
+        cx, cy = (puntos[11][0] + puntos[12][0]) / 2, (puntos[11][1] + puntos[12][1]) / 2
+    elif puntos[NARIZ][2] >= CONF_PUNTO:
+        # Caderas tapadas (frazada, de cerca, cortado por el borde): se mide hombros → cabeza,
+        # que en alguien de pie también apunta para arriba.
+        cx, cy = hx, hy
+        hx, hy = puntos[NARIZ][0], puntos[NARIZ][1]
+    else:
+        return None
     # Ángulo entre el torso y la vertical: 0° de pie, 90° acostado, más de 90° cabeza abajo.
     # shortcut: alguien tirado a lo largo del eje de la cámara se ve "vertical" en la imagen;
     # para eso hace falta saber la altura de la cámara o una segunda cámara.
