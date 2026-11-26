@@ -147,6 +147,16 @@ def _acostada(p, cabezas, ancho, alto):
                    for c in cabezas)
 
 
+def _torso_caido(puntos, inclinacion):
+    """pose.torso_caido, mirando también sin corregir el giro de la cámara: si la única persona
+    a la vista está tirada en diagonal, cuerpo.Nivel la toma por una cámara girada y "endereza"
+    justo la caída."""
+    torso = pose.torso_caido(puntos, inclinacion)
+    if torso is False and inclinacion:
+        return pose.torso_caido(puntos, 0.0)
+    return torso
+
+
 def acostados(img, personas, caras, modos, cuerpos=None, inclinacion=0.0):
     """Cajas de las personas acostadas. Con modelo de pose decide el torso (acostado o cabeza
     abajo); si no se ven hombros y caderas, o no hay modelo, decide la forma de la caja.
@@ -156,7 +166,7 @@ def acostados(img, personas, caras, modos, cuerpos=None, inclinacion=0.0):
     if pose.disponible():  # sin detector de chalecos `personas` viene vacío: la pose igual ve a la gente
         if cuerpos is None:
             cuerpos = pose.detectar(img)
-        candidatos = [(caja, pose.torso_caido(puntos, inclinacion)) for caja, puntos in cuerpos]
+        candidatos = [(caja, _torso_caido(puntos, inclinacion)) for caja, puntos in cuerpos]
     else:
         candidatos = [(p, None) for p in personas]
     caidos = [caja for caja, torso in candidatos if torso]
