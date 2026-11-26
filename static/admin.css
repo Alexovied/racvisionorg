@@ -42,6 +42,18 @@ body {
     overflow-x: hidden;
 }
 
+/* El panel es oscuro: que los controles nativos (desplegables, calendarios,
+   barras de scroll) también lo sean. Sin esto, Windows/Chrome abre la lista
+   de un <select> con fondo blanco y hereda el texto claro: las opciones
+   quedan blanco sobre blanco y solo se ve la que tiene el mouse encima. */
+:root { color-scheme: dark; }
+select option,
+select optgroup {
+    background-color: var(--card-bg-solid);
+    color: var(--text);
+}
+select option:disabled { color: var(--text-dim); }
+
 /* ═══════════════════════════════════════
    SIDEBAR
    ═══════════════════════════════════════ */
