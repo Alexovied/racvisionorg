@@ -1,6 +1,7 @@
 /* SAFETY HELMET DETECTOR PREMIUM STYLES */
 
 :root {
+    color-scheme: dark;
     --bg-color: #080C14;
     --card-bg: rgba(17, 24, 39, 0.65);
     --card-border: rgba(255, 255, 255, 0.07);
