@@ -55,6 +55,10 @@ def tiene_chaleco(img, bbox):
 # usa la regla de color de arriba.
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "detector_chaleco.onnx")
 CONF_MODELO = 0.35
+# El chaleco pide más seguridad que la persona: por debajo de esto el modelo nuevo confunde remeras
+# oscuras o grises con chalecos. En Construction-PPE (val) con 0,6 las personas sin chaleco vistas con
+# chaleco bajan de 11 a 5 de 127 y las con chaleco bien vistas quedan igual (308 de 338).
+CONF_CHALECO = 0.6
 _net, _lock = None, threading.Lock()
 if os.path.exists(MODEL_PATH):
     try:
@@ -73,7 +77,8 @@ def detectar(img):
     Para quien necesita las cajas de persona además del chaleco (motor.py) sin correr la red dos veces."""
     if _net is None:
         return []
-    return helmet_detector.correr_yolo(_net, _lock, img, 2, CONF_MODELO, por_clase=True)
+    return [(b, sc) for b, sc in helmet_detector.correr_yolo(_net, _lock, img, 2, CONF_MODELO, por_clase=True)
+            if sc.argmax() == 0 or sc[1] >= CONF_CHALECO]
 
 
 def detectar_personas(img, dets=None):
