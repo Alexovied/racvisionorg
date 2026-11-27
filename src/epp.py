@@ -9,6 +9,12 @@ Medido con fotos del proyecto: con chaleco 9-49 % del torso (9 % de costado),
 sin chaleco 0 %, y 0-1 % en 40 fotos del dataset sin chalecos. El umbral 4 %
 queda en el medio.
 
+Amarillo: tono 25-55, saturación desde 70. Con videos reales al sol (Pexels, nov. 2026)
+el verde lima de los chalecos da tono 41-46 y saturación 60-120: con el rango viejo
+(25-45, desde 110) dos chalecos bien visibles salían "sin chaleco" (2 % del torso).
+Con el rango nuevo dan 13 % y en 10 clips sin chalecos (mina, taller, losa, carbón)
+no apareció ningún chaleco de más.
+
 shortcut: regla de color, no un modelo entrenado. Una remera amarilla
 fluorescente cuenta como chaleco; si eso pasa en la planta, entrenar YOLO con
 fotos de chalecos (mismo notebook que el de cascos).
@@ -37,7 +43,7 @@ def _torso(img, bbox):
 
 def proporcion_alta_visibilidad(region):
     hh, ss, vv = cv2.split(cv2.cvtColor(region, cv2.COLOR_BGR2HSV))
-    amarillo = (hh >= 25) & (hh <= 45) & (ss >= 110) & (vv >= 140)
+    amarillo = (hh >= 25) & (hh <= 55) & (ss >= 70) & (vv >= 150)
     naranja = (hh >= 4) & (hh <= 18) & (ss >= 150) & (vv >= 150)
     return float((amarillo | naranja).mean())
 
