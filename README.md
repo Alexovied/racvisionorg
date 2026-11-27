@@ -20,6 +20,7 @@ Todo el código de la app está en `src/`:
 *   **SGEP-Dashboard:** `sgep.py`, `sgep_seed.py`, `sgep_local.py` (corre solo el dashboard en localhost: `python src/sgep_local.py`).
 *   **Modelos (`modelos_app/`):** `detector_casco.onnx`, `detector_chaleco.onnx`, `detector_pose.onnx` (no está en git, va por scp), los `*_int8.*` de OpenVINO, los dos de caras (`face_*.onnx`) y `modelo.keras` (clasificador viejo, se puede elegir en la configuración).
 *   **Entrenamiento y medición (`herramientas/`, se corren desde la raíz, ej. `python herramientas/evaluar_modelos.py`):** `ea.py` y `retrain.py` (modelo Keras), `cuantizar.py`, `evaluar_modelos.py`, `benchmark_inferencia.py`, `benchmark_carga.py`, `capturar_casco.py`, `relay_camara.py` (reenvía una cámara de otra red al servidor). Los notebooks de Colab (entrenamiento de los detectores y clips de video) están en `entrenamiento/`. Las fotos locales (`con_casco`, `sin_casco`, `personas`) van en `datasets/`, que no se sube a git.
+*   **Revisar alertas:** `revision.py`: corregir a mano lo que vio el modelo y descargar el dataset YOLO para reentrenar.
 *   **Tests y docs:** `tests/`, `docs/`.
 
 ---
