@@ -32,6 +32,7 @@ import salud
 
 # Mismas reglas que static/epp.js: ventana de 8 frames, alerta con 60 % "falta", OK con 70 % y ventana llena
 VENTANA, TH_FALTA, TH_OK, VACIOS_RESET = 8, 0.60, 0.70, 15
+REARME_S = 30          # cámara sin nadie este tiempo: una alerta de casco / chaleco puede volver a avisar
 TIMEOUT_IP_MS = 8000   # abrir / leer una cámara IP: más que esto es "sin señal"
 ANCHO_MAX = 960        # los frames más anchos se achican al leerlos
 ANALISIS_RELAY_S = 0.5 # relay: el video llega a ~8 cuadros/s para verse fluido, pero se analizan 2 por segundo
@@ -71,6 +72,10 @@ def analizar(img, modos, con_personas=False, conocidos=None, nivel=None, info=No
         # tal cual no encuentra a nadie (el caso de la cámara girada que pierde cabezas).
         caras, personas = _analizar(img, modos, con_personas, conocidos, cuerpos)
         if caras:
+            # No se enderezó: ese giro puede ser un compañero agachado, y restárselo al torso
+            # de un caído (acostados) lo haría pasar por alguien de pie.
+            if info is not None:
+                info["inclinacion"] = 0.0
             return caras, personas
 
     derecha, M, M_inv = cuerpo.enderezar(img, angulo)
@@ -95,7 +100,8 @@ def _analizar(img, modos, con_personas, conocidos, cuerpos):
 
     # Detector de cabezas (YOLO): ve el casco desde cualquier ángulo, aunque
     # la persona esté de espaldas o se tape la cara.
-    cabezas = helmet_detector.detectar(img)
+    # Con pose y sin ningún cuerpo a la vista todas las cabezas se descartarían: no se buscan.
+    cabezas = [] if cuerpos is not None and not cuerpos else helmet_detector.detectar(img)
     if cuerpos is not None:
         # Solo las cabezas con un cuerpo debajo: un casco sobre la mesa no es una persona
         alto = img.shape[0]
@@ -178,6 +184,7 @@ class Ventana:
 
     def __init__(self):
         self.votos, self.estado = deque(maxlen=VENTANA), None
+        self.rearmada = False  # en "falta" y la cámara quedó vacía: otro consenso "falta" avisa de nuevo
 
     def votar(self, v, minimo):
         self.votos.append(v)
@@ -190,14 +197,14 @@ class Ventana:
             decidido = "ok"
         else:
             return None
-        if decidido == self.estado:
+        if decidido == self.estado and not self.rearmada:
             return None
-        self.estado = decidido
+        self.estado, self.rearmada = decidido, False
         return decidido
 
     def reset(self):
         self.votos.clear()
-        self.estado = None
+        self.estado, self.rearmada = None, False
 
 
 class Seguimiento:
@@ -205,7 +212,7 @@ class Seguimiento:
 
     def __init__(self):
         self.ventanas = {k: Ventana() for k in ("casco", "chaleco", "zona")}
-        self.vacios = 0
+        self.vacios, self.t_gente = 0, 0.0   # t_gente: último voto de casco o chaleco
         self.acostado, self.t_ultimo = deque(maxlen=VENTANA), None
         self.caido_desde, self.caido = None, False
 
@@ -216,19 +223,28 @@ class Seguimiento:
                 ventana.reset()  # elemento apagado
         # Cámara vacía: los verdes de EPP dejan de valer; las alertas siguen hasta ver a alguien con EPP
         if votos.get("casco") or votos.get("chaleco"):
-            self.vacios = 0
+            self.vacios, self.t_gente = 0, ahora
         else:
             self.vacios += 1
             if self.vacios >= VACIOS_RESET:
+                # Tras REARME_S sin nadie los votos sueltos vencen y la alerta, que sigue a la vista,
+                # se rearma: si no, el próximo infractor no avisa hasta que pase alguien con EPP.
+                viejo = ahora - self.t_gente >= REARME_S
                 for k in ("casco", "chaleco"):
-                    if self.ventanas[k].estado == "ok":
-                        self.ventanas[k].reset()
+                    ventana = self.ventanas[k]
+                    if ventana.estado == "ok":
+                        ventana.reset()
+                    elif viejo:
+                        ventana.votos.clear()
+                        ventana.rearmada = ventana.estado == "falta"
         minimo = max(1, min(VENTANA, minimo))
         nuevas = [k for k, v in votos.items() if v and self.ventanas[k].votar(v, minimo) == "falta"]
 
         # Hombre caído: acostado en la mayoría de los últimos frames, de forma sostenida.
-        # Un hueco sin video (cámara trabada) no cuenta como tiempo en el suelo.
-        if self.t_ultimo is not None and ahora - self.t_ultimo > 2:
+        # Un hueco sin video (cámara trabada) no cuenta como tiempo en el suelo. El hueco tolerado
+        # crece con caida_segundos: un relay con microcortes o un servidor con muchas cámaras dejan
+        # más de 2 s entre cuadros, y con 2 s fijos la cuenta volvía a cero cada vez.
+        if self.t_ultimo is not None and ahora - self.t_ultimo > max(2.0, caida_segundos / 2):
             self.acostado.clear()
             self.caido_desde = None
         self.t_ultimo = ahora
@@ -293,7 +309,7 @@ class Camara(threading.Thread):
         self.parar = threading.Event()
         self.seg = Seguimiento()
         self.cfg, self.t_cfg = None, 0.0
-        self.alarma = None
+        self.alarma, self.t_sin_alerta = None, None   # t_sin_alerta: desde cuándo la alarma no tiene alerta a la vista
         self.jpg, self.fps, self.error = None, 0.0, "Conectando"
         self.crudo = None             # último frame leído de la cámara, sin dibujar
         self.t_recibido = 0.0         # cámaras relay: cuándo llegó el último cuadro
@@ -301,7 +317,9 @@ class Camara(threading.Thread):
         self.pintar = None            # dibuja sobre un frame los recuadros del último análisis
         self._vista = None            # último JPEG de vista(): (clave, jpg, frame)
         self.caidos, self.t_pose = [], 0.0
-        self.nivel = cuerpo.Nivel()   # inclinación de esta cámara, promediada entre frames
+        # Inclinación de esta cámara, promediada en minutos: en segundos la medía la postura de trabajo.
+        # n=40: un giro equivocado (o la cámara movida) se corrige en ~200 medidas, no en 600
+        self.nivel = cuerpo.Nivel(n=40, cada=10)
         self.estado = {"clase": None, "titulo": "CONECTANDO"}
         # Salud: lente tapada / desenfocada y señal perdida avisan si duran (salud.SEGUNDOS / 60 s)
         self.lente, self.t_lente = None, 0.0
@@ -346,6 +364,7 @@ class Camara(threading.Thread):
                 registrar_evento("camara_sin_senal", 100, self.cam["id"])
             except Exception:
                 traceback.print_exc()
+                self.vigia_senal.avisado = False   # no se pudo guardar: el próximo llamado reintenta
 
     def run(self):
         for h in self.anteriores:
@@ -444,19 +463,22 @@ class Camara(threading.Thread):
         # zonas prohibidas y caídas siguen siempre
         exige = en_horario(cam.get("horario"), datetime.now())
         if self.exigia and not exige:
-            # Terminó el horario: las ventanas de casco y chaleco arrancan de cero mañana y, si la
-            # cámara estaba en alerta, se apaga la alarma (si no, la baliza queda en rojo toda la noche)
+            # Terminó el horario: las ventanas de casco y chaleco arrancan de cero mañana. Si la
+            # cámara estaba en alerta solo por EPP, la alarma se apaga más abajo (sin alerta a la
+            # vista); con alguien en zona prohibida o caído sigue sonando.
             self.seg.ventanas["casco"], self.seg.ventanas["chaleco"] = Ventana(), Ventana()
-            if self.alarma == "alerta":
-                self.alarma = None
-                self.pendientes.append(("con_casco", 100, cam["id"]))
+            self.t_sin_alerta = float("-inf")   # acá no hay parpadeo que esperar: se apaga ya
         self.exigia = exige
         modos = {"casco": exige and bool(cfg["detectar_casco"]), "chaleco": exige and bool(cfg["detectar_chaleco"])}
         caida = bool(cfg["detectar_caida"])
         exentas = [np.array([[x * ancho, y * alto] for x, y in z], np.int32) for z in cam.get("exentas") or []]
 
         info = {}
-        caras, personas = analizar(img, modos, con_personas=bool(zonas) or caida, nivel=self.nivel, info=info,
+        # Hombre caído con modelo de pose y casco o chaleco prendidos: la pose ya corre en analizar()
+        # y acostados() no usa `personas`; se ahorra la pasada del modelo de chalecos.
+        con_pose = pose.disponible() and (modos["casco"] or modos["chaleco"])
+        caras, personas = analizar(img, modos, con_personas=bool(zonas) or (caida and not con_pose),
+                                   nivel=self.nivel, info=info,
                                    conocidos=[] if cfg.get("modo_anonimo") else None)   # [] = no identificar a nadie
         # Zonas exentas (oficina, pasillo seguro): ahí no se juzga el EPP de nadie
         exenta = lambda c: any(cv2.pointPolygonTest(z, (c["bbox"][0] + c["bbox"][2] / 2, c["bbox"][1] + c["bbox"][3] / 2),
@@ -497,12 +519,19 @@ class Camara(threading.Thread):
                 if texto:
                     _recuadro(im, c["bbox"], texto, ROJO if "falta" in e.values() else VERDE)
 
-        pintar(img)
         self.pintar = pintar
-        ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        self.jpg = jpg.tobytes() if ok else None
+        # Sin detector_casco.onnx no hay cabezas ni alertas de casco: que no parezca una cámara vacía
+        sin_detector = modos["casco"] and not helmet_detector.disponible()
         self.estado = {"clase": clase,
-                       "titulo": titulo or ("ANALIZANDO" if caras or personas else "SIN PERSONAS")}
+                       "titulo": titulo or ("SIN DETECTOR DE CASCOS" if sin_detector else
+                                            "ANALIZANDO" if caras or personas or info.get("cuerpos")
+                                            else "SIN PERSONAS")}
+        if nuevas:
+            # La foto solo se usa en una alerta nueva (el video del panel va por vista()):
+            # codificar cada cuadro le sacaba CPU al análisis
+            pintar(img)
+            ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            self.jpg = jpg.tobytes() if ok else None
 
         for k in nuevas:
             # Quién fue: en casco y chaleco, las caras en falta; en zona y caída, las caras
@@ -531,6 +560,19 @@ class Camara(threading.Thread):
             self.alarma = clase
             if clase == "ok":
                 self.pendientes.append(("con_casco", 100, cam["id"]))
+        if clase is not None or self.alarma != "alerta":
+            self.t_sin_alerta = None
+        else:
+            # Ya no hay ninguna alerta a la vista (zona liberada, caído que se levantó, fin del
+            # horario): se apaga la alarma, pero solo si se sostiene. Un parpadeo del detector o un
+            # compañero que tapa al caído baja `caido` y reconfirmarlo tarda caida_segundos: con
+            # menos espera la sirena se apagaba (y daba luz verde) con el hombre en el suelo.
+            # Las de casco y chaleco no llegan acá: su ventana sigue en "falta" hasta ver a alguien con EPP.
+            if self.t_sin_alerta is None:
+                self.t_sin_alerta = ahora
+            if ahora - self.t_sin_alerta >= max(REARME_S, 2 * float(cfg["caida_segundos"])):
+                self.alarma, self.t_sin_alerta = None, None
+                self.pendientes.append(("con_casco", 100, cam["id"]))
         # Se registran al final y de a uno: si guardar falla (disco, archivo tomado), el evento
         # queda en la lista y se reintenta en el próximo frame en vez de perderse.
         while self.pendientes:
@@ -548,7 +590,7 @@ _lock = threading.Lock()
 def iniciar():
     """Enciende el motor (lo llama `python src/app.py`). Sin esto sincronizar() no hace nada: un
     servidor sin cámaras propias (el sitio con gunicorn) no abre ningún dispositivo: solo
-    analiza cámaras relay, y recién cuando les llega el primer cuadro."""
+    analiza cámaras relay (app.py llama a sincronizar() en el primer pedido para vigilarlas)."""
     global _tipos
     _tipos = ("usb", "ip", "relay")
     sincronizar()

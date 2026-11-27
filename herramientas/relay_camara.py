@@ -13,6 +13,7 @@ import argparse
 import os
 import threading
 import time
+import traceback
 
 import cv2
 import requests
@@ -28,14 +29,20 @@ class Lector(threading.Thread):
 
     def run(self):
         while True:
-            cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG,
-                                   [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 8000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 8000])
-            while True:
-                ok, img = cap.read()
-                if not ok:
-                    break
-                self.cuadro = img
-            cap.release()
+            cap = None
+            try:  # un error de OpenCV (driver, URL rara) no debe matar el hilo: se reintenta
+                cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG,
+                                       [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 8000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 8000])
+                while True:
+                    ok, img = cap.read()
+                    if not ok:
+                        break
+                    self.cuadro = img
+            except Exception:
+                traceback.print_exc()
+            finally:
+                if cap is not None:
+                    cap.release()
             self.cuadro = None
             print("[!] Sin señal de la cámara, reintento en 5 s", flush=True)
             time.sleep(5)
@@ -61,8 +68,10 @@ def enviar(sesion, url, lector, args, contador, lock):
                 contador["n"] += 1
                 numero = contador["n"]
         if nuevo:
-            cuerpo = jpeg(img, args.ancho)
             try:
+                cuerpo = jpeg(img, args.ancho)
+                if cuerpo is None:  # no mandar un POST vacío
+                    raise cv2.error("no se pudo codificar el cuadro")
                 r = sesion.post(url, data=cuerpo, headers={"X-Cuadro": str(numero)}, timeout=10)
                 if r.status_code == 401:
                     print("[x] El servidor rechazó el ID o el token de la cámara", flush=True)
@@ -72,7 +81,8 @@ def enviar(sesion, url, lector, args, contador, lock):
                         contador["enviados"] += 1
                 else:
                     print(f"[!] El servidor respondió {r.status_code}: {r.text[:200]}", flush=True)
-            except requests.RequestException as e:
+                    time.sleep(2)  # cámara desactivada (409) o servidor reiniciando (5xx): no insistir a 8 cuadros/s
+            except (requests.RequestException, cv2.error) as e:
                 print(f"[!] No se pudo enviar: {e}", flush=True)
                 time.sleep(2)
         time.sleep(max(0.0, args.hilos / args.fps - (time.monotonic() - t)))
@@ -96,13 +106,18 @@ def main():
     lector = Lector(a.camara)
     lector.start()
     contador, lock = {"n": 0, "enviados": 0, "ultimo": None}, threading.Lock()
+    hilos = []
     for _ in range(a.hilos):
         sesion = requests.Session()  # una conexión por hilo: Session no es segura entre hilos
         sesion.headers.update({"Authorization": f"Bearer {a.token}", "Content-Type": "image/jpeg"})
-        threading.Thread(target=enviar, args=(sesion, url, lector, a, contador, lock), daemon=True).start()
+        hilos.append(threading.Thread(target=enviar, args=(sesion, url, lector, a, contador, lock), daemon=True))
+        hilos[-1].start()
     print(f"[+] Reenviando {a.camara} a {a.servidor} a {a.fps} cuadros/s", flush=True)
     while True:
         time.sleep(60)
+        if not (lector.is_alive() and any(h.is_alive() for h in hilos)):  # ya no manda nada: que el supervisor reinicie
+            print("[x] Se cayeron los hilos del relay, salgo", flush=True)
+            os._exit(1)
         with lock:
             print(f"[+] {contador['enviados']} cuadros enviados en el último minuto", flush=True)
             contador["enviados"] = 0

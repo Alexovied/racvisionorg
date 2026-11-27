@@ -14,6 +14,7 @@ import numpy as np
 import requests
 
 ESPERA = 60
+INTENTOS = 3   # un microcorte de red o un 429/5xx de Telegram no pierde la alerta
 TITULOS = {"sin_casco": "⛑️ SIN CASCO", "sin_chaleco": "🦺 SIN CHALECO",
            "zona_prohibida": "🚫 ZONA PROHIBIDA", "hombre_caido": "🆘 HOMBRE CAÍDO",
            "boton_sos": "🚨 BOTÓN DE PÁNICO", "hombre_muerto": "🆘 HOMBRE MUERTO SIN RESPUESTA",
@@ -71,14 +72,35 @@ def _enviar(evento, foto):
             img = cv2.imdecode(np.frombuffer(foto, np.uint8), cv2.IMREAD_COLOR)
             ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85]) if img is not None else (False, None)
             jpg = buf.tobytes() if ok else None
-        if jpg:
-            r = requests.post(_url("sendPhoto"), data=datos, files={"photo": ("alerta.jpg", jpg, "image/jpeg")},
-                              timeout=10)
-        else:
-            r = requests.post(_url("sendMessage"), data={"chat_id": datos["chat_id"], "text": datos["caption"]},
-                              timeout=10)
-        if r.status_code >= 400:
-            print(f"[!] Telegram respondió {r.status_code}: {r.text[:200]}", flush=True)
+        # Corre siempre en un hilo aparte (avisar / _soltar): esperar entre intentos no frena a las cámaras
+        for intento in range(INTENTOS):
+            try:
+                if jpg:
+                    r = requests.post(_url("sendPhoto"), data=datos,
+                                      files={"photo": ("alerta.jpg", jpg, "image/jpeg")}, timeout=10)
+                else:
+                    r = requests.post(_url("sendMessage"), data={"chat_id": datos["chat_id"], "text": datos["caption"]},
+                                      timeout=10)
+            except requests.ReadTimeout as e:   # el pedido salió entero y quizá ya se publicó: repetir lo duplica
+                print(f"[!] Telegram sin confirmación de la alerta (no se reintenta): {sin_token(e)}", flush=True)
+                return
+            except requests.RequestException as e:
+                print(f"[!] Telegram no recibió la alerta (intento {intento + 1}): {sin_token(e)}", flush=True)
+            else:
+                if r.status_code < 400:
+                    return
+                print(f"[!] Telegram respondió {r.status_code}: {r.text[:200]}", flush=True)
+                if r.status_code == 400 and jpg:   # foto rechazada: la alerta sale igual, como texto
+                    jpg = None
+                    continue
+                if r.status_code != 429 and r.status_code < 500:   # token o chat mal puestos: repetir no lo arregla
+                    break
+            if intento < INTENTOS - 1:
+                time.sleep(5 * (intento + 1))
+        # No salió: se libera la espera para que la próxima alerta de esa cámara no se descarte
+        with _lock:
+            for tipo in evento.get("tipos") or [evento.get("type")]:
+                _ultimo.pop((evento.get("camera"), tipo), None)
     except Exception as e:
         print(f"[!] Telegram no recibió la alerta: {sin_token(e)}", flush=True)
 

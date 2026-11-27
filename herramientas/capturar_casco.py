@@ -22,8 +22,9 @@ CLASES = ("con_casco", "sin_casco")
 def capturar(camara, clase, segundos, cada, ancho):
     carpeta = os.path.join(RAIZ, "datasets", clase)
     os.makedirs(carpeta, exist_ok=True)
-    cap = cv2.VideoCapture(camara, cv2.CAP_FFMPEG,
-                           [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 8000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 8000])
+    # con timeouts también al reconectar: si no, un RTSP colgado deja cap.read() sin volver y --segundos no corta
+    esperas = [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 8000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 8000]
+    cap = cv2.VideoCapture(camara, cv2.CAP_FFMPEG, esperas)
     guardadas, t_fin, t_prox = 0, time.monotonic() + segundos, 0.0
     while time.monotonic() < t_fin:
         ok, img = cap.read()  # se lee siempre, para no guardar cuadros viejos del búfer
@@ -31,7 +32,7 @@ def capturar(camara, clase, segundos, cada, ancho):
             print("[!] Se cortó la cámara, reconecto...", flush=True)
             cap.release()
             time.sleep(2)
-            cap = cv2.VideoCapture(camara, cv2.CAP_FFMPEG)
+            cap = cv2.VideoCapture(camara, cv2.CAP_FFMPEG, esperas)
             continue
         if time.monotonic() < t_prox:
             continue
@@ -48,14 +49,13 @@ def capturar(camara, clase, segundos, cada, ancho):
 
 def armar_zip():
     destino = os.path.join(RAIZ, "entrenamiento", "fotos_rac.zip")
-    n = 0
+    # se lista antes de abrir el zip: si falta una clase, el zip anterior no queda truncado
+    fotos = [(clase, nombre) for clase in CLASES if os.path.isdir(os.path.join(RAIZ, "datasets", clase))
+             for nombre in sorted(os.listdir(os.path.join(RAIZ, "datasets", clase))) if nombre.lower().endswith(".jpg")]
     with zipfile.ZipFile(destino, "w", zipfile.ZIP_STORED) as z:  # JPEG ya viene comprimido
-        for clase in CLASES:
-            for nombre in sorted(os.listdir(os.path.join(RAIZ, "datasets", clase))):
-                if nombre.lower().endswith(".jpg"):
-                    z.write(os.path.join(RAIZ, "datasets", clase, nombre), f"{clase}/{nombre}")
-                    n += 1
-    print(f"[+] {destino}: {n} fotos")
+        for clase, nombre in fotos:
+            z.write(os.path.join(RAIZ, "datasets", clase, nombre), f"{clase}/{nombre}")
+    print(f"[+] {destino}: {len(fotos)} fotos")
 
 
 if __name__ == "__main__":

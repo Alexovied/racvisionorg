@@ -40,6 +40,8 @@ TOPES = {"bpm_min": 30, "bpm_max": 200, "inactivo_s": 120}
 QUIETO = 0.05             # actividad (g RMS) por debajo de esto = el cuerpo no se mueve
 CAIDA_VALIDA_S = 90       # una caída cuenta para el desmayo durante este tiempo
 SIN_SENAL_S = 90          # sin datos este tiempo = alerta
+CORTE_LARGO_S = 300       # tras un corte así, "sostenido" se cuenta de nuevo (con cortes cortos, no:
+                          # un equipo que llega cada ~100 s nunca juntaría una ventana y no avisaría un paro)
 CONFIANZA = {"boton_sos": 100, "hombre_muerto": 100, "posible_desmayo": 85,
              "ritmo_cardiaco": 80, "wearable_sin_senal": 100}
 
@@ -150,14 +152,17 @@ def validar_lectura(data):
     venga al menos uno; lo que no se manda se toma como "no se sabe"."""
     if not isinstance(data, dict):
         return None, "Se esperaba un objeto JSON"
-    lectura = {}
+    lectura, invalido = {}, None
     for campo, lo, hi in (("bpm", 0, 250), ("spo2", 50, 100), ("bateria", 0, 100),
                           ("actividad", 0, 16), ("temp", 20, 45)):
         v = data.get(campo)
         if v is None:
             continue
         if not _numero(v, lo, hi):
-            return None, f"'{campo}' debe ser un número entre {lo} y {hi}"
+            # Un sensor fuera de rango (oxímetro sin dedo = 0) no tira la lectura entera: se
+            # perdería el botón SOS que viene en la misma. Ese dato queda como "no se sabe".
+            invalido = invalido or f"'{campo}' debe ser un número entre {lo} y {hi}"
+            continue
         lectura[campo] = round(float(v), 2)
     for campo in ("contacto", "caida", "sos", "hombre_muerto"):
         v = data.get(campo)
@@ -167,7 +172,7 @@ def validar_lectura(data):
             return None, f"'{campo}' debe ser true o false"
         lectura[campo] = v
     if not lectura:
-        return None, "La lectura no trae ningún dato"
+        return None, invalido or "La lectura no trae ningún dato"
     return lectura, None
 
 
@@ -184,6 +189,7 @@ class Estado:
         self.ultima_caida = None
         self.ultima = None       # (momento, lectura) de la última lectura
         self.sin_senal = False
+        self.ritmo = ""          # clase del último aviso de ritmo (taquicardia, bradicardia, sin, oxígeno)
 
 
 def _sostenida(estado, clave, ocurre, ahora, segundos):
@@ -199,6 +205,9 @@ def evaluar(estado, lectura, ahora, umbrales=None):
     """Aplica las reglas a una lectura. Devuelve [(tipo, detalle), ...] con las alertas NUEVAS
     (una alerta que sigue pasando no se repite hasta que se corte)."""
     u = {**UMBRALES, **(umbrales or {})}
+    if estado.ultima and ahora - estado.ultima[0] > CORTE_LARGO_S:
+        estado.desde.clear()   # volvió de un corte: "sostenido" se cuenta de nuevo, no desde antes del corte
+        estado.ritmo = ""      # y si el pulso sigue mal, se avisa de nuevo
     estado.ultima = (ahora, lectura)
     estado.sin_senal = False
     bpm, spo2 = lectura.get("bpm"), lectura.get("spo2")
@@ -207,7 +216,10 @@ def evaluar(estado, lectura, ahora, umbrales=None):
     quieto = actividad is not None and actividad < QUIETO
     if lectura.get("caida"):
         estado.ultima_caida = ahora
-    cayo_hace_poco = estado.ultima_caida is not None and ahora - estado.ultima_caida <= CAIDA_VALIDA_S
+    # La ventana suma el tiempo quieto que se exige: si no, con inactivo_s aprendido >= 90 la caída
+    # vencía antes de cumplirlo y el desmayo no avisaba nunca. Cuenta si se quedó quieto a <= 90 s de caer.
+    cayo_hace_poco = (estado.ultima_caida is not None
+                      and ahora - estado.ultima_caida <= CAIDA_VALIDA_S + u["inactivo_s"])
 
     sin_pulso = contacto is not False and bpm == 0   # 0 = el sensor está apoyado y no encuentra latidos
     bradi = bpm is not None and 0 < bpm < u["bpm_min"]
@@ -226,12 +238,24 @@ def evaluar(estado, lectura, ahora, umbrales=None):
     condiciones["ritmo_cardiaco"] = (
         _sostenida(estado, "ritmo", bool(detalle_ritmo), ahora, u["sostenido_s"]), detalle_ritmo)
 
+    # El aviso de ritmo se rearma recién con sostenido_s de pulso normal: un pulso que oscila
+    # alrededor del umbral avisaba de nuevo cada ~30 s. Si aparece otro problema y se sostiene
+    # (avisó taquicardia y ahora no hay pulso) se avisa también; una lectura suelta de otra
+    # clase (sensor flojo: 70, 38, 0, 0...) no rearma.
+    clase = detalle_ritmo.split(" ")[0]
+    ritmo_normal = _sostenida(estado, "ritmo_ok", not detalle_ritmo, ahora, u["sostenido_s"])
+    if estado.desde.get("clase", ("",))[0] != clase:
+        estado.desde["clase"] = (clase, ahora)
+    if clase and clase != estado.ritmo and ahora - estado.desde["clase"][1] >= u["sostenido_s"]:
+        estado.activas.discard("ritmo_cardiaco")
     nuevas = []
     for tipo, (ocurre, detalle) in condiciones.items():
         if ocurre and tipo not in estado.activas:
             estado.activas.add(tipo)
             nuevas.append((tipo, detalle))
-        elif not ocurre:
+            if tipo == "ritmo_cardiaco":
+                estado.ritmo = clase
+        elif not ocurre and (tipo != "ritmo_cardiaco" or ritmo_normal):
             estado.activas.discard(tipo)
     estado.activas.discard("wearable_sin_senal")
     return nuevas

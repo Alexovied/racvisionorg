@@ -59,16 +59,29 @@ class _YuNetOpenVINO:
         self.score = score
 
     def _red(self, pw, ph):
-        # Una red compilada por tamaño (la cámara casi siempre manda el mismo)
+        # Una red compilada por tamaño (~0,45 s y 12 MB cada una, y no se liberan): detect() los
+        # redondea a pocos tamaños (_lado)
         if (pw, ph) not in self.redes:
             m = self.modelo.clone()
             m.reshape([1, 3, ph, pw])
             self.redes[(pw, ph)] = helmet_detector._core.compile_model(m, helmet_detector.DEVICE)
         return self.redes[(pw, ph)]
 
+    @staticmethod
+    def _lado(n):
+        """Lado de la red para una imagen de n px: hasta 512 la escalera 128, 192, 256, 384, 512
+        (recortes de cabeza de cualquier tamaño, relleno a lo sumo ~2,2x); más grande, múltiplo
+        de 32 (el cuadro entero, que casi siempre mide lo mismo)."""
+        if n > 512:
+            return ((n - 1) // 32 + 1) * 32
+        s = max(128, 1 << (n - 1).bit_length())
+        return s * 3 // 4 if s > 128 and s * 3 // 4 >= n else s
+
     def detect(self, img):
         w, h = self.tam
-        pw, ph = ((w - 1) // 32 + 1) * 32, ((h - 1) // 32 + 1) * 32
+        # face_id manda el recorte de cada cabeza, de tamaño distinto según la persona y la distancia:
+        # con múltiplos de 32 eran decenas de redes. Relleno negro abajo y a la derecha, como antes.
+        pw, ph = self._lado(w), self._lado(h)
         blob = cv2.dnn.blobFromImage(cv2.copyMakeBorder(img, 0, ph - h, 0, pw - w, cv2.BORDER_CONSTANT, value=0))
         red = self._red(pw, ph)
         res = red(blob)

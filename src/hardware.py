@@ -20,6 +20,9 @@ BAUD_RATE    = int(os.environ.get("SERIAL_BAUD", "115200"))
 esp32    = None
 _lock    = threading.Lock()
 _enabled = False
+# Reconexión: solo si se perdió un ESP32 que andaba (None = nunca conectó, p. ej. el servidor en la nube)
+REINTENTO  = 30
+_reintento = None
 
 
 def init_esp32(port=DEFAULT_PORT, baud=BAUD_RATE):
@@ -39,7 +42,8 @@ def init_esp32(port=DEFAULT_PORT, baud=BAUD_RATE):
                 pass
 
         try:
-            esp32 = serial.Serial(port, baud, timeout=0.1)
+            # write_timeout: un ESP32 colgado no deja bloqueado (con _lock tomado) al análisis de la cámara
+            esp32 = serial.Serial(port, baud, timeout=0.1, write_timeout=1)
             time.sleep(2)          # Esperar reinicio del ESP32 tras DTR
             while esp32.in_waiting:
                 esp32.readline()   # Limpiar buffer de arranque
@@ -66,9 +70,15 @@ def enviar_comando_esp32(cmd):
     Acepta str o bytes para compatibilidad con ambos estilos de llamada.
     Retorna True si el envío fue exitoso.
     """
-    global esp32, _enabled
+    global esp32, _enabled, _reintento
 
     if not _enabled or esp32 is None:
+        # Cable flojo o reinicio del ESP32: se reconecta en un hilo aparte (init_esp32 tarda 2 s y esto
+        # se llama desde el análisis de las cámaras), como mucho cada REINTENTO segundos.
+        if _reintento is not None and time.monotonic() - _reintento > REINTENTO:
+            _reintento = time.monotonic()
+            print("[!] ESP32 desconectado: la alarma física no sonó. Reintentando la conexión...", flush=True)
+            threading.Thread(target=init_esp32, args=(), daemon=True).start()
         return False
 
     # Normalizar a bytes
@@ -88,6 +98,7 @@ def enviar_comando_esp32(cmd):
         except Exception as e:
             print(f"[!] Error comunicando con ESP32: {e}")
             _enabled = False
+            _reintento = time.monotonic()
             try:
                 esp32.close()
             except Exception:

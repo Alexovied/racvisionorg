@@ -27,7 +27,7 @@ def _load_json(filename, default=None):
                 return json.load(f)
     return default if default is not None else []
 
-def _save_json(filename, data):
+def _save_json(filename, data, indent=2):
     _ensure_dir()
     path = os.path.join(DATA_DIR, filename)
     with _lock:
@@ -35,7 +35,11 @@ def _save_json(filename, data):
         # .tmp propio de cada proceso: dos workers escribiendo a la vez no mezclan sus archivos
         tmp = f"{path}.{os.getpid()}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            # dumps y no dump: json.dump va siempre por el codificador lento en Python puro
+            f.write(json.dumps(data, ensure_ascii=False, indent=indent))
+            # Sin fsync el reemplazo puede quedar en disco antes que los datos (archivo vacío tras un corte)
+            f.flush()
+            os.fsync(f.fileno())
         # En Windows el reemplazo falla si otro programa (antivirus, backup, un editor) tiene
         # el archivo abierto en ese instante: se reintenta un cuarto de segundo antes de rendirse.
         for intento in range(5):
@@ -256,7 +260,18 @@ ALERT_TYPES = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido",
 SALUD_TYPES = ("camara_sin_senal", "camara_tapada", "camara_desenfocada")
 
 def load_events():
-    return _load_json("events.json", [])
+    with _lock:
+        try:
+            return _load_json("events.json", [])
+        except ValueError as e:
+            # events.json dañado: se aparta (no se borra) y se sigue con un historial nuevo; si no,
+            # ninguna alerta se registra ni se avisa hasta que alguien arregle el archivo a mano
+            ruta = os.path.join(DATA_DIR, "events.json")
+            aparte = f"events.json.corrupto-{int(time.time())}"
+            os.replace(ruta, os.path.join(DATA_DIR, aparte))
+            print(f"[!] events.json estaba dañado ({e}): quedó apartado como {aparte} y el historial arranca vacío",
+                  file=sys.stderr, flush=True)
+            return []
 
 def alert_photo_path(event_id, ext="webp"):
     """Ruta de la foto de una alerta: data/alertas/<id>.webp
@@ -290,11 +305,6 @@ def append_event(event_type, confidence, camera="webcam", foto_webp=None, **extr
             "timestamp": datetime.now().isoformat(),
             **extra,
         }
-        if foto_webp:
-            os.makedirs(os.path.dirname(alert_photo_path(event["id"])), exist_ok=True)
-            with open(alert_photo_path(event["id"]), "wb") as f:
-                f.write(foto_webp)
-            event["foto"] = True
         events.insert(0, event)
         # Keep max 5000 events (y se borran las fotos de los que salen)
         if len(events) > 5000:
@@ -303,10 +313,16 @@ def append_event(event_type, confidence, camera="webcam", foto_webp=None, **extr
                     _remove_alert_photo(viejo["id"])
             events = events[:5000]
         try:
-            _save_json("events.json", events)
+            if foto_webp:
+                os.makedirs(os.path.dirname(alert_photo_path(event["id"])), exist_ok=True)
+                with open(alert_photo_path(event["id"]), "wb") as f:
+                    f.write(foto_webp)
+                event["foto"] = True
+            # sin sangría: events.json se reescribe entero en cada evento, con el candado tomado
+            _save_json("events.json", events, indent=None)
         except Exception:
-            if foto_webp:  # el evento no quedó registrado: su foto tampoco
-                os.remove(alert_photo_path(event["id"]))
+            if foto_webp:  # el evento no quedó registrado: su foto (entera o a medias) tampoco
+                _remove_alert_photo(event["id"])
             raise
         return event
 
@@ -323,7 +339,7 @@ def update_event(event_id, **campos):
         for e in events:
             if e.get("id") == event_id:
                 e.update(campos)
-                _save_json("events.json", events)
+                _save_json("events.json", events, indent=None)
                 return e
     return None
 

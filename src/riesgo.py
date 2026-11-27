@@ -29,6 +29,8 @@ def _alertas(eventos, desde=None, hasta=None, tipo=None, camara=None):
     for e in eventos:
         if e.get("type") not in ALERTAS or (tipo and e["type"] != tipo) or (camara and e.get("camera") != camara):
             continue
+        if e["type"] == "wearable_sin_senal" and tipo != "wearable_sin_senal":
+            continue   # una pulsera apagada o cargando no es una infracción: solo si se la pide por tipo
         try:
             t = datetime.fromisoformat(e["timestamp"])
         except (KeyError, TypeError, ValueError):
@@ -72,7 +74,7 @@ def pronostico(eventos, ahora=None, semanas=4):
     horas = [round(h / pesos, 2) if pesos else 0.0 for h in horas]
     picos = sorted((h for h in range(24) if horas[h] > 0), key=lambda h: (-horas[h], h))[:3]
     return {"fecha": manana.isoformat(), "dia": DIAS[manana.weekday()], "horas": horas,
-            "picos": [{"hora": h, "esperadas": horas[h]} for h in picos], "semanas_con_datos": pesos > 0}
+            "picos": [{"hora": h, "esperadas": horas[h]} for h in picos], "semanas_con_datos": any(horas)}
 
 
 def tendencia(eventos, ahora=None):
@@ -100,7 +102,8 @@ def kpis(eventos, ahora=None, dias=30):
       y el siguiente "todos con EPP" de la misma cámara, si llega en menos de 30 min)
     - racha de días sin alertas y alertas por día."""
     ahora = ahora or datetime.now()
-    desde = ahora - timedelta(days=dias)
+    # Días completos (hoy y los dias-1 anteriores): así el total coincide con la suma de las filas por día
+    desde = datetime.combine(ahora.date() - timedelta(days=dias - 1), datetime.min.time())
     verdes = {}
     for e in eventos:
         if e.get("type") == "con_casco":
@@ -130,8 +133,8 @@ def kpis(eventos, ahora=None, dias=30):
         racha += 1
     return {"dias": dias, "total": sum(por_dia.values()), "turnos": list(filas.values()),
             "dias_sin_alertas": racha,
-            "por_dia": [{"fecha": (desde.date() + timedelta(days=i + 1)).isoformat(),
-                         "alertas": por_dia.get((desde.date() + timedelta(days=i + 1)).isoformat(), 0)}
+            "por_dia": [{"fecha": (desde.date() + timedelta(days=i)).isoformat(),
+                         "alertas": por_dia.get((desde.date() + timedelta(days=i)).isoformat(), 0)}
                         for i in range(dias)]}
 
 

@@ -32,6 +32,9 @@ try:
 except Exception as e:  # sin OpenVINO se usa cv2.dnn
     print(f"[!] OpenVINO no disponible ({e}); los YOLO corren con cv2.dnn")
     _core = None
+# El mismo límite para los hilos de OpenCV (resize, warpAffine y cv2.dnn si no hay OpenVINO)
+if os.environ.get("OPENVINO_HILOS", "").isdecimal() and int(os.environ["OPENVINO_HILOS"]):
+    cv2.setNumThreads(int(os.environ["OPENVINO_HILOS"]))
 
 
 # Dispositivo de OpenVINO: CPU (servidor) o GPU (gráfica integrada Intel), ver benchmark_inferencia.py
@@ -70,7 +73,7 @@ def _letterbox(img):
     """Escala sin deformar y rellena con gris hasta INPUT_SIZE, como en el entrenamiento."""
     h, w = img.shape[:2]
     r = min(INPUT_SIZE / h, INPUT_SIZE / w)
-    nw, nh = int(round(w * r)), int(round(h * r))
+    nw, nh = max(1, int(round(w * r))), max(1, int(round(h * r)))   # 2000x1: el lado corto daba 0
     pad_x, pad_y = (INPUT_SIZE - nw) // 2, (INPUT_SIZE - nh) // 2
     canvas = np.full((INPUT_SIZE, INPUT_SIZE, 3), 114, dtype=np.uint8)
     canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)

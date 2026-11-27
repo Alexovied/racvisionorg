@@ -46,7 +46,7 @@ def main():
     imgs = imagenes(carpeta, n)
     cpu = helmet_detector._core.get_property("CPU", "FULL_DEVICE_NAME") if helmet_detector._core else platform.processor()
     print(f"CPU: {cpu} | {len(imgs)} imágenes x 3 vueltas | OpenCV {cv2.__version__}")
-    devices = [d for d in ("CPU", "GPU") if d in helmet_detector._core.available_devices]
+    devices = [d for d in ("CPU", "GPU") if d in helmet_detector._core.available_devices] if helmet_detector._core else []
     for d in devices[1:]:
         print(f"{d}: {helmet_detector._core.get_property(d, 'FULL_DEVICE_NAME')}")
     for nombre, ruta in MODELOS.items():

@@ -15,8 +15,9 @@ import shutil
 
 import data_store
 
-# Alertas que salen de la cámara y dependen de la confianza del modelo
-TIPOS_DE_CAMARA = ("sin_casco", "sin_chaleco", "zona_prohibida", "hombre_caido")
+# La única alerta de cámara que la confianza mínima filtra (motor._evaluar): chaleco, zona y caída
+# se guardan siempre con 100 y contarlas hacía sugerir un valor que descartaba cascos reales
+TIPOS_DE_CAMARA = ("sin_casco",)
 MINIMO_DE_MARCAS = 10      # menos marcas que esto no alcanzan para sugerir nada
 
 

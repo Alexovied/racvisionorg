@@ -1,0 +1,16 @@
+name: Tests
+on: push
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      # tests/conftest.py reemplaza Keras por mocks: no hace falta TensorFlow (ni tf-keras, que lo arrastra).
+      # modelos_app/detector_pose.onnx y datasets/ no están en git: los tests ya corren sin ellos.
+      - run: grep -vE '^(tensorflow|tf-keras)' requirements.txt > requirements-ci.txt
+      - run: pip install -r requirements-ci.txt pytest
+      - run: python -m pytest tests -q

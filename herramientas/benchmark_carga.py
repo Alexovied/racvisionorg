@@ -9,12 +9,14 @@ producción:
     python3 benchmark_carga.py URL CONTENEDOR CARPETA_FRAMES SALIDA.json [cámaras...]
 
 La contraseña del usuario admin de prueba se lee de la variable RAC_BENCH_PASSWORD.
+La URL tiene que ser https: bajo gunicorn la cookie de sesión es Secure y por http no se reenvía.
 """
 import base64
 import glob
 import http.cookiejar
 import json
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -26,11 +28,15 @@ import urllib.request
 PAUSA = 0.1        # scan_rate_ms del panel
 DURACION = 40      # segundos medidos por nivel de carga
 CALENTAMIENTO = 8  # segundos que no se miden al empezar cada nivel
+RE_CSRF = re.compile(r'name="csrf_token" value="([^"]+)"')
 
 
 def abrir_sesion(url):
     jar = http.cookiejar.CookieJar()
     op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    # todo POST lleva el token CSRF de la sesión: sale del formulario de login y va en cada pedido
+    token = RE_CSRF.search(op.open(url + "/admin/login", timeout=30).read().decode()).group(1)
+    op.addheaders.append(("X-CSRFToken", token))
     datos = urllib.parse.urlencode({"username": "admin", "password": os.environ["RAC_BENCH_PASSWORD"]}).encode()
     op.open(url + "/admin/login", datos, timeout=30)
     assert any(c.name == "session" for c in jar), "no se pudo iniciar sesión"

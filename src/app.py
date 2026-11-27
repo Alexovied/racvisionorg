@@ -9,48 +9,13 @@ from hardware import init_esp32, enviar_comando_esp32
 import cv2
 import numpy as np
 import base64
+import functools
 import os
 import secrets
+import threading
 import time
 import uuid
 from collections import deque
-import keras
-from keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
-
-# ── PATCH DE COMPATIBILIDAD ─────────────────────────────────────────────────
-# El modelo fue guardado con una versión de Keras 3 que almacena 'input_axes' y
-# 'output_axes' en GlorotUniform, pero la versión instalada no los acepta en
-# __init__. Los ignoramos de forma segura (no afectan el comportamiento de
-# inferencia, solo son metadatos de entrenamiento).
-_orig_glorot_init = keras.initializers.GlorotUniform.__init__
-
-def _patched_glorot_init(self, seed=None, **kwargs):
-    kwargs.pop('input_axes', None)
-    kwargs.pop('output_axes', None)
-    _orig_glorot_init(self, seed=seed)
-
-keras.initializers.GlorotUniform.__init__ = _patched_glorot_init
-
-# En el VPS (Keras 3.12) el modelo trae además argumentos de BatchNormalization
-# y Dense que esa versión no acepta. También se ignoran.
-_orig_bn_init = keras.layers.BatchNormalization.__init__
-
-def _patched_bn_init(self, *args, **kwargs):
-    for k in ("renorm", "renorm_clipping", "renorm_momentum"):
-        kwargs.pop(k, None)
-    _orig_bn_init(self, *args, **kwargs)
-
-keras.layers.BatchNormalization.__init__ = _patched_bn_init
-
-_orig_dense_init = keras.layers.Dense.__init__
-
-def _patched_dense_init(self, *args, **kwargs):
-    kwargs.pop("quantization_config", None)
-    _orig_dense_init(self, *args, **kwargs)
-
-keras.layers.Dense.__init__ = _patched_dense_init
-print("[+] Patches de compatibilidad Keras aplicados")
-# ────────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__, root_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # templates/ y static/ están en la raíz
 
@@ -59,8 +24,8 @@ app = Flask(__name__, root_path=os.path.dirname(os.path.dirname(os.path.abspath(
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
 # SECRET_KEY for sessions (Flask-Login)
-# Prioridad: variable de entorno SECRET_KEY (recomendado en Render, cuyo disco es
-# efímero) y, si no está, el archivo data/.secret_key (se crea la primera vez).
+# Prioridad: variable de entorno SECRET_KEY (recomendado si data/ no persiste entre deploys
+# del contenedor) y, si no está, el archivo data/.secret_key (se crea la primera vez).
 secret_key_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", ".secret_key")
 os.makedirs(os.path.dirname(secret_key_path), exist_ok=True)
 if os.environ.get("SECRET_KEY"):
@@ -77,6 +42,29 @@ else:
 # (producción, detrás de HTTPS), solo por HTTPS. `python src/app.py` es desarrollo local por HTTP.
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = __name__ != "__main__"
+
+# Detrás de un proxy (nginx, Caddy, Cloudflare) request.remote_addr es la IP del proxy y el bloqueo
+# de login queda por usuario: cualquiera deja afuera al admin. PROXIES = cuántos proxies hay delante
+# (1 lo normal). Sin proxy no se define: si no, cualquiera falsifica X-Forwarded-For.
+def con_proxies(wsgi_app, proxies):
+    if not proxies.isdecimal():
+        return wsgi_app
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    return ProxyFix(wsgi_app, x_for=int(proxies), x_proto=int(proxies))
+
+
+app.wsgi_app = con_proxies(app.wsgi_app, os.environ.get("PROXIES", ""))
+
+
+@app.after_request
+def cabeceras_de_seguridad(r):
+    # Ninguna plantilla usa iframes: otro sitio no puede embeber el login ni la demo.
+    # Sin nosniff: en Windows mimetypes puede servir los .js como text/plain y el navegador los bloquearía.
+    r.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    r.headers.setdefault("Referrer-Policy", "same-origin")
+    if app.config["SESSION_COOKIE_SECURE"]:
+        r.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    return r
 
 
 # CSRF: todo POST debe traer el token de la sesión, en el campo csrf_token
@@ -115,27 +103,88 @@ init_login(app)
 # Inicializar conexión con ESP32 (falla silenciosamente si no está conectado)
 init_esp32()
 
-# Cargar el modelo Keras personalizado
-model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modelos_app", "modelo.keras")
-model = None
-
-if not os.path.exists(model_path):
-    print(f"[!] No se encontró {model_path}. El detector no funcionará, pero el panel admin sí.")
-else:
-    print(f"[+] Cargando modelo: {model_path}")
-    try:
-        model = keras.models.load_model(model_path, compile=False)
-        print("[+] Modelo cargado exitosamente.")
-    except Exception as e:
-        print(f"[!] Error al cargar el modelo: {e}")
-        print("[!] El detector no funcionará, pero el panel admin sí.")
-
 from face_detector import detect_faces
 import helmet_detector
 import face_id
 import epp
 import data_store
 import motor
+
+_relays_vigilados = False
+
+
+@app.before_request
+def vigilar_relays():
+    """Con gunicorn nadie llama a motor.iniciar(): el hilo de una cámara relay nacía con su primer
+    cuadro y, si el servidor reiniciaba con el relay caído, nunca salía 'camara_sin_senal'.
+    Va en el primer pedido y no al importar: los tests importan app con el data/ real, y con
+    gunicorn --preload los hilos creados antes del fork no llegan a los workers."""
+    global _relays_vigilados
+    if _relays_vigilados or app.config["TESTING"]:
+        return
+    _relays_vigilados = True
+    try:
+        motor.sincronizar()
+    except Exception as e:   # un cameras.json roto no puede tumbar el primer pedido
+        print(f"[!] No se pudieron vigilar las cámaras relay: {type(e).__name__}: {e}", flush=True)
+
+
+# Respaldo de /predict sin detector_casco.onnx: cara (YuNet) + clasificador Keras.
+# TensorFlow/Keras tarda ~30 s en importar y ocupa ~300 MB: solo se carga si falta el detector
+# YOLO, que es el único caso en que /predict llega al respaldo.
+model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modelos_app", "modelo.keras")
+model = None
+mobilenet_preprocess = None
+
+if not helmet_detector.disponible():
+    import keras
+    from keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
+
+    # ── PATCH DE COMPATIBILIDAD ─────────────────────────────────────────────────
+    # El modelo fue guardado con una versión de Keras 3 que almacena 'input_axes' y
+    # 'output_axes' en GlorotUniform, pero la versión instalada no los acepta en
+    # __init__. Los ignoramos de forma segura (no afectan el comportamiento de
+    # inferencia, solo son metadatos de entrenamiento).
+    _orig_glorot_init = keras.initializers.GlorotUniform.__init__
+
+    def _patched_glorot_init(self, seed=None, **kwargs):
+        kwargs.pop('input_axes', None)
+        kwargs.pop('output_axes', None)
+        _orig_glorot_init(self, seed=seed)
+
+    keras.initializers.GlorotUniform.__init__ = _patched_glorot_init
+
+    # En el VPS (Keras 3.12) el modelo trae además argumentos de BatchNormalization
+    # y Dense que esa versión no acepta. También se ignoran.
+    _orig_bn_init = keras.layers.BatchNormalization.__init__
+
+    def _patched_bn_init(self, *args, **kwargs):
+        for k in ("renorm", "renorm_clipping", "renorm_momentum"):
+            kwargs.pop(k, None)
+        _orig_bn_init(self, *args, **kwargs)
+
+    keras.layers.BatchNormalization.__init__ = _patched_bn_init
+
+    _orig_dense_init = keras.layers.Dense.__init__
+
+    def _patched_dense_init(self, *args, **kwargs):
+        kwargs.pop("quantization_config", None)
+        _orig_dense_init(self, *args, **kwargs)
+
+    keras.layers.Dense.__init__ = _patched_dense_init
+    print("[+] Patches de compatibilidad Keras aplicados")
+    # ────────────────────────────────────────────────────────────────────────────
+
+    if not os.path.exists(model_path):
+        print(f"[!] No se encontró {model_path}. El detector no funcionará, pero el panel admin sí.")
+    else:
+        print(f"[+] Cargando modelo: {model_path}")
+        try:
+            model = keras.models.load_model(model_path, compile=False)
+            print("[+] Modelo cargado exitosamente.")
+        except Exception as e:
+            print(f"[!] Error al cargar el modelo: {e}")
+            print("[!] El detector no funcionará, pero el panel admin sí.")
 
 # (Suavizado temporal eliminado para manejar múltiples rostros independientemente en el frontend)
 
@@ -188,6 +237,13 @@ def sitemap():
            '</urlset>\n')
     return Response(xml, mimetype="application/xml")
 
+@app.route("/healthz")
+def healthz():
+    # Para el healthcheck de docker y la verificación post-deploy: qué detectores cargaron.
+    # detector_pose.onnx no está en git (va por scp): si falta, "pose" queda en false.
+    return jsonify({"ok": True, "casco": helmet_detector.disponible(), "chaleco": epp.disponible(),
+                    "pose": motor.pose.disponible()})
+
 @app.route("/favicon.ico")
 def favicon():
     # Los navegadores lo piden siempre en la raíz, aunque la página no lo enlace
@@ -232,7 +288,30 @@ def _conocidos():
     return (face_id._personas() if current_user.is_authenticated and not anonimo else []) + propias
 
 
+# El detector público usa los mismos candados de los modelos que las cámaras reales: sin sesión, a lo
+# sumo 2 análisis a la vez. El resto hace fila hasta _ESPERA_ANONIMO segundos (3 visitantes en la demo
+# se atienden, más lentos) y recién ahí recibe 429 (503 queda para "sin modelo"); la página lo saltea y sigue con el cuadro siguiente.
+# Los operadores con sesión no se limitan.
+_anonimos = threading.BoundedSemaphore(2)
+_ESPERA_ANONIMO = 2
+
+
+def tope_anonimo(f):
+    @functools.wraps(f)
+    def envuelta(*args, **kwargs):
+        if current_user.is_authenticated or request.method != "POST":
+            return f(*args, **kwargs)
+        if not _anonimos.acquire(timeout=_ESPERA_ANONIMO):
+            return jsonify({"error": "Detector ocupado. Probá de nuevo en unos segundos."}), 429
+        try:
+            return f(*args, **kwargs)
+        finally:
+            _anonimos.release()
+    return envuelta
+
+
 @app.route("/api/demo/cara", methods=["POST", "DELETE"])
+@tope_anonimo
 def demo_cara():
     """Alta temporal de una cara para probar el reconocimiento: {"nombre", "fotos": [dataURL x3..6]}."""
     if request.method == "DELETE":
@@ -274,6 +353,7 @@ def detector():
 
 
 @app.route("/predict", methods=["POST"])
+@tope_anonimo
 def predict():
     try:
         if model is None and not helmet_detector.disponible():

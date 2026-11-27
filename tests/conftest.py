@@ -124,4 +124,6 @@ def fake_model(flask_app, monkeypatch):
 
     model.side_effect = _predict
     monkeypatch.setattr(flask_app, "model", model)
+    # app.py solo importa Keras si falta el detector YOLO: acá se pone el preprocess a mano
+    monkeypatch.setattr(flask_app, "mobilenet_preprocess", _mobilenet.preprocess_input)
     return model

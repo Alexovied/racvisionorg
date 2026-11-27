@@ -149,7 +149,11 @@ def _personas():
     ruta = _ruta_db()
     mtime = os.path.getmtime(ruta) if os.path.exists(ruta) else None
     if mtime != _cache["mtime"]:
-        datos = _leer_db() if mtime else {}
+        try:
+            datos = _leer_db() if mtime else {}
+        except ValueError as e:   # personas.json dañado: nadie se reconoce, pero el casco se sigue detectando
+            print(f"[!] personas.json está dañado ({e}): no se reconoce a nadie hasta arreglarlo", flush=True)
+            datos = {}
         _cache["personas"] = [(n, np.array(embs, dtype=np.float32)) for n, embs in datos.items() if embs]
         _cache["mtime"] = mtime
     return _cache["personas"]

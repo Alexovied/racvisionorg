@@ -118,6 +118,7 @@
         f.append(h, b); return f;
     }
 
+    let abiertos = new Set();
     function tarjeta(w) {
         const l = w.lectura || {};
         const c = el('div', 'wear ' + w.situacion);
@@ -135,6 +136,7 @@
         c.append(pie);
         if (w.aprendido.length) {
             const d = el('details'); d.append(el('summary', null, 'Lo que aprendió'));
+            d.dataset.id = w.id; d.open = abiertos.has(String(w.id));
             const ul = el('ul'); w.aprendido.forEach(a => ul.append(el('li', null, `${a.fecha.slice(0, 10)}: ${a.cambio}`)));
             d.append(ul); c.append(d);
         }
@@ -153,6 +155,8 @@
             const r = await fetch('{{ url_for("admin.api_wearables") }}', {headers: {Accept: 'application/json'}});
             if (!r.ok) return;
             const lista = await r.json();
+            // Las tarjetas se rearman en cada sondeo: «Lo que aprendió» queda abierto si lo estaba (se cerraba solo a los 3 s)
+            abiertos = new Set([...cont.querySelectorAll('details[open]')].map(d => d.dataset.id));
             cont.replaceChildren(...(lista.length ? lista.map(tarjeta)
                 : [el('div', 'vacio', 'Todavía no hay equipos registrados. Probá con el simulador: python simulador_wearable.py --help')]));
         } catch (e) { /* sin red: se reintenta en 3 s */ }

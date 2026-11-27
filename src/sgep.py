@@ -12,10 +12,12 @@ import os
 import re
 import secrets
 import smtplib
+import ssl
 import uuid
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
+from xml.sax.saxutils import escape
 
 from flask import (
     Blueprint, abort, flash, jsonify, redirect, render_template, request,
@@ -48,6 +50,9 @@ TIPOS_PREGUNTA = {
 RANGOS = {"nps": (0, 10), "avance": (0, 100), "escala": (1, 5)}
 EMAIL_RE = re.compile(r"^[^@\s<>,;]+@[^@\s<>,;]+\.[^@\s<>,;]+$")
 FECHA_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# Tope por encuesta: el link general (QR) es público y cada respuesta reescribe el JSON entero
+# con el candado que comparte con los eventos de las cámaras.
+MAX_RESPUESTAS_ENCUESTA = 5000
 
 # Endpoints de RAC (fuera del blueprint admin) que pm y auditor no deben usar
 RAC_SOLO = {"detector", "predict", "reset_buffer", "api_alarm"}
@@ -75,6 +80,14 @@ def buscar(lista, id_):
 
 def ahora():
     return datetime.now().isoformat(timespec="seconds")
+
+
+def fecha_valida(texto):
+    """AAAA-MM-DD y que exista en el calendario (2026-02-30 rompería el dashboard)."""
+    try:
+        return bool(FECHA_RE.match(texto)) and bool(date.fromisoformat(texto))
+    except ValueError:
+        return False
 
 
 # ═══════════════════════════════════════
@@ -356,7 +369,8 @@ def enviar_correo(para, asunto, cuerpo):
             msg["Subject"] = asunto
             msg.set_content(cuerpo)
             with smtplib.SMTP(host, int(os.environ.get("SMTP_PORT", "587")), timeout=15) as s:
-                s.starttls()
+                # sin contexto, smtplib no verifica el certificado y la clave SMTP viaja a cualquiera
+                s.starttls(context=ssl.create_default_context())
                 if os.environ.get("SMTP_USER"):
                     s.login(os.environ["SMTP_USER"], os.environ.get("SMTP_PASS", ""))
                 s.send_message(msg)
@@ -380,6 +394,15 @@ def _correo_invitacion(encuesta, proyecto, inv, recordatorio=False):
         + "Gracias.\nSGEP — Expotécnica"
     )
     return enviar_correo(inv["email"], asunto, cuerpo)
+
+
+def _avisar_fallidos(registros):
+    """Cuántos correos rechazó el SMTP; si hubo alguno, lo dice en pantalla en vez de darlos por enviados."""
+    fallidos = sum(1 for r in registros if r["error"])
+    if fallidos:
+        flash(f"{fallidos} correo(s) no se pudieron enviar: mirá el error en Correos y reintentá "
+              "con «Recordar a pendientes».", "warning")
+    return fallidos
 
 
 # ═══════════════════════════════════════
@@ -452,7 +475,7 @@ def guardar_proyecto():
     datos = {k: form.get(k, "").strip()[:200] for k in ("nombre", "curso", "cliente", "responsable_id", "inicio", "fin", "descripcion")}
     if not datos["nombre"] or not datos["curso"]:
         flash("Nombre y curso son obligatorios.", "error")
-    elif not (FECHA_RE.match(datos["inicio"]) and FECHA_RE.match(datos["fin"])) or datos["fin"] < datos["inicio"]:
+    elif not (fecha_valida(datos["inicio"]) and fecha_valida(datos["fin"])) or datos["fin"] < datos["inicio"]:
         flash("Fechas inválidas: el fin no puede ser anterior al inicio.", "error")
     elif not buscar(cargar("responsables"), datos["responsable_id"]):
         flash("Elegí un responsable.", "error")
@@ -624,9 +647,8 @@ def encuesta(eid):
 def invitar(eid):
     e = buscar(cargar("encuestas"), eid) or abort(404)
     proyecto = buscar(cargar("proyectos"), e["proyecto_id"]) or abort(404)
-    lista = cargar("invitaciones")
-    ya = {i["email"].lower() for i in lista if i["encuesta_id"] == eid}
-    nuevas, invalidas = 0, []
+    ya = {i["email"].lower() for i in cargar("invitaciones") if i["encuesta_id"] == eid}
+    nuevas, invalidas = [], []
     # Una línea por persona: "Nombre <email>" o solo "email"
     for linea in request.form.get("destinatarios", "").splitlines()[:200]:
         linea = linea.strip()
@@ -639,15 +661,16 @@ def invitar(eid):
             continue
         if email.lower() in ya:
             continue
-        inv = {"id": nuevo_id(), "encuesta_id": eid, "nombre": nombre[:120], "email": email,
-               "token": secrets.token_urlsafe(16), "creada": ahora(), "recordatorios": 0,
-               "respondida": None}
-        _correo_invitacion(e, proyecto, inv)
-        lista.append(inv)
+        nuevas.append({"id": nuevo_id(), "encuesta_id": eid, "nombre": nombre[:120], "email": email,
+                       "token": secrets.token_urlsafe(16), "creada": ahora(), "recordatorios": 0,
+                       "respondida": None})
         ya.add(email.lower())
-        nuevas += 1
-    guardar("invitaciones", lista)
-    flash(f"{nuevas} invitación(es) enviada(s).", "success")
+    # Primero se guardan (releyendo: alguien pudo responder mientras tanto) y después se envían:
+    # así nunca sale un correo con un link que no quedó registrado.
+    with data_store._lock:
+        guardar("invitaciones", cargar("invitaciones") + nuevas)
+    fallidos = _avisar_fallidos([_correo_invitacion(e, proyecto, inv) for inv in nuevas])
+    flash(f"{len(nuevas) - fallidos} invitación(es) enviada(s).", "success")
     if invalidas:
         flash("Emails inválidos (no se enviaron): " + ", ".join(invalidas[:5]), "warning")
     return redirect(url_for("sgep.encuesta", eid=eid))
@@ -658,13 +681,17 @@ def invitar(eid):
 def recordar(eid):
     e = buscar(cargar("encuestas"), eid) or abort(404)
     proyecto = buscar(cargar("proyectos"), e["proyecto_id"]) or abort(404)
-    lista = cargar("invitaciones")
-    pendientes = [i for i in lista if i["encuesta_id"] == eid and not i["respondida"]]
-    for inv in pendientes:
-        _correo_invitacion(e, proyecto, inv, recordatorio=True)
-        inv["recordatorios"] = inv.get("recordatorios", 0) + 1
-    guardar("invitaciones", lista)
-    flash(f"Recordatorio enviado a {len(pendientes)} persona(s) sin responder.", "success")
+    pendientes = [i for i in cargar("invitaciones") if i["encuesta_id"] == eid and not i["respondida"]]
+    fallidos = _avisar_fallidos([_correo_invitacion(e, proyecto, inv, recordatorio=True) for inv in pendientes])
+    # El envío tarda: se relee la lista para no pisar a quien respondió mientras tanto
+    avisados = {i["id"] for i in pendientes}
+    with data_store._lock:
+        lista = cargar("invitaciones")
+        for inv in lista:
+            if inv["id"] in avisados:
+                inv["recordatorios"] = inv.get("recordatorios", 0) + 1
+        guardar("invitaciones", lista)
+    flash(f"Recordatorio enviado a {len(pendientes) - fallidos} persona(s) sin responder.", "success")
     return redirect(url_for("sgep.encuesta", eid=eid))
 
 
@@ -682,38 +709,48 @@ def cambiar_estado(eid):
 @sgep_bp.route("/correos")
 @roles_required(*LECTURA)
 def correos():
-    return render_template("sgep/correos.html", correos=cargar("correos")[:200],
+    lista = cargar("correos")[:200]
+    if current_user.role not in GESTION:
+        # el auditor solo lee: con el link personal podría responder en nombre del invitado
+        lista = [dict(c, cuerpo=re.sub(r"(/sgep/r/)[\w-]+", r"\1(oculto)", c["cuerpo"])) for c in lista]
+    return render_template("sgep/correos.html", correos=lista,
                            smtp=bool(os.environ.get("SMTP_HOST")))
 
 
 @sgep_bp.route("/r/<token>", methods=["GET", "POST"])
 def responder(token):
     """Página pública: link único por invitación o link general de la encuesta (QR)."""
-    invitaciones = cargar("invitaciones")
-    inv = next((i for i in invitaciones if i["token"] == token), None)
-    encuestas_ = cargar("encuestas")
-    e = buscar(encuestas_, inv["encuesta_id"]) if inv else next((x for x in encuestas_ if x["link"] == token), None)
-    if not e:
-        abort(404)
-    proyecto = buscar(cargar("proyectos"), e["proyecto_id"]) or {"nombre": "—"}
-    estado, error = None, None
-    if not e.get("activa", True):
-        estado = "cerrada"
-    elif inv and inv["respondida"]:
-        estado = "ya"
-    elif request.method == "POST":
-        valores, error = validar_respuesta(e, request.form)
-        if not error:
-            # shortcut: el link general (QR) admite varias respuestas por persona; si hace falta una sola, usar invitaciones
-            respondente = None if e.get("anonima") or not inv else (inv.get("nombre") or inv["email"])
+    # Candado de punta a punta: dos envíos simultáneos no se pisan ni usan dos veces un link único
+    with data_store._lock:
+        invitaciones = cargar("invitaciones")
+        inv = next((i for i in invitaciones if i["token"] == token), None)
+        encuestas_ = cargar("encuestas")
+        e = buscar(encuestas_, inv["encuesta_id"]) if inv else next((x for x in encuestas_ if x["link"] == token), None)
+        if not e:
+            abort(404)
+        proyecto = buscar(cargar("proyectos"), e["proyecto_id"]) or {"nombre": "—"}
+        estado, error = None, None
+        if not e.get("activa", True):
+            estado = "cerrada"
+        elif inv and inv["respondida"]:
+            estado = "ya"
+        elif request.method == "POST":
             respuestas = cargar("respuestas")
-            respuestas.append({"id": nuevo_id(), "encuesta_id": e["id"], "proyecto_id": e["proyecto_id"],
-                               "fecha": ahora(), "respondente": respondente, "valores": valores})
-            guardar("respuestas", respuestas)
-            if inv:
-                inv["respondida"] = ahora()
-                guardar("invitaciones", invitaciones)
-            estado = "gracias"
+            if sum(1 for r in respuestas if r["encuesta_id"] == e["id"]) >= MAX_RESPUESTAS_ENCUESTA:
+                estado = "cerrada"
+            else:
+                valores, error = validar_respuesta(e, request.form)
+            if not estado and not error:
+                # shortcut: el link general (QR) admite varias respuestas por persona; si hace falta una sola, usar invitaciones
+                respondente = None if e.get("anonima") or not inv else (inv.get("nombre") or inv["email"])
+                respuestas.append({"id": nuevo_id(), "encuesta_id": e["id"], "proyecto_id": e["proyecto_id"],
+                                   "fecha": ahora(), "respondente": respondente, "valores": valores})
+                guardar("respuestas", respuestas)
+                if inv:
+                    # anónima: solo el día, para que la hora no permita cruzarla con la respuesta
+                    inv["respondida"] = ahora()[:10] if e.get("anonima") else ahora()
+                    guardar("invitaciones", invitaciones)
+                estado = "gracias"
     return render_template("sgep/responder.html", encuesta=e, proyecto=proyecto, estado=estado,
                            error=error, previo=request.form), (400 if error else 200)
 
@@ -735,7 +772,12 @@ def _texto(v):
 @roles_required(*LECTURA)
 def exportar_excel():
     from openpyxl import Workbook
+    from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
     from openpyxl.styles import Font
+
+    def limpio(v):
+        """Texto que escribió cualquiera con el QR: sin caracteres de control (openpyxl los rechaza)."""
+        return ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v
 
     datos = calcular_dashboard(request.args)
     wb = Workbook()
@@ -747,7 +789,7 @@ def exportar_excel():
     hoja = wb.create_sheet("Proyectos")
     hoja.append([t for _, t in COLUMNAS])
     for fila in datos["proyectos"]:
-        hoja.append([fila[k] for k, _ in COLUMNAS])
+        hoja.append([limpio(fila[k]) for k, _ in COLUMNAS])
     # Formato largo (una fila por respuesta a pregunta): listo para tablas dinámicas
     hoja = wb.create_sheet("Respuestas")
     hoja.append(["Fecha", "Proyecto", "Encuesta", "Tipo", "Respondente", "Pregunta", "Valor"])
@@ -762,11 +804,18 @@ def exportar_excel():
             continue
         for p in e["preguntas"]:
             if p["id"] in r["valores"]:
-                hoja.append([r["fecha"], ids[e["proyecto_id"]], e["titulo"], TIPOS_ENCUESTA[e["tipo"]],
-                             r["respondente"] or "Anónimo", p["texto"], r["valores"][p["id"]]])
+                hoja.append([limpio(v) for v in (
+                    r["fecha"], ids[e["proyecto_id"]], e["titulo"], TIPOS_ENCUESTA[e["tipo"]],
+                    r["respondente"] or "Anónimo", p["texto"], r["valores"][p["id"]])])
     for ws in wb.worksheets:
         for celda in ws[1]:
             celda.font = Font(bold=True)
+        # openpyxl guarda como fórmula lo que empieza con "=": acá nada lo es, va como texto tal cual
+        for fila in ws.iter_rows():
+            for celda in fila:
+                if celda.data_type == "f":
+                    celda.data_type = "s"
+                    celda.quotePrefix = True
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -790,7 +839,8 @@ def exportar_pdf():
     filtros = ", ".join(f"{c}={v}" for c, v in request.args.items() if v) or "sin filtros"
     elementos = [
         Paragraph("SGEP — Reporte de evaluación de proyectos", estilos["Title"]),
-        Paragraph(f"Generado {datos['actualizado']} · {filtros}", estilos["Normal"]),
+        # Paragraph interpreta markup: los filtros vienen de la URL
+        Paragraph(f"Generado {datos['actualizado']} · {escape(filtros)}", estilos["Normal"]),
         Spacer(1, 12),
         Table([["NPS", "Avance percibido", "Cumplimiento", "Participación", "Respuestas", "En riesgo"],
                [_texto(k["nps"]), f"{_texto(k['avance'])} %", f"{_texto(k['cumplimiento'])} %",

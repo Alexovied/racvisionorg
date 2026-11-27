@@ -96,10 +96,13 @@ def inclinacion(cuerpos):
 
 class Nivel:
     """Inclinación de una cámara fija: mediana de lo medido en los últimos frames con gente.
-    Si un frame no trae medida (nadie a la vista) se sigue usando la anterior."""
+    Si un frame no trae medida (nadie a la vista) se sigue usando la anterior.
+    cada: guarda una de cada `cada` medidas, para que las `n` abarquen minutos y no segundos
+    (alguien que trabaja agachado un rato no es la cámara girada)."""
 
-    def __init__(self, n=30):
+    def __init__(self, n=30, cada=1):
         self.medidas = deque(maxlen=n)
+        self.cada, self.vistas = cada, 0
 
     def estable(self):
         """Hay medidas suficientes para confiar en el giro aunque cada frame varíe."""
@@ -107,7 +110,9 @@ class Nivel:
 
     def actualizar(self, angulo):
         if angulo is not None:
-            self.medidas.append(angulo)
+            if self.vistas % self.cada == 0:
+                self.medidas.append(angulo)
+            self.vistas += 1
         if len(self.medidas) < 3:
             return angulo
         return float(np.median(self.medidas))

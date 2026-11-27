@@ -32,7 +32,7 @@
             <p class="camera-url"><i class="fa-solid fa-key"></i> ID para el relay: {{ cam.id }}</p>
             {% endif %}
             {% if cam.url %}
-            <p class="camera-url"><i class="fa-solid fa-link"></i> {{ cam.url[:40] }}{{ '...' if cam.url|length > 40 }}</p>
+            <p class="camera-url"><i class="fa-solid fa-link"></i> {% set u = cam.url|sin_clave %}{{ u[:40] }}{{ '...' if u|length > 40 }}</p>
             {% endif %}
         </div>
         <div class="camera-actions">
@@ -43,7 +43,7 @@
                 </button>
             </form>
             {% if current_user.role == 'admin' %}
-            <form method="POST" action="{{ url_for('admin.delete_camera', cam_id=cam.id) }}" onsubmit="return confirm('¿Eliminar la cámara {{ cam.name }}?')">
+            <form method="POST" action="{{ url_for('admin.delete_camera', cam_id=cam.id) }}" data-confirmar="¿Eliminar la cámara {{ cam.name }}?" onsubmit="return confirm(this.dataset.confirmar)">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn-icon btn-delete" title="Eliminar">
                     <i class="fa-solid fa-trash"></i>

@@ -4,3 +4,18 @@ data/
 *.bak
 __pycache__/
 .git/
+# Lo que .gitignore ya deja afuera (o no está en git): fotos biométricas, claves, el venv y copias viejas.
+# Solo importa si se construye desde la carpeta de trabajo en vez de un git archive.
+.venv/
+datasets/
+data_sgep/
+monitor/
+_archivo/
+.claude/
+.agents/
+entrenamiento/*.zip
+# Estos patrones solo miran la raíz: los videos de static/video/ sí entran a la imagen.
+*.pem
+*.zip
+*.mp4
+credenciales*.txt

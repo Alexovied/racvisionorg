@@ -5,7 +5,9 @@ un PLC puede cortar un molinete o prender una baliza sin pasar por el panel.
 
 Variables: MQTT_HOST (sin ella no hace nada), MQTT_PORT (1883, o 8883 con MQTT_TLS=1),
 MQTT_USER / MQTT_PASS, MQTT_TOPIC (rac/eventos). La conexión es una sola, en segundo plano y con
-reconexión automática de paho: si el broker se cae, RAC sigue funcionando y los avisos se pierden.
+reconexión automática de paho: si el broker se cae, RAC sigue funcionando. OJO: con QoS 1 paho guarda
+hasta 1000 eventos y los manda juntos al reconectar; cada uno lleva "timestamp" para que el PLC
+descarte los viejos.
 """
 import json
 import os
@@ -13,6 +15,15 @@ import threading
 
 _cliente = None
 _lock = threading.Lock()
+_ultimo_log = None
+
+
+def _log(texto):
+    """Cambios de estado de la conexión, una línea por cambio (paho reintenta para siempre)."""
+    global _ultimo_log
+    if texto != _ultimo_log:
+        _ultimo_log = texto
+        print(texto, flush=True)
 
 
 def configurado():
@@ -29,13 +40,18 @@ def _conectar():
         c.tls_set()
     c.reconnect_delay_set(min_delay=1, max_delay=60)
     c.max_queued_messages_set(1000)   # broker caído: no se acumulan eventos sin límite en memoria
+    # Sin esto, un broker inalcanzable o una clave mala no dejaban ni una línea en el log
+    c.on_connect = lambda c, u, f, rc, p: _log(f"[!] MQTT rechazó la conexión: {rc}" if rc.is_failure
+                                               else "[+] MQTT conectado")
+    c.on_connect_fail = lambda c, u: _log("[!] MQTT: no se pudo conectar al broker (sigue reintentando)")
+    c.on_disconnect = lambda c, u, f, rc, p: _log(f"[!] MQTT desconectado: {rc}")
     c.connect_async(os.environ["MQTT_HOST"], int(os.environ.get("MQTT_PORT", 8883 if tls else 1883)), keepalive=60)
     c.loop_start()
     return c
 
 
 def publicar(evento):
-    """Publica el evento (sin la foto) en <MQTT_TOPIC>/<tipo>. True si quedó encolado."""
+    """Publica el evento (sin la foto) en <MQTT_TOPIC>/<tipo>. True si salió hacia el broker."""
     global _cliente
     if not configurado():
         return False
@@ -45,7 +61,10 @@ def publicar(evento):
                 _cliente = _conectar()
         tema = f"{os.environ.get('MQTT_TOPIC', 'rac/eventos').rstrip('/')}/{evento['type']}"
         datos = {k: v for k, v in evento.items() if k != "foto"}
-        return _cliente.publish(tema, json.dumps(datos, ensure_ascii=False), qos=1).rc == 0
+        rc = _cliente.publish(tema, json.dumps(datos, ensure_ascii=False), qos=1).rc
+        if rc not in (0, 4):   # 4 = sin conexión: queda en la cola de paho y sale al reconectar
+            print(f"[!] MQTT descartó el evento {evento['type']} (rc={rc}; 15 = cola llena)", flush=True)
+        return rc == 0
     except Exception as e:  # broker caído o mal configurado: RAC sigue
         print(f"[!] MQTT no publicó el evento: {type(e).__name__}: {e}", flush=True)
         return False

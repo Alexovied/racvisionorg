@@ -7,6 +7,7 @@ import re
 import secrets
 import threading
 import time
+import traceback
 import requests
 from functools import wraps
 from urllib.parse import urlsplit
@@ -37,7 +38,7 @@ import motor
 from hardware import enviar_comando_esp32
 
 # ── Integración n8n ──────────────────────────────────────────────────────────
-# Configurar en Render (o .env local):
+# Configurar en el .env del servidor (o local):
 #   N8N_WEBHOOK_URL   → Production URL del Webhook de n8n (obligatorio)
 #   N8N_WEBHOOK_TOKEN → Bearer token si el nodo Webhook de n8n usa Header Auth
 #                       (opcional — dejar vacío si el webhook es público)
@@ -58,6 +59,18 @@ class User(UserMixin):
         self.role = user_dict["role"]
         self._data = user_dict
 
+    def get_id(self):
+        # La sesión queda atada a la contraseña: al cambiarla, las cookies anteriores dejan de servir.
+        # Las cookies de antes de este formato (sin "|") no se aceptan: tras el deploy todos, incluidos los
+        # televisores del monitor, vuelven a iniciar sesión una vez (aceptarlas revive cookies robadas).
+        return f"{self.id}|{_marca(self._data)}"
+
+
+def _marca(user_dict):
+    # Hash del hash: la cookie de sesión va firmada pero no cifrada, no lleva pedazos del hash real
+    return wearables._hash(user_dict["password_hash"])[:16]
+
+
 def init_login(app):
     login_manager = LoginManager()
     login_manager.login_view = "admin.login"
@@ -76,8 +89,9 @@ def init_login(app):
 
     @login_manager.user_loader
     def load_user(user_id):
-        u = data_store.get_user_by_id(user_id)
-        if u:
+        uid, _, marca = user_id.partition("|")
+        u = data_store.get_user_by_id(uid)
+        if u and marca == _marca(u):
             return User(u)
         return None
 
@@ -153,7 +167,7 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        clave = (request.remote_addr, username.lower())
+        clave = (request.remote_addr, username.lower()[:80])   # acotada: un nombre de 2 MB no queda en memoria
         ahora = time.time()
         with _intentos_lock:
             fallas = [t for t in _intentos.get(clave, []) if ahora - t < LOGIN_VENTANA]
@@ -245,6 +259,8 @@ def users():
                 role=role or None
             )
             if success:
+                if password and user_id == current_user.id:
+                    login_user(User(data_store.get_user_by_id(user_id)))   # su propia sesión sigue abierta
                 flash("Usuario actualizado.", "success")
             else:
                 flash("Error: el nombre de usuario ya está en uso.", "error")
@@ -281,6 +297,15 @@ def delete_user(user_id):
 MAX_FOTOS = 10
 
 
+def _decodificar(crudo):
+    """Imagen de OpenCV a partir de bytes, o None si no es una imagen. Con el cuerpo vacío o una
+    foto más grande que OPENCV_IO_MAX_IMAGE_PIXELS, imdecode lanza cv2.error en vez de devolver None."""
+    try:
+        return cv2.imdecode(np.frombuffer(crudo, np.uint8), cv2.IMREAD_COLOR)
+    except cv2.error:
+        return None
+
+
 def _nombre_valido(nombre):
     # Solo letras (con tildes), espacios y . ' - como en "María José O'Neil"; empieza con letra, sin números
     return 2 <= len(nombre) <= 60 and re.fullmatch(r"[^\W\d_](?:[^\W\d_]|[ .'-])*", nombre) is not None
@@ -305,7 +330,7 @@ def personas():
             flash(f"Subí entre {face_id.MIN_FOTOS} y {MAX_FOTOS} fotos.", "error")
         else:
             # Las fotos se decodifican en memoria y se descartan: solo quedan los embeddings
-            imagenes = [cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR) for f in fotos]
+            imagenes = [_decodificar(f.read()) for f in fotos]
             if any(img is None for img in imagenes):
                 flash("Uno de los archivos no es una imagen válida (usá JPG o PNG).", "error")
             else:
@@ -367,6 +392,12 @@ def monitor():
     # las "usb" e "ip" las analiza el servidor (motor.py) y acá solo se miran.
     activas = [c for c in data_store.load_cameras() if c.get("active")]
     return render_template("admin/monitor.html", cameras=activas)
+
+@admin_bp.app_template_filter("sin_clave")
+def _sin_clave(url):
+    """URL de una cámara para mostrar en pantalla: sin usuario:clave ni parámetros (?user=..&pwd=..)."""
+    return re.sub(r"\?.*", "?***", re.sub(r"//.*@", "//***@", url or "", count=1))
+
 
 @admin_bp.route("/cameras", methods=["GET", "POST"])
 @login_required
@@ -502,7 +533,7 @@ def api_cuadro(cam_id):
         return jsonify({"error": "Cámara o token inválido"}), 401
     if not cam.get("active"):
         return jsonify({"error": "Cámara desactivada"}), 409
-    img = cv2.imdecode(np.frombuffer(request.get_data(), np.uint8), cv2.IMREAD_COLOR)
+    img = _decodificar(request.get_data())
     if img is None:
         return jsonify({"error": "El cuerpo tiene que ser un JPEG"}), 400
     numero = request.headers.get("X-Cuadro", "")
@@ -711,7 +742,7 @@ def anonimizar(foto):
     """JPEG de la foto con las caras pixeladas (modo anónimo), o None si no es una imagen o si no
     se encontró ninguna cara: ante la duda no se guarda la foto (una cara de perfil o tapada que el
     detector no ve quedaría nítida). Se agranda la caja de cada cara para tapar también pelo y orejas."""
-    img = cv2.imdecode(np.frombuffer(foto, np.uint8), cv2.IMREAD_COLOR)
+    img = _decodificar(foto)
     if img is None:
         return None
     H, W = img.shape[:2]
@@ -735,7 +766,7 @@ def a_webp(imagen):
     if imagen is None:
         return None
     if isinstance(imagen, (bytes, bytearray)):
-        imagen = cv2.imdecode(np.frombuffer(imagen, np.uint8), cv2.IMREAD_COLOR)
+        imagen = _decodificar(imagen)
         if imagen is None:
             return None
     ok, webp = cv2.imencode(".webp", imagen, [cv2.IMWRITE_WEBP_QUALITY, CALIDAD_WEBP])
@@ -803,33 +834,38 @@ def registrar_evento(event_type, confidence, camera, persona=None, foto=None, po
         foto_webp = foto if foto[:4] == b"RIFF" and foto[8:12] == b"WEBP" else a_webp(foto)
     event = data_store.append_event(event_type, confidence, camera, foto_webp=foto_webp, **extra)
 
-    # Despachar comando al hardware según el tipo de evento
-    if event_type in ALERT_TYPES and event_type != "wearable_sin_senal":
-        enviar_comando_esp32("R")   # LED Rojo + Buzzer ON
-    elif event_type == "con_casco":
-        enviar_comando_esp32("G")   # LED Verde + Buzzer OFF
+    # Ya quedó guardado: si un aviso falla (p. ej. no se puede abrir otro hilo) no se propaga, así
+    # quien llama solo ve un error cuando no se guardó y reintentar no duplica el evento.
+    try:
+        # Despachar comando al hardware según el tipo de evento
+        if event_type in ALERT_TYPES and event_type != "wearable_sin_senal":
+            enviar_comando_esp32("R")   # LED Rojo + Buzzer ON
+        elif event_type == "con_casco":
+            enviar_comando_esp32("G")   # LED Verde + Buzzer OFF
 
-    # Webhook n8n: solo en infracciones. timeout=3s y excepción silenciosa.
-    if event_type in ALERT_TYPES and N8N_WEBHOOK_URL:
-        n8n_payload = {
-            "sensor":        camera,
-            "persona":       event.get("persona", "Sin identificar"),
-            "alerta":        round(confidence),
-            "ubicacion":     ubicacion or camera,
-            "mensaje":       (f"Trabajador {event_type.replace('_', ' ')}" if event_type.startswith("sin_")
-                              else EVENT_LABELS[event_type]) + f" (confianza: {confidence:.1f}%)",
-            "tipo_riesgo":   event_type,
-            "confianza_raw": confidence,
-            "timestamp":     event.get("timestamp", ""),
-        }
-        n8n_headers = {}
-        if N8N_WEBHOOK_TOKEN:
-            n8n_headers["Authorization"] = f"Bearer {N8N_WEBHOOK_TOKEN}"
-        # En segundo plano: un n8n lento no frena ni la respuesta ni el análisis de la cámara
-        threading.Thread(target=_avisar_n8n, args=(n8n_payload, n8n_headers), daemon=True).start()
-    if event_type in ALERT_TYPES or event_type in SALUD_TYPES:
-        aviso_telegram.avisar(event, foto_webp)   # sin TELEGRAM_BOT_TOKEN no hace nada
-    aviso_mqtt.publicar(event)   # todos los eventos, también "con_casco": sin MQTT_HOST no hace nada
+        # Webhook n8n: solo en infracciones. timeout=3s y excepción silenciosa.
+        if event_type in ALERT_TYPES and N8N_WEBHOOK_URL:
+            n8n_payload = {
+                "sensor":        camera,
+                "persona":       event.get("persona", "Sin identificar"),
+                "alerta":        round(confidence),
+                "ubicacion":     ubicacion or camera,
+                "mensaje":       (f"Trabajador {event_type.replace('_', ' ')}" if event_type.startswith("sin_")
+                                  else EVENT_LABELS[event_type]) + f" (confianza: {confidence:.1f}%)",
+                "tipo_riesgo":   event_type,
+                "confianza_raw": confidence,
+                "timestamp":     event.get("timestamp", ""),
+            }
+            n8n_headers = {}
+            if N8N_WEBHOOK_TOKEN:
+                n8n_headers["Authorization"] = f"Bearer {N8N_WEBHOOK_TOKEN}"
+            # En segundo plano: un n8n lento no frena ni la respuesta ni el análisis de la cámara
+            threading.Thread(target=_avisar_n8n, args=(n8n_payload, n8n_headers), daemon=True).start()
+        if event_type in ALERT_TYPES or event_type in SALUD_TYPES:
+            aviso_telegram.avisar(event, foto_webp)   # sin TELEGRAM_BOT_TOKEN no hace nada
+        aviso_mqtt.publicar(event)   # todos los eventos, también "con_casco": sin MQTT_HOST no hace nada
+    except Exception:
+        traceback.print_exc()
     return event
 
 
@@ -840,7 +876,8 @@ def _avisar_n8n(payload, headers):
         if r.status_code >= 400:
             print(f"[!] n8n respondió {r.status_code} a la alerta {payload['tipo_riesgo']}", flush=True)
     except Exception as e:
-        print(f"[!] n8n no recibió la alerta {payload['tipo_riesgo']}: {e}", flush=True)
+        # solo el tipo de error: el texto trae la URL del webhook, que es el secreto cuando no hay token
+        print(f"[!] n8n no recibió la alerta {payload['tipo_riesgo']}: {type(e).__name__}", flush=True)
 
 
 motor.registrar_evento = registrar_evento
@@ -875,8 +912,9 @@ def api_add_event():
         return jsonify({"ok": True, "event": event})
     except HTTPException:
         raise  # 413, etc.: que Flask responda con el código correcto
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        traceback.print_exc()   # si no, una alerta de webcam que no se pudo guardar se pierde sin rastro
+        return jsonify({"error": "Error interno al registrar el evento"}), 500
 
 
 # ═══════════════════════════════════════
@@ -952,8 +990,14 @@ def revisar_wearables(ahora=None):
     for disp_id in ids:
         disp = wearables.obtener(disp_id)
         if disp and disp.get("activo", True):
-            avisados.append(alerta_de_wearable(disp, "wearable_sin_senal",
-                                               f"sin datos hace más de {wearables.SIN_SENAL_S} s", {}))
+            try:
+                avisados.append(alerta_de_wearable(disp, "wearable_sin_senal",
+                                                   f"sin datos hace más de {wearables.SIN_SENAL_S} s", {}))
+            except Exception:
+                # No se pudo guardar (disco, archivo tomado): se reintenta en la próxima vuelta
+                # y los demás equipos callados avisan igual.
+                traceback.print_exc()
+                wearables.estado_de(disp_id).sin_senal = False
     return avisados
 
 
@@ -998,7 +1042,16 @@ def api_telemetria():
     with wearables._lock:
         nuevas = wearables.evaluar(wearables.estado_de(disp["id"]), lectura, time.monotonic(),
                                    wearables.umbrales_de(disp))
-    eventos = [alerta_de_wearable(disp, tipo, detalle, lectura) for tipo, detalle in nuevas]
+    eventos = []
+    for i, (tipo, detalle) in enumerate(nuevas):
+        try:
+            eventos.append(alerta_de_wearable(disp, tipo, detalle, lectura))
+        except Exception:
+            # No se pudo guardar (disco, archivo tomado): las que faltan dejan de figurar como ya
+            # avisadas, así la próxima lectura (el equipo reintenta con el 500) las vuelve a generar.
+            with wearables._lock:
+                wearables.estado_de(disp["id"]).activas.difference_update(t for t, _ in nuevas[i:])
+            raise
     _iniciar_vigilancia()
     return jsonify({"ok": True, "alertas": [e["type"] for e in eventos], "aviso_recibido": bool(eventos)})
 
@@ -1084,6 +1137,9 @@ def api_alertas_urgentes():
     return jsonify(urgentes[:10])
 
 
+_feedback_lock = threading.Lock()   # shortcut: un solo proceso (gunicorn --workers 1); con más workers haría falta un candado de archivo
+
+
 @admin_bp.route("/api/events/<event_id>/feedback", methods=["POST"])
 @roles_required("admin", "operator")
 def api_feedback(event_id):
@@ -1092,11 +1148,13 @@ def api_feedback(event_id):
     veredicto = data.get("veredicto")
     if veredicto not in ("real", "falsa"):
         return jsonify({"error": "'veredicto' debe ser 'real' o 'falsa'"}), 400
-    evento = data_store.get_event(event_id)
-    if not evento or evento.get("type") not in ALERT_TYPES:
-        return jsonify({"error": "No existe esa alerta"}), 404
-    evento = data_store.set_feedback(event_id, veredicto, current_user.username)
-    aprendido = wearables.aprender_de_falsa(evento) if veredicto == "falsa" else None
+    with _feedback_lock:   # leer el veredicto anterior y guardar el nuevo sin que otro pedido se meta en medio
+        evento = data_store.get_event(event_id)
+        if not evento or evento.get("type") not in ALERT_TYPES:
+            return jsonify({"error": "No existe esa alerta"}), 404
+        ya_falsa = (evento.get("feedback") or {}).get("veredicto") == "falsa"   # doble clic o dos operadores
+        evento = data_store.set_feedback(event_id, veredicto, current_user.username)
+    aprendido = wearables.aprender_de_falsa(evento) if veredicto == "falsa" and not ya_falsa else None
     return jsonify({"ok": True, "aprendido": aprendido})
 
 
