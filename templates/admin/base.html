@@ -129,6 +129,11 @@
 
     <!-- MAIN CONTENT -->
     <main class="main-content" id="main-content">
+        {% if entorno and entorno != 'produccion' %}
+        <div role="status" style="background:#f59e0b;color:#111;font-weight:700;text-align:center;padding:.35rem .75rem;font-size:.85rem;letter-spacing:.03em">
+            <i class="fa-solid fa-flask"></i> {{ entorno|upper }}: entorno de pruebas. Las alertas no salen por Telegram y los cambios no afectan producción.
+        </div>
+        {% endif %}
         <!-- TOP BAR -->
         <header class="topbar">
             <div class="topbar-left">
