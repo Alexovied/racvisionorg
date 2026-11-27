@@ -351,3 +351,42 @@ def test_tirado_en_diagonal_no_se_endereza_como_camara_girada(monkeypatch):
     img = np.zeros((480, 640, 3), np.uint8)
     assert motor.pose.torso_caido(cuerpos[0][1], -28.0) is False
     assert motor.acostados(img, [], [], {"casco": True, "chaleco": True}, cuerpos, -28.0) == [caja]
+
+
+def test_agachado_con_piernas_verticales_no_es_caida():
+    # Torso inclinado 60° (levantando algo del piso) pero tobillos debajo de la cadera
+    p = _puntos((200, 200), (300, 260))
+    for i in (15, 16):
+        p[i] = (305, 420, 0.9)
+    assert motor.pose.torso_caido(p) is False
+    for i in (15, 16):
+        p[i] = (310, 300, 0.9)            # piernas cortas (hecho un bollo en el piso): sigue caído
+    assert motor.pose.torso_caido(p) is True
+    for i in (15, 16):
+        p[i] = (480, 280, 0.9)            # piernas estiradas a lo largo: caído
+    assert motor.pose.torso_caido(p) is True
+
+
+def test_si_la_pose_derecha_no_ve_al_caido_se_busca_girada(monkeypatch):
+    monkeypatch.setattr(motor.pose, "disponible", lambda: True)
+    caja = [100, 300, 400, 120]
+    monkeypatch.setattr(motor.pose, "detectar_girados", lambda img: [(caja, _puntos((150, 350), (330, 360)))])
+    img = np.zeros((480, 640, 3), np.uint8)
+    assert motor.acostados(img, [], [], {"casco": True, "chaleco": True}, []) == [caja]
+    monkeypatch.setattr(motor.pose, "detectar_girados", lambda img: [(caja, _puntos((300, 100), (300, 250)))])
+    assert motor.acostados(img, [], [], {"casco": True, "chaleco": True}, []) == []
+
+
+def test_detectar_girados_devuelve_coordenadas_de_la_imagen_original(monkeypatch):
+    # Una persona "parada" en la imagen girada 90° horario es una acostada en la original
+    def yolo(net, lock, img, n, conf, puntos=False):
+        assert img.shape[:2] == (640, 480)
+        kp = np.zeros((17, 3), np.float32)
+        kp[0] = (240, 100, 0.9)
+        return [([200, 50, 60, 300], np.array([0.9]), kp)]
+    monkeypatch.setattr(motor.pose, "_net", object())
+    monkeypatch.setattr(motor.pose.helmet_detector, "correr_yolo", yolo)
+    res = motor.pose.detectar_girados(np.zeros((480, 640, 3), np.uint8))
+    (caja, kp), (caja2, kp2) = res
+    assert caja == [50, 480 - 200 - 60, 300, 60] and tuple(kp[0][:2]) == (100, 479 - 240)
+    assert caja2 == [640 - 50 - 300, 200, 300, 60] and tuple(kp2[0][:2]) == (639 - 100, 240)

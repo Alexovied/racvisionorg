@@ -187,6 +187,9 @@ def acostados(img, personas, caras, modos, cuerpos=None, inclinacion=0.0):
     else:
         candidatos = [(p, None) for p in personas]
     caidos = [caja for caja, torso in candidatos if torso]
+    if not caidos and pose.disponible():
+        # Tirado a lo largo de la imagen el modelo de pose a veces no lo ve: se mira girado 90°
+        caidos = [caja for caja, puntos in pose.detectar_girados(img) if pose.torso_caido(puntos, 0.0)]
     dudosos = [caja for caja, torso in candidatos if torso is None and _acostada(caja, [], ancho, alto)]
     if dudosos:
         # Solo chaleco: las "caras" son cajas de persona, así que las cabezas se buscan aparte

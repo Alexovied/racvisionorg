@@ -21,6 +21,17 @@ MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 CONF_PERSONA = 0.25
 CONF_PUNTO = 0.3          # por debajo, el punto no se ve bien y no se usa
 ANGULO_CAIDO = 40         # grados del torso respecto de la vertical
+# Agachado o sentado inclinado hacia adelante: el torso se ve "acostado" pero las piernas bajan
+# casi verticales desde la cadera. Con GMDCSA24 (160 videos, 4 personas) esto bajó las falsas alarmas
+# de 11 a 1 de 63 clips sin caída. El largo mínimo evita descartar a alguien hecho un bollo en el piso.
+PIERNAS_DERECHAS = 25     # grados de cadera → tobillos (o rodillas) respecto de la vertical
+LARGO_PIERNAS = 0.9       # las piernas tienen que medir al menos 0,9 veces el torso
+# Alguien tirado en el piso a lo largo de la imagen se le escapa al modelo de pose (lo entrenaron con
+# gente parada): se vuelve a buscar con la imagen girada 90° a cada lado. Solo cuenta si la detección es
+# muy segura y la caja es bien acostada. En GMDCSA24 pasó de 55 a 62 de 79 caídas vistas sin falsas nuevas.
+CONF_GIRADA = 0.7
+ANCHO_GIRADA = 1.6        # ancho de la caja / alto
+RODILLAS, TOBILLOS = (13, 14), (15, 16)
 NARIZ, HOMBROS, CADERAS = 0, (5, 6), (11, 12)   # índices COCO
 
 _net, _lock = None, threading.Lock()
@@ -44,6 +55,45 @@ def detectar(img):
             helmet_detector.correr_yolo(_net, _lock, img, 1, CONF_PERSONA, puntos=True)]
 
 
+def detectar_girados(img):
+    """Como detectar(), pero con la imagen girada 90° a cada lado (puntos y cajas vueltos a la imagen
+    original). Solo personas con confianza ≥ CONF_GIRADA y caja ≥ ANCHO_GIRADA veces más ancha que alta."""
+    if _net is None:
+        return []
+    alto, ancho = img.shape[:2]
+    res = []
+    for giro in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE):
+        for (x, y, w, h), _, kp in helmet_detector.correr_yolo(_net, _lock, cv2.rotate(img, giro), 1,
+                                                               CONF_GIRADA, puntos=True):
+            kp = kp.copy()
+            if giro == cv2.ROTATE_90_CLOCKWISE:      # (x', y') girado → (y', alto-1-x') original
+                caja = [y, alto - x - w, h, w]
+                kp[:, 0], kp[:, 1] = kp[:, 1].copy(), alto - 1 - kp[:, 0]
+            else:                                    # (x', y') → (ancho-1-y', x')
+                caja = [ancho - y - h, x, h, w]
+                kp[:, 0], kp[:, 1] = ancho - 1 - kp[:, 1], kp[:, 0].copy()
+            if caja[2] >= ANCHO_GIRADA * caja[3]:
+                res.append((caja, kp))
+    return res
+
+
+def _angulo(arriba, abajo, inclinacion):
+    """Grados entre el vector abajo → arriba y la vertical (0 = derecho), corrigiendo el giro de la cámara."""
+    angulo = math.degrees(math.atan2(arriba[0] - abajo[0], abajo[1] - arriba[1])) - inclinacion
+    return abs((angulo + 180) % 360 - 180)
+
+
+def _piernas_derechas(puntos, caderas, torso, inclinacion):
+    """True si los tobillos (o, si no se ven, las rodillas) están casi en vertical debajo de la cadera
+    y las piernas son largas: agachado o sentado inclinado, no tirado."""
+    for pie in (TOBILLOS, RODILLAS):
+        if min(puntos[i][2] for i in pie) >= CONF_PUNTO:
+            px, py = (puntos[pie[0]][0] + puntos[pie[1]][0]) / 2, (puntos[pie[0]][1] + puntos[pie[1]][1]) / 2
+            largo = math.hypot(px - caderas[0], py - caderas[1])
+            return _angulo(caderas, (px, py), inclinacion) < PIERNAS_DERECHAS and largo > LARGO_PIERNAS * torso
+    return False
+
+
 def torso_caido(puntos, inclinacion=0.0):
     """True si el torso está acostado o cabeza abajo; False si está derecho;
     None si no se ven bien los hombros y las caderas (ni la cabeza) (muy cerca de la cámara, tapado).
@@ -63,5 +113,9 @@ def torso_caido(puntos, inclinacion=0.0):
     # Ángulo entre el torso y la vertical: 0° de pie, 90° acostado, más de 90° cabeza abajo.
     # shortcut: alguien tirado a lo largo del eje de la cámara se ve "vertical" en la imagen;
     # para eso hace falta saber la altura de la cámara o una segunda cámara.
-    angulo = math.degrees(math.atan2(hx - cx, cy - hy)) - inclinacion
-    return abs((angulo + 180) % 360 - 180) > ANGULO_CAIDO
+    if _angulo((hx, hy), (cx, cy), inclinacion) <= ANGULO_CAIDO:
+        return False
+    if min(puntos[i][2] for i in CADERAS) >= CONF_PUNTO and \
+            _piernas_derechas(puntos, (cx, cy), math.hypot(hx - cx, hy - cy), inclinacion):
+        return False
+    return True
