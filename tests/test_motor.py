@@ -244,6 +244,19 @@ def test_torso_caido_por_angulo():
     assert caido(_puntos((300, 100), (300, 250), conf=0.2)) is None   # no se ven hombros / caderas
 
 
+def test_torso_caido_con_caderas_tapadas_usa_la_cabeza():
+    caido = motor.pose.torso_caido
+    tapado = _puntos((300, 100), (300, 250))
+    for i in (11, 12):
+        tapado[i] = (300, 250, 0.1)        # frazada o borde de la imagen: caderas sin ver
+    tapado[0] = (300, 40, 0.9)             # nariz arriba de los hombros: de pie
+    assert caido(tapado) is False
+    tapado[0] = (180, 105, 0.9)            # nariz al costado de los hombros: acostado
+    assert caido(tapado) is True
+    tapado[0] = (180, 105, 0.1)            # sin cabeza ni caderas no se decide
+    assert caido(tapado) is None
+
+
 def test_con_pose_sentado_cerca_no_es_caida_y_acostado_si(camara, monkeypatch):
     hilo, eventos = camara
     reloj = iter(range(100, 200))
@@ -328,3 +341,13 @@ def test_camara_relay_descarta_cuadros_que_llegan_desordenados():
     hilo.recibir(viejo, 1000)   # relay reiniciado o salto: se toma
     hilo.recibir(nuevo, 1)      # el relay volvió a contar desde 1
     assert hilo.crudo is nuevo
+
+
+def test_tirado_en_diagonal_no_se_endereza_como_camara_girada(monkeypatch):
+    # Torso a ~55° de la vertical: con un giro "aprendido" de -28° quedaría en ~-27° (de pie)
+    monkeypatch.setattr(motor.pose, "disponible", lambda: True)
+    caja = [200, 150, 260, 200]
+    cuerpos = [(caja, _puntos((250, 180), (400, 285)))]
+    img = np.zeros((480, 640, 3), np.uint8)
+    assert motor.pose.torso_caido(cuerpos[0][1], -28.0) is False
+    assert motor.acostados(img, [], [], {"casco": True, "chaleco": True}, cuerpos, -28.0) == [caja]
