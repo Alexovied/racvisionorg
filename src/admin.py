@@ -1355,7 +1355,7 @@ def reporte_pagina():
     try:
         dia = datetime.strptime(request.args.get("fecha", ""), "%Y-%m-%d").date()
     except ValueError:
-        dia = None
+        dia = datetime.now().date()   # la página abre en hoy; el envío automático de cada mañana sigue resumiendo ayer
     r = riesgo.reporte(data_store.load_events(), dia)
     # La IA solo se usa a pedido (?ia=1): cada recarga de la página no gasta una llamada
     usar_ia = request.args.get("ia") == "1" and current_user.role == "admin"   # cada llamada cuesta

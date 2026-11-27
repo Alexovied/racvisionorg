@@ -35,10 +35,10 @@
     <div class="admin-card-header">
         <h2><i class="fa-solid fa-file-lines"></i> Texto del reporte</h2>
         {% if ia and current_user.role == 'admin' %}
-        <a href="{{ url_for('admin.reporte_pagina', fecha=r.fecha, ia=1) }}" class="card-link"><i class="fa-solid fa-wand-magic-sparkles"></i> Redactar con IA</a>
+        <a href="{{ url_for('admin.reporte_pagina', fecha=r.fecha, ia=1) }}" class="card-link" onclick="this.setAttribute('aria-busy', 'true'); this.style.pointerEvents = 'none'; this.innerHTML = '<i class=&quot;fa-solid fa-spinner fa-spin&quot;></i> Redactando con IA… puede tardar unos segundos'; document.querySelector('.reporte-texto').style.opacity = '.5';"><i class="fa-solid fa-wand-magic-sparkles"></i> Redactar con IA</a>
         {% endif %}
     </div>
-    <form method="POST" action="{{ url_for('admin.reporte_enviar') }}">
+    <form method="POST" action="{{ url_for('admin.reporte_enviar') }}" onsubmit="const b = this.querySelector('button[type=submit]'); if (b) { b.disabled = true; b.innerHTML = '<i class=&quot;fa-solid fa-spinner fa-spin&quot;></i> Enviando…'; }">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="fecha" value="{{ r.fecha }}">
         <textarea name="texto" class="reporte-texto" aria-label="Texto del reporte">{{ texto }}</textarea>

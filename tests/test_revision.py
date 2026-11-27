@@ -162,8 +162,8 @@ def test_viewer_no_puede_revisar(flask_app):
 
 def test_foto_y_borrar(operator_client, tmp_data):
     m = revision.guardar(_jpg(), "Taller", "captura")
-    r = operator_client.get(f"/admin/revision/{m['id']}.webp")
-    assert r.status_code == 200 and r.data[:4] == b"RIFF"
+    with operator_client.get(f"/admin/revision/{m['id']}.webp") as r:   # cerrada: en Windows send_file deja el archivo tomado
+        assert r.status_code == 200 and r.data[:4] == b"RIFF"
     assert operator_client.get("/admin/revision/../../users.webp").status_code == 404
     assert operator_client.post(f"/admin/api/revision/{m['id']}/borrar").status_code == 200
     assert revision.cargar() == [] and not (tmp_data / "muestras" / f"{m['id']}.webp").exists()

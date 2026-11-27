@@ -74,7 +74,8 @@ def test_sin_cuerpos_no_se_corre_el_detector_de_cascos(monkeypatch):
 def test_companero_agachado_no_anula_la_caida(monkeypatch):
     caja = [90, 280, 220, 70]
     caido = (caja, _esqueleto([(100, 290), (100, 310)], [(300, 325), (300, 345)]))               # torso a 80°
-    ayudante = ([400, 180, 120, 140], _esqueleto([(416, 190), (416, 210)], [(500, 290), (500, 310)]))  # a 40°
+    # a 30°: inclinado, pero por debajo de pose.ANGULO_CAIDO (40°, ajustado con clips reales)
+    ayudante = ([400, 180, 120, 140], _esqueleto([(416, 190), (416, 210)], [(474, 290), (474, 310)]))
     monkeypatch.setattr(motor.pose, "disponible", lambda: True)
     monkeypatch.setattr(motor.pose, "detectar", lambda img: [caido, ayudante])
     monkeypatch.setattr(motor.cuerpo, "es_persona", lambda *a: True)
