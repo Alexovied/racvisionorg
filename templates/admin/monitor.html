@@ -6,8 +6,8 @@
 {% block head %}
 <style>
     .mon-nodo { color: var(--text-muted); font-size: .85rem; white-space: nowrap; }
-    .monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.25rem; }
-    .mon-card { padding: 0; overflow: hidden; }
+    .monitor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 1.25rem; }
+    .mon-card { padding: 0; overflow: hidden; max-width: 960px; }
     .mon-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.9rem 1.1rem; }
     .mon-name { font-weight: 600; color: var(--text); }
     .mon-loc { font-size: 0.78rem; color: var(--text-dim); }
@@ -20,8 +20,8 @@
     .mon-video .mon-idle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
                            color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 1rem; }
     .mon-card.alerta .mon-video { box-shadow: inset 0 0 0 3px var(--red); }
-    .mon-foot { display: flex; gap: 0.5rem; padding: 0.8rem 1.1rem; }
-    .mon-foot select { flex: 1; min-width: 0; background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border);
+    .mon-foot { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.8rem 1.1rem; }
+    .mon-foot select { flex: 1; min-width: 8rem; background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border);
                        border-radius: var(--radius-sm); padding: 0.5rem 0.6rem; font-family: var(--font); font-size: 0.82rem;
                        color-scheme: dark; }
     /* La lista desplegable la dibuja el sistema: sin esto, texto claro sobre fondo blanco */
@@ -38,7 +38,7 @@
 {% block content %}
 <div class="section-header">
     <p class="section-desc">Cada cámara activa se analiza en vivo. En las webcam, elegí el dispositivo y tocá Iniciar. Las cámaras USB / IP las analiza el servidor todo el tiempo: ahí podés dibujar zonas prohibidas o zonas donde no se exige EPP (oficina, pasillo seguro), elegir en qué horario se exige y Guardar.</p>
-    <span class="mon-nodo" id="mon-nodo" title="Equipo que analiza las cámaras del servidor" aria-live="polite"></span>
+    <span class="mon-nodo" id="mon-nodo" title="Equipo que analiza las cámaras del servidor"></span>
     {% if cameras %}
     <button class="btn-action btn-create" id="btn-todas"><i class="fa-solid fa-play"></i> Iniciar todas</button>
     {% endif %}
@@ -53,7 +53,7 @@
                 <div class="mon-name">{{ cam.name }}</div>
                 <div class="mon-loc"><i class="fa-solid fa-location-dot"></i> {{ cam.location or 'Sin ubicación' }}</div>
             </div>
-            <span class="mon-state">DETENIDA</span>
+            <span class="mon-state" role="status">DETENIDA</span>
         </div>
         {% if cam.type == 'webcam' %}
         <div class="mon-video">
@@ -113,6 +113,13 @@
         if (cfg.scan_rate_ms) scanRateMs = cfg.scan_rate_ms;
     }).catch(() => {});
 
+    // Sin sesión (o con el rol cambiado) no se registran eventos ni suena la alarma: se vuelve al login
+    // en vez de seguir mostrando alertas que no se guardan. Mismo criterio que el detector de /app.
+    function sesionVencida(r) {
+        if (r.status === 401 || r.status === 403) location.href = '/admin/login?next=/admin/monitor';
+        return r;
+    }
+
     let dispositivos = [];
     async function cargarDispositivos() {
         dispositivos = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
@@ -125,7 +132,7 @@
         const select = card.querySelector('select'), btnStart = card.querySelector('.mon-start'), btnStop = card.querySelector('.mon-stop');
         const captura = document.createElement('canvas'), capCtx = captura.getContext('2d');
         const claveDisp = `rac-monitor-${camId}`;
-        let stream = null, activo = false, ultimaAlarma = null;
+        let stream = null, activo = false, ultimaAlarma = null, fallos = 0;
         const seguimiento = EPP.seguimiento();
 
         function poblarSelect() {
@@ -140,7 +147,7 @@
 
         function ponerEstado(clase, texto, detalle) {
             chip.className = 'mon-state' + (clase === 'ok' ? ' ok' : clase === 'alerta' ? ' alerta' : '');
-            chip.textContent = texto;
+            if (chip.textContent !== texto) chip.textContent = texto;  // role="status": solo se anuncia el cambio
             chip.title = detalle || '';
             card.classList.toggle('alerta', clase === 'alerta');
         }
@@ -154,9 +161,16 @@
             return f.toDataURL('image/jpeg', 0.8);
         }
 
-        function enviarEvento(evento) {
+        // Sin red o con el servidor reiniciándose (502/503 del proxy) se reintenta hasta 3 veces: una alerta no se
+        // pierde por un corte corto. Un 500 no se reintenta: el evento pudo quedar guardado y saldría duplicado.
+        // El reintento sale solo si la cámara sigue en el mismo estado (alerta / en regla): uno viejo que llegara
+        // después de un evento más nuevo dejaría la alarma física al revés.
+        function enviarEvento(evento, intento = 0) {
+            const vigente = () => seguimiento.resumen().clase === (evento.type === 'con_casco' ? 'ok' : 'alerta');
+            const reintentar = () => { if (intento < 3) setTimeout(() => { if (vigente()) enviarEvento(evento, intento + 1); }, 2000); };
             fetch('/admin/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-                body: JSON.stringify(evento) }).catch(() => {});
+                body: JSON.stringify(evento) })
+                .then(r => { if (sesionVencida(r).status === 502 || r.status === 503) reintentar(); }).catch(reintentar);
         }
 
         function dibujar(caras) {
@@ -193,7 +207,7 @@
                 ultimaAlarma = alarma;
                 if (alarma === 'con_casco') enviarEvento({ type: 'con_casco', confidence: 100, camera: camId });
                 fetch('/api/alarm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-                    body: JSON.stringify({ state: alarma }) }).catch(() => {});
+                    body: JSON.stringify({ state: alarma }) }).then(sesionVencida).catch(() => {});
             }
             const r = seguimiento.resumen();
             if (r.titulo) ponerEstado(r.clase, r.clase === 'alerta' ? seguimiento.corto() : r.titulo, r.detalle);
@@ -207,22 +221,31 @@
                     try {
                         const r = await fetch('/predict', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
                             body: JSON.stringify({ image: captura.toDataURL('image/jpeg', 0.75) }) });
-                        if (r.status === 401) { location.href = '/admin/login?next=/admin/monitor'; return; }
-                        if (activo && r.ok) procesar(await r.json());
-                    } catch (e) { console.error(e); }
+                        // /predict es público: un 403 ahí es el CSRF de una sesión perdida, no una caída del servidor
+                        if (!sesionVencida(r).ok) throw new Error('/predict respondió ' + r.status);
+                        const data = await r.json();
+                        fallos = 0;
+                        if (activo) procesar(data);
+                    } catch (e) {
+                        console.error(e);
+                        // Al tercer fallo seguido se avisa y se borran los recuadros viejos: la tarjeta no queda en verde sin analizar
+                        if (activo && ++fallos >= 3) { ctx.clearRect(0, 0, canvas.width, canvas.height); ponerEstado(null, 'SIN CONEXIÓN', 'El servidor no responde'); }
+                    }
                 }
                 await new Promise(res => setTimeout(res, scanRateMs));
             }
         }
 
         async function iniciar() {
-            if (activo) return;
+            if (activo || btnStart.disabled) return;
+            btnStart.disabled = true;  // un segundo clic con el cartel de permiso abierto abría la cámara dos veces
             idle.textContent = 'Conectando…';
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ audio: false,
                     video: { width: { ideal: 640 }, height: { ideal: 480 }, ...(select.value ? { deviceId: { exact: select.value } } : {}) } });
             } catch (e) {
                 idle.textContent = 'No se pudo abrir la cámara: revisá permisos o si otra pestaña la está usando.';
+                btnStart.disabled = false;
                 return;
             }
             const enUso = stream.getVideoTracks()[0].getSettings().deviceId;
@@ -233,7 +256,7 @@
             canvas.height = captura.height = video.videoHeight || 480;
             idle.style.display = 'none';
             btnStart.disabled = true; btnStop.disabled = false; select.disabled = true;
-            seguimiento.reset(); ultimaAlarma = null; ponerEstado(null, 'ANALIZANDO');
+            seguimiento.reset(); ultimaAlarma = null; fallos = 0; ponerEstado(null, 'ANALIZANDO');
             activo = true; ciclo();
             // Con el permiso dado, el navegador recién muestra todos los dispositivos con nombre:
             // se rearman las listas de las demás cámaras (cada una toma otro dispositivo por defecto)
@@ -274,9 +297,15 @@
 
         // Video continuo (MJPEG): una sola conexión; si se corta o todavía no hay señal, se reintenta
         const pedir = () => { img.src = `/admin/api/cameras/${camId}/video?t=${Date.now()}`; };
-        img.onload = () => { idle.style.display = 'none'; img.style.visibility = ''; };
-        img.onerror = () => { idle.style.display = ''; img.style.visibility = 'hidden'; setTimeout(pedir, 2000); };
+        img.onload = () => {
+            idle.style.display = 'none'; img.style.visibility = '';
+            // El recuadro toma la forma de la cámara (16:9, 4:3...): si no, el video se ve estirado
+            if (img.naturalWidth) img.parentElement.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+        };
+        img.onerror = () => { idle.style.display = ''; img.style.visibility = 'hidden'; setTimeout(() => { if (!document.hidden) pedir(); }, 2000); };
         pedir();
+        // Pestaña oculta: se corta el video para que el servidor no codifique JPEG para nadie (el análisis sigue igual)
+        document.addEventListener('visibilitychange', () => { if (document.hidden) img.removeAttribute('src'); else pedir(); });
 
         function dibujarZonas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -333,12 +362,12 @@
         return { camId, estado(e) {
             // El video continuo no avisa cuando se corta: se oculta al perder la señal y se vuelve a pedir al recuperarla
             const cortado = !e || !!e.error;
-            if (cortado) { idle.style.display = ''; img.style.visibility = 'hidden'; } else if (sinSenal) pedir();
+            if (cortado) { idle.style.display = ''; img.style.visibility = 'hidden'; } else if (sinSenal && !document.hidden) pedir();
             sinSenal = cortado;
             const [clase, texto] = !e ? [null, 'SERVIDOR SIN MOTOR'] : e.error ? [null, e.error.toUpperCase()]
                 : e.lente ? ['alerta', 'LENTE ' + e.lente.toUpperCase()] : [e.clase, e.titulo];
             chip.className = 'mon-state' + (clase === 'ok' ? ' ok' : clase === 'alerta' ? ' alerta' : '');
-            chip.textContent = texto;
+            if (chip.textContent !== texto) chip.textContent = texto;
             chip.title = e && !e.error ? `${e.fps} fps` : '';
             card.classList.toggle('alerta', clase === 'alerta');
             if (!e || e.error) idle.textContent = e ? e.error : 'Este servidor no analiza cámaras: se enciende con «python app.py».';
@@ -346,17 +375,27 @@
     }
 
     const servidor = [...document.querySelectorAll('.mon-card:not([data-cam-type="webcam"])')].map(crearMonitorServidor);
+    // Si el servidor deja de contestar (deploy, corte de red) las tarjetas no quedan con el último estado:
+    // al tercer fallo seguido pasan a "sin conexión". ocupado: no se apilan pedidos con la red colgada.
+    let fallosMotor = 0, ocupado = false;
     if (servidor.length) setInterval(async () => {
+        if (ocupado) return;
+        ocupado = true;
+        const corte = new AbortController(), reloj = setTimeout(() => corte.abort(), 5000);
         try {
-            const r = await fetch('/admin/api/motor');
+            const r = await fetch('/admin/api/motor', { signal: corte.signal });
             if (r.status === 401) { location.href = '/admin/login?next=/admin/monitor'; return; }
-            if (!r.ok) return;
+            if (!r.ok) throw new Error('/admin/api/motor respondió ' + r.status);
             const estados = await r.json();
+            fallosMotor = 0;
             servidor.forEach(m => m.estado(estados[m.camId]));
             const n = estados._nodo;
             if (n) document.getElementById('mon-nodo').textContent = [n.cpu != null && `CPU ${Math.round(n.cpu)} %`,
                 n.memoria != null && `RAM ${Math.round(n.memoria)} %`, n.temperatura != null && `${n.temperatura} °C`].filter(Boolean).join(' · ');
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            if (++fallosMotor >= 3) servidor.forEach(m => m.estado({ error: 'Sin conexión con el servidor' }));
+        } finally { clearTimeout(reloj); ocupado = false; }
     }, 700);
 
     const monitores = [...document.querySelectorAll('.mon-card[data-cam-type="webcam"]')].map(crearMonitor);

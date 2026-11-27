@@ -42,11 +42,11 @@
                     <td class="text-muted">{{ user.created_at[:10] if user.created_at else '—' }}</td>
                     <td>
                         <div class="action-buttons">
-                            <button class="btn-icon btn-edit" onclick="openEditModal('{{ user.id }}', '{{ user.username }}', '{{ user.role }}')" title="Editar">
+                            <button class="btn-icon btn-edit" data-id="{{ user.id }}" data-username="{{ user.username }}" data-role="{{ user.role }}" onclick="openEditModal(this.dataset.id, this.dataset.username, this.dataset.role)" title="Editar">
                                 <i class="fa-solid fa-pen"></i>
                             </button>
                             {% if user.id != current_user.id %}
-                            <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" onsubmit="return confirm('¿Eliminar el usuario {{ user.username }}?')">
+                            <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" data-confirmar="¿Eliminar el usuario {{ user.username }}?" onsubmit="return confirm(this.dataset.confirmar)">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn-icon btn-delete" title="Eliminar">
                                     <i class="fa-solid fa-trash"></i>

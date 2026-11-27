@@ -1,3 +1,3 @@
-# Dependencias solo para desarrollo y tests (no se instalan en Render).
+# Dependencias solo para desarrollo y tests (no se instalan en el servidor).
 -r requirements.txt
 pytest==8.3.3

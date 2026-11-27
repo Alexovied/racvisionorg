@@ -51,7 +51,7 @@
                 {% elif p.tipo == 'opcion' %}
                     <label class="sg-muted" for="in-{{ p.id }}">Elegí una opción</label>
                     <select id="in-{{ p.id }}" name="{{ p.id }}"><option value="">—</option>
-                    {% for o in p.opciones %}<option {% if previo_v == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+                    {% for o in p.opciones %}<option value="{{ o }}" {% if previo_v == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
                 {% else %}
                     <label class="sg-muted" for="in-{{ p.id }}">Respuesta (opcional)</label>
                     <textarea id="in-{{ p.id }}" name="{{ p.id }}" rows="3" maxlength="1000">{{ previo_v }}</textarea>

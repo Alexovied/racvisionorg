@@ -75,9 +75,9 @@
             <section class="right-column">
                 <!-- CARD DE ESTADO ACTUAL -->
                 <div class="card status-card info-card" id="status-panel">
-                    <div class="status-content" role="status" aria-live="polite" aria-atomic="true">
+                    <div class="status-content">
                         <h3 class="status-title">Estado de Seguridad</h3>
-                        <div class="status-value" id="current-state-text">Buscando personas...</div>
+                        <div class="status-value" id="current-state-text" role="status" aria-live="polite">Buscando personas...</div>
                         <p class="status-desc" id="current-desc-text">Inicia la cámara para empezar a monitorear.</p>
                     </div>
                     <div class="status-icon-box" id="status-icon-container">
@@ -189,7 +189,6 @@
         const currentDescText = document.getElementById('current-desc-text');
         const statusIcon = document.getElementById('status-icon');
         const logList = document.getElementById('log-list');
-        const logPlaceholder = document.getElementById('log-placeholder');
 
         // Selector de dispositivo: recuerda qué cámara se usó la última vez
         const CAMERA_NAME = 'webcam';
@@ -206,6 +205,7 @@
         listarCamaras().catch(() => {});
 
         let ultimasCaras = [];   // caras del último frame: la alerta guarda quiénes eran
+        let fallosPredict = 0;   // respuestas malas seguidas de /predict
 
         let localStream = null;
         let activeInterval = null;
@@ -294,6 +294,7 @@
             video.classList.remove('sin-espejo');
             contenedor.style.aspectRatio = '';
             if (urlArchivo) stopWebcam();   // venía analizando un archivo: se corta del todo antes de abrir la cámara
+            btnStart.disabled = true;       // un segundo clic con el cartel de permiso abierto dejaba una cámara tomada
             try {
                 // Resetear buffer de suavizado del backend al iniciar
                 fetch('/reset_buffer', { method: 'POST', headers: { 'X-CSRFToken': CSRF } }).catch(() => {});
@@ -327,6 +328,7 @@
                 };
             } catch (err) {
                 console.error("Error al acceder a la cámara:", err);
+                btnStart.disabled = false;
                 loadingOverlay.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-danger"></i><p>' + ({NotAllowedError: 'Permiso de cámara denegado. Habilitalo en el candado de la barra de direcciones.', NotReadableError: 'La cámara está en uso por otra pestaña o app. Cerrala y reintentá.', OverconstrainedError: 'La cámara elegida ya no está disponible. Elegí otra.', NotFoundError: 'No se encontró ninguna cámara.'}[err.name] || 'Error de acceso a la cámara (' + err.name + ').') + '</p>';
             }
         }
@@ -374,6 +376,7 @@
             statusIcon.className = "fa-solid fa-user-gear pulse-icon";
             seguimiento.reset();
             ultimaAlarma = null;
+            fallosPredict = 0;
             chalecoVal.innerText = '—'; barChaleco.style.width = '0%';
             caidaVal.innerText = 'No'; barCaida.style.width = '0%';
             caidoDesde = null; caidoAvisado = false; acostados = [];
@@ -420,11 +423,29 @@
                 });
 
                 if (!isDetecting) return;
+                if (response.status === 429) return;   // detector ocupado con otros visitantes: no es un fallo
                 if (!response.ok) throw new Error('Error en la respuesta de la API');
                 const data = await response.json();
+                if (fallosPredict >= 3) {
+                    systemPulse.className = "pulse-dot active";
+                    systemStatusText.innerText = urlArchivo ? "Analizando archivo" : "Monitoreando";
+                    currentStateText.innerText = 'Analizando…';  // updateDashboard lo pisa si ya hay un estado decidido
+                }
+                fallosPredict = 0;
                 if (isDetecting) updateDashboard(data);
             } catch (err) {
-                if (isDetecting) console.error('Error al procesar el fotograma:', err);
+                if (!isDetecting) return;
+                console.error('Error al procesar el fotograma:', err);
+                // Al tercer fallo seguido se avisa: la página no queda en "Monitoreando" con el último estado
+                if (++fallosPredict === 3) {
+                    systemPulse.className = "pulse-dot idle";
+                    systemStatusText.innerText = "Sin conexión";
+                    statusPanel.className = "card status-card info-card";
+                    statusIcon.className = "fa-solid fa-user-gear pulse-icon";
+                    currentStateText.innerText = "El servidor no responde";
+                    currentDescText.innerText = "Se reintenta solo. Si sigue, recargá la página.";
+                    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+                }
             }
         }
 
@@ -570,9 +591,9 @@
         }
 
         function addLog(time, label, confidence, cssClass) {
-            if (logPlaceholder) {
-                logPlaceholder.remove();
-            }
+            // Se busca cada vez: "Limpiar" crea un cartel nuevo
+            const cartel = document.getElementById('log-placeholder');
+            if (cartel) cartel.remove();
 
             const item = document.createElement('div');
             item.className = `log-item ${cssClass}`;

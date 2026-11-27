@@ -53,7 +53,7 @@
                     <td class="text-muted">{{ p.alta[:10] if p.alta else '—' }}</td>
                     <td class="text-muted">{{ p.por or '—' }}</td>
                     <td>
-                        <form method="POST" action="{{ url_for('admin.borrar_persona') }}" onsubmit="return confirm('¿Borrar los datos de reconocimiento de {{ p.nombre }}? No se puede deshacer.')">
+                        <form method="POST" action="{{ url_for('admin.borrar_persona') }}" data-confirmar="¿Borrar los datos de reconocimiento de {{ p.nombre }}? No se puede deshacer." onsubmit="return confirm(this.dataset.confirmar)">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="nombre" value="{{ p.nombre }}">
                             <button type="submit" class="btn-icon btn-delete" title="Borrar" aria-label="Borrar a {{ p.nombre }}">

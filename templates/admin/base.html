@@ -211,6 +211,7 @@
         const CSRF = {{ csrf_token() | tojson }};
         const caja = document.getElementById('urgentes');
         const vistas = new Set();
+        let ultima = '';  // lista ya dibujada: si no cambió no se rearma (se perdía el foco y el lector de pantalla la releía cada 5 s)
         const el = (tag, css, texto) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (texto != null) e.textContent = texto; return e; };
         function pitido() {
             try {
@@ -221,8 +222,9 @@
         }
         async function marcar(id, veredicto, fila) {
             const r = await fetch(`/admin/api/events/${id}/feedback`, {method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify({veredicto})});
-            if (r.ok) { fila.remove(); caja.hidden = !caja.children.length; }
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify({veredicto})}).catch(() => null);
+            if (r && r.ok) { fila.remove(); caja.hidden = !caja.children.length; ultima = ''; }
+            else alert('No se pudo marcar la alerta. Recargá la página e intentá de nuevo.');
         }
         async function revisar() {
             try {
@@ -231,6 +233,9 @@
                 const lista = await r.json();
                 if (lista.some(a => !vistas.has(a.id))) pitido();
                 lista.forEach(a => vistas.add(a.id));
+                const firma = JSON.stringify(lista);
+                if (firma === ultima) return;
+                ultima = firma;
                 const extra = lista.length > 3 ? el('div', 'background:#7f1d1d;color:#fff;border-radius:.75rem;padding:.4rem .9rem;font-size:.85rem',
                                                   `y ${lista.length - 3} alerta${lista.length > 4 ? 's' : ''} más sin atender · Auditoría`) : null;
                 caja.replaceChildren(...lista.slice(0, 3).map(a => {
